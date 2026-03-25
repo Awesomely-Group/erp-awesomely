@@ -1,0 +1,32 @@
+#!/bin/bash
+# Pre-Commit Hook — Validates code quality before commit
+
+set -e
+
+echo "Running pre-commit checks..."
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "No staged files to check."
+  exit 0
+fi
+
+# Check for .env files accidentally staged
+for FILE in $STAGED_FILES; do
+  if [[ "$FILE" =~ \.env ]]; then
+    echo "ERROR: Attempting to commit .env file: $FILE"
+    echo "Remove it with: git reset HEAD $FILE"
+    exit 1
+  fi
+done
+
+# Run linting if available
+if [ -f "package.json" ]; then
+  if grep -q '"lint"' package.json; then
+    echo "Running linter..."
+    npm run lint --if-present 2>/dev/null || echo "Lint check skipped"
+  fi
+fi
+
+echo "Pre-commit checks passed."

@@ -1,0 +1,7 @@
+#!/bin/bash
+# Post-Commit Hook — Records commit information
+
+COMMIT_HASH=$(git rev-parse --short HEAD)
+COMMIT_MSG=$(git log -1 --pretty=%B)
+
+echo "Commit recorded: $COMMIT_HASH - $COMMIT_MSG"
