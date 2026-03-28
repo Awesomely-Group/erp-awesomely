@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Auth (NextAuth) ───────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ─── Companies ─────────────────────────────────────────────────────────────────
+
+model Company {
+  id           String   @id @default(cuid())
+  name         String
+  holdedApiKey String
+  currency     String   @default("EUR")
+  active       Boolean  @default(true)
+
+  invoices     Invoice[]
+  syncLogs     SyncLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("companies")
+}
+
+// ─── Jira Workspaces & Projects ────────────────────────────────────────────────
+
+model JiraWorkspace {
+  id       String  @id @default(cuid())
+  name     String
+  domain   String
+  email    String
+  apiToken String
+  active   Boolean @default(true)
+
+  projects JiraProject[]
+  syncLogs SyncLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("jira_workspaces")
+}
+
+model JiraProject {
+  id          String        @id @default(cuid())
+  jiraId      String
+  jiraKey     String
+  name        String
+  workspaceId String
+  workspace   JiraWorkspace @relation(fields: [workspaceId], references: [id])
+  active      Boolean       @default(true)
+
+  classifications Classification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jiraId, workspaceId])
+  @@map("jira_projects")
+}
+
+// ─── Invoices ──────────────────────────────────────────────────────────────────
+
+enum InvoiceType {
+  SALE
+  PURCHASE
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIAL
+  CLASSIFIED
+  REVIEWED
+  APPROVED
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  holdedId     String
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id])
+  type         InvoiceType
+  status       InvoiceStatus @default(PENDING)
+
+  number       String?
+  counterparty String?
+  date         DateTime
+  dueDate      DateTime?
+
+  currency     String  @default("EUR")
+  fxRateToEur  Decimal @default(1)
+  subtotal     Decimal @default(0)
+  tax          Decimal @default(0)
+  total        Decimal @default(0)
+  totalEur     Decimal @default(0)
+
+  lines     InvoiceLine[]
+  auditLogs AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([holdedId, companyId])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  holdedLineId String?
+
+  name        String
+  description String?
+  quantity    Decimal @default(1)
+  unitPrice   Decimal @default(0)
+  subtotal    Decimal @default(0)
+  tax         Decimal @default(0)
+  total       Decimal @default(0)
+  totalEur    Decimal @default(0)
+
+  sortOrder Int @default(0)
+
+  classification Classification?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("invoice_lines")
+}
+
+// ─── Classification ────────────────────────────────────────────────────────────
+
+enum ClassificationStatus {
+  CLASSIFIED
+  REVIEWED
+  APPROVED
+}
+
+model Classification {
+  id            String               @id @default(cuid())
+  invoiceLineId String               @unique
+  invoiceLine   InvoiceLine          @relation(fields: [invoiceLineId], references: [id], onDelete: Cascade)
+  projectId     String
+  project       JiraProject          @relation(fields: [projectId], references: [id])
+  status        ClassificationStatus @default(CLASSIFIED)
+  notes         String?
+
+  classifiedBy String?
+  reviewedBy   String?
+  approvedBy   String?
+  classifiedAt DateTime?
+  reviewedAt   DateTime?
+  approvedAt   DateTime?
+
+  auditLogs AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("classifications")
+}
+
+// ─── Exchange Rates ────────────────────────────────────────────────────────────
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  currency  String
+  rateToEur Decimal
+
+  @@unique([date, currency])
+  @@map("exchange_rates")
+}
+
+// ─── Audit Log ─────────────────────────────────────────────────────────────────
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  CLASSIFY
+  REVIEW
+  APPROVE
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  userId         String?
+  user           User?       @relation(fields: [userId], references: [id])
+  action         AuditAction
+  entityType     String
+  entityId       String
+  previousValue  Json?
+  newValue       Json?
+
+  invoiceId        String?
+  invoice          Invoice?        @relation(fields: [invoiceId], references: [id])
+  classificationId String?
+  classification   Classification? @relation(fields: [classificationId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ─── Sync Logs ─────────────────────────────────────────────────────────────────
+
+enum SyncSource {
+  HOLDED
+  JIRA
+}
+
+enum SyncResult {
+  SUCCESS
+  PARTIAL
+  ERROR
+}
+
+model SyncLog {
+  id             String         @id @default(cuid())
+  source         SyncSource
+  result         SyncResult
+  companyId      String?
+  company        Company?       @relation(fields: [companyId], references: [id])
+  workspaceId    String?
+  workspace      JiraWorkspace? @relation(fields: [workspaceId], references: [id])
+  invoicesSynced Int            @default(0)
+  projectsSynced Int            @default(0)
+  errorMessage   String?
+  startedAt      DateTime
+  finishedAt     DateTime?
+
+  @@map("sync_logs")
+}

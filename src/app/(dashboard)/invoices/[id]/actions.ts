@@ -1,0 +1,138 @@
+"use server";
+
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { updateInvoiceStatus } from "@/lib/sync";
+import { AuditAction, ClassificationStatus } from "@prisma/client";
+import { revalidatePath } from "next/cache";
+
+export async function classifyLine({
+  lineId,
+  projectId,
+  notes,
+  invoiceId,
+}: {
+  lineId: string;
+  projectId: string;
+  notes: string;
+  invoiceId: string;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const existing = await prisma.classification.findUnique({
+    where: { invoiceLineId: lineId },
+  });
+
+  if (existing) {
+    await prisma.classification.update({
+      where: { invoiceLineId: lineId },
+      data: {
+        projectId,
+        notes: notes || null,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+        status: ClassificationStatus.CLASSIFIED,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: AuditAction.UPDATE,
+        entityType: "Classification",
+        entityId: existing.id,
+        previousValue: { projectId: existing.projectId, notes: existing.notes },
+        newValue: { projectId, notes },
+        invoiceId,
+        classificationId: existing.id,
+      },
+    });
+  } else {
+    const classification = await prisma.classification.create({
+      data: {
+        invoiceLineId: lineId,
+        projectId,
+        notes: notes || null,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: AuditAction.CLASSIFY,
+        entityType: "Classification",
+        entityId: classification.id,
+        newValue: { projectId, notes },
+        invoiceId,
+        classificationId: classification.id,
+      },
+    });
+  }
+
+  await updateInvoiceStatus(invoiceId);
+  revalidatePath(`/invoices/${invoiceId}`);
+}
+
+export async function updateClassificationStatus({
+  classificationId,
+  status,
+  invoiceId,
+}: {
+  classificationId: string;
+  status: string;
+  invoiceId: string;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const validStatus = ["CLASSIFIED", "REVIEWED", "APPROVED"] as const;
+  if (!validStatus.includes(status as (typeof validStatus)[number])) {
+    throw new Error("Invalid status");
+  }
+
+  const typedStatus = status as ClassificationStatus;
+
+  const updateData: {
+    status: ClassificationStatus;
+    reviewedBy?: string;
+    reviewedAt?: Date;
+    approvedBy?: string;
+    approvedAt?: Date;
+  } = { status: typedStatus };
+
+  if (typedStatus === ClassificationStatus.REVIEWED) {
+    updateData.reviewedBy = session.user.email ?? session.user.id;
+    updateData.reviewedAt = new Date();
+  } else if (typedStatus === ClassificationStatus.APPROVED) {
+    updateData.approvedBy = session.user.email ?? session.user.id;
+    updateData.approvedAt = new Date();
+  }
+
+  await prisma.classification.update({
+    where: { id: classificationId },
+    data: updateData,
+  });
+
+  const action =
+    typedStatus === ClassificationStatus.REVIEWED
+      ? AuditAction.REVIEW
+      : AuditAction.APPROVE;
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action,
+      entityType: "Classification",
+      entityId: classificationId,
+      newValue: { status },
+      invoiceId,
+      classificationId,
+    },
+  });
+
+  await updateInvoiceStatus(invoiceId);
+  revalidatePath(`/invoices/${invoiceId}`);
+}

@@ -24,3 +24,5 @@ npm-debug.log*
 .claude-flow/logs/
 .swarm/
 .hive-mind/
+
+/src/generated/prisma
