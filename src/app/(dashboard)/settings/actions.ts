@@ -34,7 +34,8 @@ export async function createWorkspace(data: FormData): Promise<void> {
   if (!session?.user) throw new Error("Unauthorized");
 
   const name = data.get("name") as string;
-  const domain = data.get("domain") as string;
+  const rawDomain = data.get("domain") as string;
+  const domain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const email = data.get("email") as string;
   const apiToken = data.get("apiToken") as string;
 
@@ -59,7 +60,8 @@ export async function updateWorkspace(id: string, data: FormData): Promise<void>
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  const domain = data.get("domain") as string;
+  const rawDomain = data.get("domain") as string;
+  const domain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const email = data.get("email") as string;
   const apiToken = data.get("apiToken") as string;
 

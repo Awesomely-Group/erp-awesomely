@@ -83,16 +83,18 @@ export async function GET(): Promise<NextResponse> {
   // Test all Holded companies — test multiple purchase invoice endpoint names
   const holdedResults = await Promise.all(
     companies.map(async (c) => {
-      const [invoice, bill, purchaseinvoice] = await Promise.all([
+      const [invoice, expense, purchase, purchaseorder] = await Promise.all([
         testHoldedEndpoint(c.holdedApiKey, "invoice"),
-        testHoldedEndpoint(c.holdedApiKey, "bill"),
-        testHoldedEndpoint(c.holdedApiKey, "purchaseinvoice"),
+        testHoldedEndpoint(c.holdedApiKey, "expense"),
+        testHoldedEndpoint(c.holdedApiKey, "purchase"),
+        testHoldedEndpoint(c.holdedApiKey, "purchaseorder"),
       ]);
       return {
         company: c.name,
         invoice,
-        bill,
-        purchaseinvoice,
+        expense,
+        purchase,
+        purchaseorder,
       };
     })
   );
