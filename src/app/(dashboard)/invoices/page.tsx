@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
+import { InvoicesFilters } from "./invoices-filters";
+import { Suspense } from "react";
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
   PENDING: "Sin clasificar",
@@ -19,19 +21,66 @@ const STATUS_COLORS: Record<InvoiceStatus, string> = {
   APPROVED: "bg-green-100 text-green-700",
 };
 
+function getDateRange(
+  period: string,
+  dateFrom?: string,
+  dateTo?: string
+): { gte?: Date; lte?: Date } {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const q = Math.floor(m / 3);
+
+  switch (period) {
+    case "this_month":
+      return { gte: new Date(y, m, 1), lte: new Date(y, m + 1, 0, 23, 59, 59) };
+    case "last_month":
+      return { gte: new Date(y, m - 1, 1), lte: new Date(y, m, 0, 23, 59, 59) };
+    case "this_quarter":
+      return { gte: new Date(y, q * 3, 1), lte: new Date(y, q * 3 + 3, 0, 23, 59, 59) };
+    case "last_quarter": {
+      const lq = q === 0 ? 3 : q - 1;
+      const lqy = q === 0 ? y - 1 : y;
+      return { gte: new Date(lqy, lq * 3, 1), lte: new Date(lqy, lq * 3 + 3, 0, 23, 59, 59) };
+    }
+    case "this_year":
+      return { gte: new Date(y, 0, 1), lte: new Date(y, 11, 31, 23, 59, 59) };
+    case "last_year":
+      return { gte: new Date(y - 1, 0, 1), lte: new Date(y - 1, 11, 31, 23, 59, 59) };
+    case "custom":
+      return {
+        gte: dateFrom ? new Date(dateFrom) : undefined,
+        lte: dateTo ? new Date(dateTo + "T23:59:59") : undefined,
+      };
+    default:
+      return {};
+  }
+}
+
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; type?: string; company?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    type?: string;
+    company?: string;
+    period?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: string;
+  }>;
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
-  const page = parseInt(params.page ?? "1", 10);
+  const page = Math.max(1, parseInt(params.page ?? "1", 10));
   const pageSize = 50;
+
+  const dateRange = getDateRange(params.period ?? "", params.dateFrom, params.dateTo);
 
   const where = {
     ...(params.status ? { status: params.status as InvoiceStatus } : {}),
     ...(params.type ? { type: params.type as InvoiceType } : {}),
     ...(params.company ? { companyId: params.company } : {}),
+    ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
 
   const [invoices, total, companies] = await Promise.all([
@@ -48,53 +97,33 @@ export default async function InvoicesPage({
 
   const totalPages = Math.ceil(total / pageSize);
 
+  function pageUrl(p: number): string {
+    const sp = new URLSearchParams();
+    if (params.status) sp.set("status", params.status);
+    if (params.type) sp.set("type", params.type);
+    if (params.company) sp.set("company", params.company);
+    if (params.period) sp.set("period", params.period);
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    sp.set("page", String(p));
+    return `/invoices?${sp.toString()}`;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Facturas</h1>
-          <p className="text-sm text-gray-500 mt-1">{total} facturas en total</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {total.toLocaleString("es-ES")} facturas
+            {totalPages > 1 && ` · página ${page} de ${totalPages}`}
+          </p>
         </div>
       </div>
 
-      {/* Filters */}
-      <form className="flex flex-wrap gap-3">
-        <select
-          name="status"
-          defaultValue={params.status ?? ""}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">Todos los estados</option>
-          {Object.entries(STATUS_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-        <select
-          name="type"
-          defaultValue={params.type ?? ""}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">Compra y venta</option>
-          <option value="SALE">Venta</option>
-          <option value="PURCHASE">Compra</option>
-        </select>
-        <select
-          name="company"
-          defaultValue={params.company ?? ""}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">Todas las empresas</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-        >
-          Filtrar
-        </button>
-      </form>
+      <Suspense>
+        <InvoicesFilters companies={companies} />
+      </Suspense>
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -108,7 +137,7 @@ export default async function InvoicesPage({
               <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
               <th className="px-4 py-3 text-right font-medium text-gray-600">Total (EUR)</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Estado</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Líneas</th>
+              <th className="px-4 py-3 text-center font-medium text-gray-600">Líneas</th>
             </tr>
           </thead>
           <tbody>
@@ -141,7 +170,7 @@ export default async function InvoicesPage({
                     {STATUS_LABELS[inv.status]}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{inv._count.lines}</td>
+                <td className="px-4 py-3 text-center text-gray-500">{inv._count.lines}</td>
               </tr>
             ))}
             {invoices.length === 0 && (
@@ -157,26 +186,55 @@ export default async function InvoicesPage({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link
-              href={`/invoices?${new URLSearchParams({ ...params, page: String(page - 1) })}`}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
-            >
-              Anterior
-            </Link>
-          )}
-          <span className="text-sm text-gray-600">
-            Página {page} de {totalPages}
-          </span>
-          {page < totalPages && (
-            <Link
-              href={`/invoices?${new URLSearchParams({ ...params, page: String(page + 1) })}`}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
-            >
-              Siguiente
-            </Link>
-          )}
+        <div className="flex items-center justify-center gap-1">
+          <Link
+            href={pageUrl(1)}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${page === 1 ? "border-gray-200 text-gray-300 pointer-events-none" : "border-gray-300 hover:bg-gray-50"}`}
+          >
+            «
+          </Link>
+          <Link
+            href={pageUrl(page - 1)}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${page === 1 ? "border-gray-200 text-gray-300 pointer-events-none" : "border-gray-300 hover:bg-gray-50"}`}
+          >
+            Anterior
+          </Link>
+
+          {/* Page numbers */}
+          {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+            let p: number;
+            if (totalPages <= 7) {
+              p = i + 1;
+            } else if (page <= 4) {
+              p = i + 1;
+            } else if (page >= totalPages - 3) {
+              p = totalPages - 6 + i;
+            } else {
+              p = page - 3 + i;
+            }
+            return (
+              <Link
+                key={p}
+                href={pageUrl(p)}
+                className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${p === page ? "border-indigo-600 bg-indigo-600 text-white" : "border-gray-300 hover:bg-gray-50"}`}
+              >
+                {p}
+              </Link>
+            );
+          })}
+
+          <Link
+            href={pageUrl(page + 1)}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${page === totalPages ? "border-gray-200 text-gray-300 pointer-events-none" : "border-gray-300 hover:bg-gray-50"}`}
+          >
+            Siguiente
+          </Link>
+          <Link
+            href={pageUrl(totalPages)}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${page === totalPages ? "border-gray-200 text-gray-300 pointer-events-none" : "border-gray-300 hover:bg-gray-50"}`}
+          >
+            »
+          </Link>
         </div>
       )}
     </div>
