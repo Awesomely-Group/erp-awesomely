@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 import { SyncButton } from "./sync-button";
 import { SyncSource, SyncResult } from "@prisma/client";
 
@@ -31,7 +31,7 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
           <h1 className="text-2xl font-bold text-gray-900">Sincronización</h1>
           <p className="text-sm text-gray-500 mt-1">
             {lastSync
-              ? `Última sincronización: ${formatDate(lastSync)}`
+              ? `Última sincronización: ${formatDateTime(lastSync)}`
               : "Nunca sincronizado"}
             {" · "}
             Automática cada hora vía cron
@@ -59,7 +59,7 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
                 className="border-b border-gray-100 last:border-0"
               >
                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                  {formatDate(log.startedAt)}
+                  {formatDateTime(log.startedAt)}
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {log.source === SyncSource.HOLDED ? "Holded" : "Jira"}

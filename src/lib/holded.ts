@@ -86,21 +86,19 @@ export class HoldedClient {
 
   async getPurchaseInvoices(params?: {
     page?: number;
-    limit?: number;
     starttmp?: number;
     endtmp?: number;
   }): Promise<HoldedInvoice[]> {
     const stringParams: Record<string, string> = {};
     if (params?.page) stringParams.page = params.page.toString();
-    if (params?.limit) stringParams.limit = params.limit.toString();
     if (params?.starttmp) stringParams.starttmp = params.starttmp.toString();
     if (params?.endtmp) stringParams.endtmp = params.endtmp.toString();
 
-    const res = await this.fetch<HoldedInvoice[]>("/documents/bill", stringParams);
+    const res = await this.fetch<HoldedInvoice[]>("/documents/purchase", stringParams);
     return res;
   }
 
-  async getAllInvoicesPaginated(type: "invoice" | "bill"): Promise<HoldedInvoice[]> {
+  async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     const all: HoldedInvoice[] = [];
     let page = 1;
 

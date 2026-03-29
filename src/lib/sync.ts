@@ -74,7 +74,7 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
     }
 
     // Sync purchase invoices
-    const purchaseInvoices = await client.getAllInvoicesPaginated("bill");
+    const purchaseInvoices = await client.getAllInvoicesPaginated("purchase");
     for (const inv of purchaseInvoices) {
       await upsertInvoice(inv, companyId, InvoiceType.PURCHASE);
       invoicesSynced++;
