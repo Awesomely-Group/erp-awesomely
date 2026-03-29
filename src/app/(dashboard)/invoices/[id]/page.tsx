@@ -113,6 +113,9 @@ export default async function InvoiceDetailPage({
             description: l.description,
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),
+            subtotal: Number(l.subtotal),
+            tax: Number(l.tax),
+            total: Number(l.total),
             totalEur: Number(l.totalEur),
             currency: invoice.currency,
             classification: l.classification
