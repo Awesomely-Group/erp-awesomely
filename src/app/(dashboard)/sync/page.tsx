@@ -79,8 +79,8 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
                     {RESULT_LABELS[log.result]}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-red-600 text-xs max-w-[200px] truncate">
-                  {log.errorMessage ?? ""}
+                <td className="px-4 py-3 text-red-600 text-xs max-w-xs" title={log.errorMessage ?? ""}>
+                  <span className="line-clamp-2">{log.errorMessage ?? ""}</span>
                 </td>
               </tr>
             ))}

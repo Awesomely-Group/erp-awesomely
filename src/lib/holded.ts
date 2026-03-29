@@ -103,17 +103,17 @@ export class HoldedClient {
   async getAllInvoicesPaginated(type: "invoice" | "bill"): Promise<HoldedInvoice[]> {
     const all: HoldedInvoice[] = [];
     let page = 1;
-    const limit = 50;
 
     while (true) {
       const batch = await this.fetch<HoldedInvoice[]>(
         `/documents/${type}`,
-        { page: page.toString(), limit: limit.toString() }
+        { page: page.toString() }
       );
 
       if (!batch || batch.length === 0) break;
       all.push(...batch);
-      if (batch.length < limit) break;
+      // Holded returns up to 50 per page by default; fewer means last page
+      if (batch.length < 50) break;
       page++;
     }
 

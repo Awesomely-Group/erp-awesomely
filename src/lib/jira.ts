@@ -21,7 +21,8 @@ export class JiraClient {
   private readonly authHeader: string;
 
   constructor(domain: string, email: string, apiToken: string) {
-    this.baseUrl = `https://${domain}/rest/api/3`;
+    const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    this.baseUrl = `https://${cleanDomain}/rest/api/3`;
     this.authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString("base64")}`;
   }
 
