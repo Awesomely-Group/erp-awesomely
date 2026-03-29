@@ -4,6 +4,7 @@ import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
 import { Suspense } from "react";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
   PENDING: "Sin clasificar",
@@ -20,6 +21,17 @@ const STATUS_COLORS: Record<InvoiceStatus, string> = {
   REVIEWED: "bg-purple-100 text-purple-700",
   APPROVED: "bg-green-100 text-green-700",
 };
+
+const VALID_SORT_KEYS = ["date", "totalEur", "status", "counterparty"] as const;
+type SortKey = (typeof VALID_SORT_KEYS)[number];
+type SortDir = "asc" | "desc";
+
+function parseSortKey(v: string | undefined): SortKey {
+  return VALID_SORT_KEYS.includes(v as SortKey) ? (v as SortKey) : "date";
+}
+function parseSortDir(v: string | undefined): SortDir {
+  return v === "asc" ? "asc" : "desc";
+}
 
 function getDateRange(
   period: string,
@@ -68,11 +80,15 @@ export default async function InvoicesPage({
     dateFrom?: string;
     dateTo?: string;
     page?: string;
+    sortBy?: string;
+    sortDir?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
   const page = Math.max(1, parseInt(params.page ?? "1", 10));
   const pageSize = 50;
+  const sortBy = parseSortKey(params.sortBy);
+  const sortDir = parseSortDir(params.sortDir);
 
   const dateRange = getDateRange(params.period ?? "", params.dateFrom, params.dateTo);
 
@@ -83,11 +99,20 @@ export default async function InvoicesPage({
     ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
 
+  const orderBy =
+    sortBy === "totalEur"
+      ? { totalEur: sortDir }
+      : sortBy === "status"
+      ? { status: sortDir }
+      : sortBy === "counterparty"
+      ? { counterparty: sortDir }
+      : { date: sortDir };
+
   const [invoices, total, companies] = await Promise.all([
     prisma.invoice.findMany({
       where,
       include: { company: true, _count: { select: { lines: true } } },
-      orderBy: { date: "desc" },
+      orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -97,16 +122,62 @@ export default async function InvoicesPage({
 
   const totalPages = Math.ceil(total / pageSize);
 
-  function pageUrl(p: number): string {
+  function buildUrl(overrides: Record<string, string | undefined>): string {
     const sp = new URLSearchParams();
-    if (params.status) sp.set("status", params.status);
-    if (params.type) sp.set("type", params.type);
-    if (params.company) sp.set("company", params.company);
-    if (params.period) sp.set("period", params.period);
-    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
-    if (params.dateTo) sp.set("dateTo", params.dateTo);
-    sp.set("page", String(p));
+    const merged = {
+      status: params.status,
+      type: params.type,
+      company: params.company,
+      period: params.period,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      sortBy: params.sortBy,
+      sortDir: params.sortDir,
+      page: params.page,
+      ...overrides,
+    };
+    for (const [k, v] of Object.entries(merged)) {
+      if (v) sp.set(k, v);
+    }
     return `/invoices?${sp.toString()}`;
+  }
+
+  function pageUrl(p: number): string {
+    return buildUrl({ page: String(p) });
+  }
+
+  function sortUrl(col: SortKey): string {
+    const nextDir =
+      sortBy === col ? (sortDir === "asc" ? "desc" : "asc") : "desc";
+    return buildUrl({ sortBy: col, sortDir: nextDir, page: "1" });
+  }
+
+  function SortTh({
+    col,
+    label,
+    align = "left",
+  }: {
+    col: SortKey;
+    label: string;
+    align?: "left" | "right" | "center";
+  }): React.JSX.Element {
+    const active = sortBy === col;
+    const Icon = active
+      ? sortDir === "asc"
+        ? ChevronUp
+        : ChevronDown
+      : ChevronsUpDown;
+    return (
+      <th className={`px-4 py-3 text-${align} font-medium text-gray-600`}>
+        <Link
+          href={sortUrl(col)}
+          className="inline-flex items-center gap-1 hover:text-gray-900"
+        >
+          {label}
+          <Icon className={`h-3.5 w-3.5 ${active ? "text-indigo-600" : "text-gray-300"}`} />
+        </Link>
+      </th>
+    );
   }
 
   return (
@@ -133,10 +204,10 @@ export default async function InvoicesPage({
               <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Empresa</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Contraparte</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
-              <th className="px-4 py-3 text-right font-medium text-gray-600">Total (EUR)</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Estado</th>
+              <SortTh col="counterparty" label="Contraparte" />
+              <SortTh col="date" label="Fecha" />
+              <SortTh col="totalEur" label="Total (EUR)" align="right" />
+              <SortTh col="status" label="Estado" />
               <th className="px-4 py-3 text-center font-medium text-gray-600">Líneas</th>
             </tr>
           </thead>
@@ -200,7 +271,6 @@ export default async function InvoicesPage({
             Anterior
           </Link>
 
-          {/* Page numbers */}
           {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
             let p: number;
             if (totalPages <= 7) {
