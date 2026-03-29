@@ -13,9 +13,10 @@ export interface HoldedInvoiceProduct {
   desc?: string;
   units: number;
   price: number;
-  subtotal: number;
-  tax: number;
-  total: number;
+  subtotal?: number; // not returned by Holded API — calculated in sync
+  tax: number;       // tax RATE in percent (e.g. 21), not the amount
+  total?: number;    // not returned by Holded API — calculated in sync
+  discount?: number; // discount percent
   sku?: string;
 }
 

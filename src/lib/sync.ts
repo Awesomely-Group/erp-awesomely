@@ -154,18 +154,26 @@ async function upsertInvoice(
 
     for (let i = 0; i < inv.products.length; i++) {
       const product = inv.products[i];
-      const lineTotalEur = (product.total ?? 0) * resolvedFxRate;
+      const qty = product.units ?? 0;
+      const price = product.price ?? 0;
+      const discountPct = product.discount ?? 0;
+      const taxRatePct = product.tax ?? 0; // Holded returns tax RATE (e.g. 21), not amount
+
+      const lineSubtotal = qty * price * (1 - discountPct / 100);
+      const lineTaxAmount = lineSubtotal * (taxRatePct / 100);
+      const lineTotal = lineSubtotal + lineTaxAmount;
+      const lineTotalEur = lineTotal * resolvedFxRate;
 
       await prisma.invoiceLine.create({
         data: {
           invoiceId: invoice.id,
           name: product.name,
           description: product.desc ?? null,
-          quantity: product.units ?? 0,
-          unitPrice: product.price ?? 0,
-          subtotal: product.subtotal ?? 0,
-          tax: product.tax ?? 0,
-          total: product.total ?? 0,
+          quantity: qty,
+          unitPrice: price,
+          subtotal: lineSubtotal,
+          tax: lineTaxAmount,
+          total: lineTotal,
           totalEur: lineTotalEur,
           sortOrder: i,
         },

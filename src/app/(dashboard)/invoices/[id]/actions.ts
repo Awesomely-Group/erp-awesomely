@@ -16,13 +16,15 @@ export async function classifyLine({
   projectId: string;
   notes: string;
   invoiceId: string;
-}): Promise<void> {
+}): Promise<{ classificationId: string }> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
   const existing = await prisma.classification.findUnique({
     where: { invoiceLineId: lineId },
   });
+
+  let classificationId: string;
 
   if (existing) {
     await prisma.classification.update({
@@ -35,6 +37,7 @@ export async function classifyLine({
         status: ClassificationStatus.CLASSIFIED,
       },
     });
+    classificationId = existing.id;
 
     await prisma.auditLog.create({
       data: {
@@ -58,6 +61,7 @@ export async function classifyLine({
         classifiedAt: new Date(),
       },
     });
+    classificationId = classification.id;
 
     await prisma.auditLog.create({
       data: {
@@ -74,6 +78,7 @@ export async function classifyLine({
 
   await updateInvoiceStatus(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
+  return { classificationId };
 }
 
 export async function updateClassificationStatus({

@@ -72,7 +72,7 @@ export function ClassifyLinesForm({ invoiceId, lines, projects }: Props): React.
 
   function handleClassify(lineId: string, projectId: string, notes: string): void {
     startTransition(async () => {
-      await classifyLine({ lineId, projectId, notes, invoiceId });
+      const { classificationId } = await classifyLine({ lineId, projectId, notes, invoiceId });
       setLocalLines((prev) =>
         prev.map((l) => {
           if (l.id !== lineId) return l;
@@ -80,7 +80,7 @@ export function ClassifyLinesForm({ invoiceId, lines, projects }: Props): React.
           return {
             ...l,
             classification: {
-              id: "pending",
+              id: classificationId,
               status: "CLASSIFIED",
               projectId,
               projectName: project?.name ?? "",
