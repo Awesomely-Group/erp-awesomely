@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 
 const geist = Geist({
@@ -19,7 +20,10 @@ export default function RootLayout({
 }>): React.JSX.Element {
   return (
     <html lang="es" className={`${geist.variable} h-full antialiased`}>
-      <body className="min-h-full bg-gray-50 text-gray-900">{children}</body>
+      <body className="min-h-full bg-gray-50 text-gray-900">
+        <NextTopLoader color="#4f46e5" height={3} showSpinner={false} />
+        {children}
+      </body>
     </html>
   );
 }
