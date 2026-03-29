@@ -104,7 +104,7 @@ async function upsertInvoice(
   type: InvoiceType
 ): Promise<void> {
   const date = new Date(inv.date * 1000);
-  const currency = inv.currency ?? "EUR";
+  const currency = (inv.currency ?? "EUR").toUpperCase();
   const fxRate = inv.currencyChange && inv.currencyChange !== 0 ? inv.currencyChange : 1;
 
   // Use Holded's own fx rate if available, else fetch from Frankfurter
@@ -114,7 +114,7 @@ async function upsertInvoice(
     resolvedFxRate = rate;
   }
 
-  const totalEur = inv.total * resolvedFxRate;
+  const totalEur = (inv.total ?? 0) * resolvedFxRate;
 
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
@@ -125,9 +125,9 @@ async function upsertInvoice(
       dueDate: inv.dueDate ? new Date(inv.dueDate * 1000) : null,
       currency,
       fxRateToEur: resolvedFxRate,
-      subtotal: inv.subtotal,
-      tax: inv.tax,
-      total: inv.total,
+      subtotal: inv.subtotal ?? 0,
+      tax: inv.tax ?? 0,
+      total: inv.total ?? 0,
       totalEur,
     },
     create: {
@@ -140,9 +140,9 @@ async function upsertInvoice(
       dueDate: inv.dueDate ? new Date(inv.dueDate * 1000) : null,
       currency,
       fxRateToEur: resolvedFxRate,
-      subtotal: inv.subtotal,
-      tax: inv.tax,
-      total: inv.total,
+      subtotal: inv.subtotal ?? 0,
+      tax: inv.tax ?? 0,
+      total: inv.total ?? 0,
       totalEur,
     },
   });
@@ -154,18 +154,18 @@ async function upsertInvoice(
 
     for (let i = 0; i < inv.products.length; i++) {
       const product = inv.products[i];
-      const lineTotalEur = product.total * resolvedFxRate;
+      const lineTotalEur = (product.total ?? 0) * resolvedFxRate;
 
       await prisma.invoiceLine.create({
         data: {
           invoiceId: invoice.id,
           name: product.name,
           description: product.desc ?? null,
-          quantity: product.units,
-          unitPrice: product.price,
-          subtotal: product.subtotal,
-          tax: product.tax,
-          total: product.total,
+          quantity: product.units ?? 0,
+          unitPrice: product.price ?? 0,
+          subtotal: product.subtotal ?? 0,
+          tax: product.tax ?? 0,
+          total: product.total ?? 0,
           totalEur: lineTotalEur,
           sortOrder: i,
         },
