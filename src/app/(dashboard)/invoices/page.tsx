@@ -73,6 +73,7 @@ export default async function InvoicesPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    search?: string;
     status?: string;
     type?: string;
     company?: string;
@@ -93,6 +94,14 @@ export default async function InvoicesPage({
   const dateRange = getDateRange(params.period ?? "", params.dateFrom, params.dateTo);
 
   const where = {
+    ...(params.search
+      ? {
+          OR: [
+            { number: { contains: params.search, mode: "insensitive" as const } },
+            { counterparty: { contains: params.search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
     ...(params.status ? { status: params.status as InvoiceStatus } : {}),
     ...(params.type ? { type: params.type as InvoiceType } : {}),
     ...(params.company ? { companyId: params.company } : {}),
@@ -125,6 +134,7 @@ export default async function InvoicesPage({
   function buildUrl(overrides: Record<string, string | undefined>): string {
     const sp = new URLSearchParams();
     const merged = {
+      search: params.search,
       status: params.status,
       type: params.type,
       company: params.company,

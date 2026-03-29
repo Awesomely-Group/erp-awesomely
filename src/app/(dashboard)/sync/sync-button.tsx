@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function SyncButton(): React.JSX.Element {
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<string | null>(null);
+  const router = useRouter();
 
   function handleSync(): void {
     startTransition(async () => {
@@ -23,6 +25,7 @@ export function SyncButton(): React.JSX.Element {
         setResult(
           `Sincronizado: ${data.companies} empresas, ${data.workspaces} workspaces`
         );
+        router.refresh();
       } else {
         setResult("Error en la sincronización");
       }

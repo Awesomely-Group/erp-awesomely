@@ -149,11 +149,17 @@ function LineRow({
   const [notes, setNotes] = useState(line.classification?.notes ?? "");
   const [notesOpen, setNotesOpen] = useState(!!(line.classification?.notes));
   const [workspaceFilter, setWorkspaceFilter] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
 
   const workspaces = Array.from(new Set(projects.map((p) => p.workspaceName))).sort();
-  const filteredProjects = workspaceFilter
-    ? projects.filter((p) => p.workspaceName === workspaceFilter)
-    : projects;
+  const filteredProjects = projects.filter((p) => {
+    if (workspaceFilter && p.workspaceName !== workspaceFilter) return false;
+    if (projectSearch) {
+      const q = projectSearch.toLowerCase();
+      return p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   const isEur = line.currency === "EUR";
 
@@ -306,11 +312,20 @@ function LineRow({
               ))}
             </div>
 
+            <input
+              type="text"
+              value={projectSearch}
+              onChange={(e) => setProjectSearch(e.target.value)}
+              placeholder="Buscar proyecto…"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              disabled={isPending}
+            />
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
               disabled={isPending}
+              size={Math.min(filteredProjects.length + 1, 7)}
             >
               <option value="">Selecciona un proyecto</option>
               {filteredProjects.map((p) => (

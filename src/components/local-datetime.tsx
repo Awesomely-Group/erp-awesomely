@@ -21,15 +21,15 @@ const FORMAT_DATE: Intl.DateTimeFormatOptions = {
   year: "numeric",
 };
 
+// Renders date/time in the browser's local timezone.
+// Starts empty to avoid SSR/hydration mismatch — fills in after mount.
 export function LocalDateTime({ date, dateOnly = false }: Props): React.JSX.Element {
-  const opts = dateOnly ? FORMAT_DATE : FORMAT_DATETIME;
-  const [text, setText] = useState<string>(() =>
-    new Intl.DateTimeFormat("es-ES", opts).format(new Date(date))
-  );
+  const [text, setText] = useState("");
 
   useEffect(() => {
+    const opts = dateOnly ? FORMAT_DATE : FORMAT_DATETIME;
     setText(new Intl.DateTimeFormat("es-ES", opts).format(new Date(date)));
-  }, [date, dateOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [date, dateOnly]);
 
-  return <span suppressHydrationWarning>{text}</span>;
+  return <span>{text}</span>;
 }

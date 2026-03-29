@@ -22,6 +22,7 @@ export function InvoicesFilters({ companies }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
+  const [search, setSearch] = useState(sp.get("search") ?? "");
   const [period, setPeriod] = useState(sp.get("period") ?? "");
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
@@ -31,6 +32,7 @@ export function InvoicesFilters({ companies }: Props): React.JSX.Element {
 
   function apply(): void {
     const params = new URLSearchParams();
+    if (search) params.set("search", search);
     if (status) params.set("status", status);
     if (type) params.set("type", type);
     if (company) params.set("company", company);
@@ -43,6 +45,7 @@ export function InvoicesFilters({ companies }: Props): React.JSX.Element {
   }
 
   function reset(): void {
+    setSearch("");
     setPeriod("");
     setDateFrom("");
     setDateTo("");
@@ -54,6 +57,18 @@ export function InvoicesFilters({ companies }: Props): React.JSX.Element {
 
   return (
     <div className="flex flex-wrap gap-3 items-end">
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-gray-500 font-medium">Buscar</label>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && apply()}
+          placeholder="Número o contraparte…"
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white w-52"
+        />
+      </div>
+
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Periodo</label>
         <select
