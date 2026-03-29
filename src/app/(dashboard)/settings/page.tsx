@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { CompanyForm } from "./company-form";
-import { WorkspaceForm } from "./workspace-form";
+import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
@@ -63,26 +63,14 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         </h2>
         <div className="space-y-3">
           {workspaces.map((w) => (
-            <div
+            <WorkspaceCard
               key={w.id}
-              className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between"
-            >
-              <div>
-                <p className="font-medium text-gray-900">{w.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {w.domain} · {w.email}
-                </p>
-              </div>
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full ${
-                  w.active
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-500"
-                }`}
-              >
-                {w.active ? "Activo" : "Inactivo"}
-              </span>
-            </div>
+              id={w.id}
+              name={w.name}
+              domain={w.domain}
+              email={w.email}
+              active={w.active}
+            />
           ))}
         </div>
         <WorkspaceForm />

@@ -112,8 +112,6 @@ export class HoldedClient {
 
       if (!batch || batch.length === 0) break;
       all.push(...batch);
-      // Holded returns up to 50 per page by default; fewer means last page
-      if (batch.length < 50) break;
       page++;
     }
 

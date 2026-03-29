@@ -54,3 +54,29 @@ export async function createWorkspace(data: FormData): Promise<void> {
 
   revalidatePath("/settings");
 }
+
+export async function updateWorkspace(id: string, data: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const domain = data.get("domain") as string;
+  const email = data.get("email") as string;
+  const apiToken = data.get("apiToken") as string;
+
+  const update: { domain: string; email: string; apiToken?: string } = { domain, email };
+  if (apiToken) update.apiToken = apiToken;
+
+  await prisma.jiraWorkspace.update({ where: { id }, data: update });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "JiraWorkspace",
+      entityId: id,
+      newValue: { domain, email },
+    },
+  });
+
+  revalidatePath("/settings");
+}
