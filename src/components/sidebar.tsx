@@ -27,7 +27,7 @@ export function Sidebar(): React.JSX.Element {
   const pathname = usePathname();
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen bg-white border-r border-gray-200">
+    <aside className="flex flex-col w-64 h-screen sticky top-0 bg-white border-r border-gray-200">
       <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-200">
         <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
           <span className="text-white text-xs font-bold">A</span>
@@ -38,7 +38,7 @@ export function Sidebar(): React.JSX.Element {
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
         {navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
