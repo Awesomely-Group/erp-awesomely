@@ -16,19 +16,19 @@ async function getProfitabilityData(
   from: Date,
   to: Date
 ): Promise<ProfitabilityRow[]> {
-  const classifications = await prisma.classification.findMany({
+  // Get all classified invoices in the period with their classifications
+  const invoices = await prisma.invoice.findMany({
     where: {
-      invoiceLine: {
-        invoice: {
-          date: { gte: from, lte: to },
-          status: { in: ["CLASSIFIED", "REVIEWED", "APPROVED"] },
-        },
-      },
+      date: { gte: from, lte: to },
+      status: { in: ["CLASSIFIED", "REVIEWED", "APPROVED"] },
     },
     include: {
-      project: { include: { workspace: true } },
-      invoiceLine: {
-        include: { invoice: true },
+      lines: {
+        include: {
+          classification: {
+            include: { project: { include: { workspace: true } } },
+          },
+        },
       },
     },
   });
@@ -38,25 +38,44 @@ async function getProfitabilityData(
     { project: { name: string; workspaceName: string }; revenue: number; costs: number }
   >();
 
-  for (const c of classifications) {
-    const existing = projectMap.get(c.projectId) ?? {
-      project: {
-        name: c.project.name,
-        workspaceName: c.project.workspace.name,
-      },
-      revenue: 0,
-      costs: 0,
-    };
+  for (const invoice of invoices) {
+    const classifiedLines = invoice.lines.filter((l) => l.classification !== null);
+    if (classifiedLines.length === 0) continue;
 
-    const amount = Number(c.invoiceLine.totalEur);
+    // Each invoice's total is split proportionally among its classified lines by their subtotal
+    const classifiedSubtotalSum = classifiedLines.reduce(
+      (sum, l) => sum + Number(l.subtotal),
+      0
+    );
+    const invoiceTotal = Number(invoice.totalEur);
 
-    if (c.invoiceLine.invoice.type === InvoiceType.SALE) {
-      existing.revenue += amount;
-    } else {
-      existing.costs += amount;
+    for (const line of classifiedLines) {
+      const classification = line.classification!;
+      const projectId = classification.projectId;
+
+      // Line's share of the invoice total, proportional to its subtotal
+      const lineShare =
+        classifiedSubtotalSum !== 0
+          ? (Number(line.subtotal) / classifiedSubtotalSum) * invoiceTotal
+          : invoiceTotal / classifiedLines.length;
+
+      const existing = projectMap.get(projectId) ?? {
+        project: {
+          name: classification.project.name,
+          workspaceName: classification.project.workspace.name,
+        },
+        revenue: 0,
+        costs: 0,
+      };
+
+      if (invoice.type === InvoiceType.SALE) {
+        existing.revenue += lineShare;
+      } else {
+        existing.costs += lineShare;
+      }
+
+      projectMap.set(projectId, existing);
     }
-
-    projectMap.set(c.projectId, existing);
   }
 
   return Array.from(projectMap.entries())
