@@ -152,6 +152,11 @@ async function upsertInvoice(
     // Delete existing lines and recreate (simpler than line-level upsert without stable IDs)
     await prisma.invoiceLine.deleteMany({ where: { invoiceId: invoice.id } });
 
+    // Holded returns the correct invoice total (including retentions, multiple taxes, etc.)
+    // We distribute it proportionally across lines by subtotal weight
+    const invSubtotal = inv.subtotal ?? 0;
+    const invTotal = inv.total ?? 0;
+
     for (let i = 0; i < inv.products.length; i++) {
       const product = inv.products[i];
       const qty = product.units ?? 0;
@@ -160,8 +165,10 @@ async function upsertInvoice(
       const taxRatePct = product.tax ?? 0; // Holded returns tax RATE (e.g. 21), not amount
 
       const lineSubtotal = qty * price * (1 - discountPct / 100);
-      const lineTaxAmount = lineSubtotal * (taxRatePct / 100);
-      const lineTotal = lineSubtotal + lineTaxAmount;
+      // Use invoice-level total proportionally so retentions and extra taxes are accounted for
+      const lineTotal =
+        invSubtotal !== 0 ? (lineSubtotal / invSubtotal) * invTotal : lineSubtotal;
+      const lineTaxAmount = lineTotal - lineSubtotal;
       const lineTotalEur = lineTotal * resolvedFxRate;
 
       await prisma.invoiceLine.create({
