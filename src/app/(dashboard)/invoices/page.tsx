@@ -238,7 +238,6 @@ export default async function InvoicesPage({
                       href={holdedInvoiceUrl(inv.holdedId, inv.type)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
                       className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
                       title="Ver en Holded"
                     >

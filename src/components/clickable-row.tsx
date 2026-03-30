@@ -12,7 +12,10 @@ export function ClickableRow({ href, className, children }: Props): React.JSX.El
   const router = useRouter();
   return (
     <tr
-      onClick={() => router.push(href)}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a, button")) return;
+        router.push(href);
+      }}
       className={`cursor-pointer ${className ?? ""}`}
     >
       {children}

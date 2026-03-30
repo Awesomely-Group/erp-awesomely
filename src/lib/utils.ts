@@ -23,8 +23,10 @@ export function formatDate(date: Date | string): string {
 
 // Holded app URLs for invoice deep-links
 export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): string {
-  const docType = type === "SALE" ? "invoices" : "bills";
-  return `https://app.holded.com/invoicing/${docType}/${holdedId}`;
+  if (type === "SALE") {
+    return `https://app.holded.com/invoicing/invoices/${holdedId}`;
+  }
+  return `https://app.holded.com/expenses/list#open:purchase-${holdedId}`;
 }
 
 export function formatDateTime(date: Date | string): string {
