@@ -1,27 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
+import { InvoicesTable } from "./invoices-table";
 import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
-import { ClickableRow } from "@/components/clickable-row";
 
-const STATUS_LABELS: Record<InvoiceStatus, string> = {
-  PENDING: "Sin clasificar",
-  PARTIAL: "Parcial",
-  CLASSIFIED: "Clasificado",
-  REVIEWED: "Revisado",
-  APPROVED: "Aprobado",
-};
-
-const STATUS_COLORS: Record<InvoiceStatus, string> = {
-  PENDING: "bg-red-100 text-red-700",
-  PARTIAL: "bg-amber-100 text-amber-700",
-  CLASSIFIED: "bg-blue-100 text-blue-700",
-  REVIEWED: "bg-purple-100 text-purple-700",
-  APPROVED: "bg-green-100 text-green-700",
-};
 
 const VALID_SORT_KEYS = ["date", "totalEur", "status", "counterparty"] as const;
 type SortKey = (typeof VALID_SORT_KEYS)[number];
@@ -229,54 +213,20 @@ export default async function InvoicesPage({
             </tr>
           </thead>
           <tbody>
-            {invoices.map((inv) => (
-              <ClickableRow
-                key={inv.id}
-                href={`/invoices/${inv.id}`}
-                className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-              >
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-900">
-                      {inv.number ?? inv.holdedId.slice(0, 8)}
-                    </span>
-                    <a
-                      href={holdedInvoiceUrl(inv.holdedId, inv.type)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
-                      title="Ver en Holded"
-                    >
-                      ↗
-                    </a>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-gray-600">
-                  {inv.type === "SALE" ? "Venta" : "Compra"}
-                </td>
-                <td className="px-4 py-3 text-gray-600">{inv.company.name}</td>
-                <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
-                  {inv.counterparty ?? "—"}
-                </td>
-                <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
-                <td className="px-4 py-3 text-right font-medium">
-                  {formatCurrency(Number(inv.totalEur))}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status]}`}>
-                    {STATUS_LABELS[inv.status]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-center text-gray-500">{inv._count.lines}</td>
-              </ClickableRow>
-            ))}
-            {invoices.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
-                  No hay facturas con estos filtros
-                </td>
-              </tr>
-            )}
+            <InvoicesTable
+              invoices={invoices.map((inv) => ({
+                id: inv.id,
+                holdedId: inv.holdedId,
+                type: inv.type,
+                number: inv.number,
+                counterparty: inv.counterparty,
+                date: inv.date.toISOString(),
+                totalEur: Number(inv.totalEur),
+                status: inv.status,
+                companyName: inv.company.name,
+                lineCount: inv._count.lines,
+              }))}
+            />
 
           </tbody>
         </table>
