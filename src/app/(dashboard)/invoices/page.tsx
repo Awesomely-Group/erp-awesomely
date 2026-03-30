@@ -104,6 +104,7 @@ export default async function InvoicesPage({
     sortDir?: string;
   }>;
 }): Promise<React.JSX.Element> {
+  try {
   const params = await searchParams;
   const page = Math.max(1, parseInt(params.page ?? "1", 10));
   const pageSize = 50;
@@ -286,4 +287,16 @@ export default async function InvoicesPage({
       )}
     </div>
   );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : "";
+    return (
+      <div className="p-8 space-y-4">
+        <h1 className="text-xl font-bold text-red-700">Error cargando facturas</h1>
+        <pre className="text-sm bg-red-50 border border-red-200 rounded p-4 overflow-auto whitespace-pre-wrap">
+          {msg}{"\n\n"}{stack}
+        </pre>
+      </div>
+    );
+  }
 }
