@@ -21,6 +21,12 @@ export function formatDate(date: Date | string): string {
   }).format(new Date(date));
 }
 
+// Holded app URLs for invoice deep-links
+export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): string {
+  const docType = type === "SALE" ? "invoices" : "bills";
+  return `https://app.holded.com/invoicing/${docType}/${holdedId}`;
+}
+
 export function formatDateTime(date: Date | string): string {
   return new Intl.DateTimeFormat("es-ES", {
     day: "2-digit",

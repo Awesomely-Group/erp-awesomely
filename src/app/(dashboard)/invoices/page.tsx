@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
 import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ClickableRow } from "@/components/clickable-row";
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
   PENDING: "Sin clasificar",
@@ -223,17 +224,27 @@ export default async function InvoicesPage({
           </thead>
           <tbody>
             {invoices.map((inv) => (
-              <tr
+              <ClickableRow
                 key={inv.id}
+                href={`/invoices/${inv.id}`}
                 className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
               >
                 <td className="px-4 py-3">
-                  <Link
-                    href={`/invoices/${inv.id}`}
-                    className="font-medium text-indigo-600 hover:text-indigo-800"
-                  >
-                    {inv.number ?? inv.holdedId.slice(0, 8)}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900">
+                      {inv.number ?? inv.holdedId.slice(0, 8)}
+                    </span>
+                    <a
+                      href={holdedInvoiceUrl(inv.holdedId, inv.type)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                      title="Ver en Holded"
+                    >
+                      ↗
+                    </a>
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {inv.type === "SALE" ? "Venta" : "Compra"}
@@ -252,7 +263,7 @@ export default async function InvoicesPage({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-center text-gray-500">{inv._count.lines}</td>
-              </tr>
+              </ClickableRow>
             ))}
             {invoices.length === 0 && (
               <tr>
@@ -261,6 +272,7 @@ export default async function InvoicesPage({
                 </td>
               </tr>
             )}
+
           </tbody>
         </table>
       </div>

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import { ClassifyLinesForm } from "./classify-lines-form";
 import { getSuggestionsForLine } from "@/lib/suggestions";
@@ -55,8 +55,17 @@ export default async function InvoiceDetailPage({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
             Factura {invoice.number ?? invoice.holdedId.slice(0, 8)}
+            <a
+              href={holdedInvoiceUrl(invoice.holdedId, invoice.type)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-normal text-gray-400 hover:text-indigo-600 transition-colors"
+              title="Ver en Holded"
+            >
+              Ver en Holded ↗
+            </a>
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {invoice.type === "SALE" ? "Venta" : "Compra"} ·{" "}
