@@ -149,7 +149,18 @@ async function upsertInvoice(
 
   // Upsert lines
   if (inv.products && inv.products.length > 0) {
-    // Delete existing lines and recreate (simpler than line-level upsert without stable IDs)
+    // Preserve existing classifications keyed by sortOrder before deleting lines
+    const existingLines = await prisma.invoiceLine.findMany({
+      where: { invoiceId: invoice.id },
+      include: { classification: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const classificationBySortOrder = new Map(
+      existingLines
+        .filter((l) => l.classification !== null)
+        .map((l) => [l.sortOrder, l.classification!])
+    );
+
     await prisma.invoiceLine.deleteMany({ where: { invoiceId: invoice.id } });
 
     // Holded returns the correct invoice total (including retentions, multiple taxes, etc.)
@@ -171,7 +182,7 @@ async function upsertInvoice(
       const lineTaxAmount = lineTotal - lineSubtotal;
       const lineTotalEur = lineTotal * resolvedFxRate;
 
-      await prisma.invoiceLine.create({
+      const newLine = await prisma.invoiceLine.create({
         data: {
           invoiceId: invoice.id,
           name: product.name,
@@ -185,6 +196,25 @@ async function upsertInvoice(
           sortOrder: i,
         },
       });
+
+      // Restore classification if this sortOrder had one
+      const prevClassification = classificationBySortOrder.get(i);
+      if (prevClassification) {
+        await prisma.classification.create({
+          data: {
+            invoiceLineId: newLine.id,
+            projectId: prevClassification.projectId,
+            notes: prevClassification.notes,
+            status: prevClassification.status,
+            classifiedBy: prevClassification.classifiedBy,
+            classifiedAt: prevClassification.classifiedAt,
+            reviewedBy: prevClassification.reviewedBy,
+            reviewedAt: prevClassification.reviewedAt,
+            approvedBy: prevClassification.approvedBy,
+            approvedAt: prevClassification.approvedAt,
+          },
+        });
+      }
     }
   }
 
