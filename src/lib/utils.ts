@@ -24,7 +24,7 @@ export function formatDate(date: Date | string): string {
 // Holded app URLs for invoice deep-links
 export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): string {
   if (type === "SALE") {
-    return `https://app.holded.com/invoicing/invoices/${holdedId}`;
+    return `https://app.holded.com/sales/revenue#open:invoice-${holdedId}`;
   }
   return `https://app.holded.com/expenses/list#open:purchase-${holdedId}`;
 }
