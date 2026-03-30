@@ -34,6 +34,40 @@ function parseSortDir(v: string | undefined): SortDir {
   return v === "asc" ? "asc" : "desc";
 }
 
+function SortTh({
+  col,
+  label,
+  align = "left",
+  sortBy,
+  sortDir,
+  href,
+}: {
+  col: SortKey;
+  label: string;
+  align?: "left" | "right" | "center";
+  sortBy: SortKey;
+  sortDir: SortDir;
+  href: string;
+}): React.JSX.Element {
+  const active = sortBy === col;
+  const Icon = active
+    ? sortDir === "asc"
+      ? ChevronUp
+      : ChevronDown
+    : ChevronsUpDown;
+  return (
+    <th className={`px-4 py-3 text-${align} font-medium text-gray-600`}>
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1 hover:text-gray-900"
+      >
+        {label}
+        <Icon className={`h-3.5 w-3.5 ${active ? "text-indigo-600" : "text-gray-300"}`} />
+      </Link>
+    </th>
+  );
+}
+
 function getDateRange(
   period: string,
   dateFrom?: string,
@@ -163,34 +197,6 @@ export default async function InvoicesPage({
     return buildUrl({ sortBy: col, sortDir: nextDir, page: "1" });
   }
 
-  function SortTh({
-    col,
-    label,
-    align = "left",
-  }: {
-    col: SortKey;
-    label: string;
-    align?: "left" | "right" | "center";
-  }): React.JSX.Element {
-    const active = sortBy === col;
-    const Icon = active
-      ? sortDir === "asc"
-        ? ChevronUp
-        : ChevronDown
-      : ChevronsUpDown;
-    return (
-      <th className={`px-4 py-3 text-${align} font-medium text-gray-600`}>
-        <Link
-          href={sortUrl(col)}
-          className="inline-flex items-center gap-1 hover:text-gray-900"
-        >
-          {label}
-          <Icon className={`h-3.5 w-3.5 ${active ? "text-indigo-600" : "text-gray-300"}`} />
-        </Link>
-      </th>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -215,10 +221,10 @@ export default async function InvoicesPage({
               <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Empresa</th>
-              <SortTh col="counterparty" label="Contraparte" />
-              <SortTh col="date" label="Fecha" />
-              <SortTh col="totalEur" label="Total (EUR)" align="right" />
-              <SortTh col="status" label="Estado" />
+              <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
+              <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
+              <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
+              <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
               <th className="px-4 py-3 text-center font-medium text-gray-600">Líneas</th>
             </tr>
           </thead>
