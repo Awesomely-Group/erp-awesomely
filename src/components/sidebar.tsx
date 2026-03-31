@@ -10,6 +10,7 @@ import {
   Settings,
   RefreshCw,
   LogOut,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
@@ -19,6 +20,7 @@ const navigation = [
   { name: "Facturas", href: "/invoices", icon: FileText },
   { name: "Proyectos", href: "/projects", icon: FolderKanban },
   { name: "Rentabilidad", href: "/profitability", icon: BarChart3 },
+  { name: "Pagos", href: "/payments", icon: CreditCard },
   { name: "Sincronización", href: "/sync", icon: RefreshCw },
   { name: "Configuración", href: "/settings", icon: Settings },
 ];

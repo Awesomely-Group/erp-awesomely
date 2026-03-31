@@ -35,6 +35,8 @@ export interface HoldedInvoice {
   products: HoldedInvoiceProduct[];
   type: "income" | "purchase";
   status: number; // 0=draft, 1=pending, 2=paid/accepted, 3=late
+  paymentsTotal?: number;
+  paymentsPending?: number;
 }
 
 export interface HoldedListResponse {

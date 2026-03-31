@@ -145,14 +145,33 @@ model Invoice {
   total        Decimal @default(0)
   totalEur     Decimal @default(0)
 
-  lines     InvoiceLine[]
-  auditLogs AuditLog[]
+  // Payment tracking (synced from Holded)
+  paymentsTotal   Decimal @default(0)
+  paymentsPending Decimal @default(0)
+
+  lines        InvoiceLine[]
+  auditLogs    AuditLog[]
+  erpPayments  InvoicePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([holdedId, companyId])
   @@map("invoices")
+}
+
+model InvoicePayment {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Decimal
+  paidAt    DateTime
+  paidBy    String
+  notes     String?
+
+  createdAt DateTime @default(now())
+
+  @@map("invoice_payments")
 }
 
 model InvoiceLine {

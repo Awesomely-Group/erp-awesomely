@@ -129,6 +129,8 @@ async function upsertInvoice(
       tax: inv.tax ?? 0,
       total: inv.total ?? 0,
       totalEur,
+      paymentsTotal: inv.paymentsTotal ?? 0,
+      paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
     },
     create: {
       holdedId: inv.id,
@@ -144,6 +146,8 @@ async function upsertInvoice(
       tax: inv.tax ?? 0,
       total: inv.total ?? 0,
       totalEur,
+      paymentsTotal: inv.paymentsTotal ?? 0,
+      paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
     },
   });
 
