@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
-import { PaymentRow, type PaymentInvoice } from "./payment-row";
+import { type PaymentInvoice } from "./payment-row";
+import { PaymentsView, type BatchData } from "./payments-view";
 
 // Returns the latest batch date (15th or 30th) that is <= dueDate
 // This maximizes delay while keeping payment on time
@@ -81,87 +81,29 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     batchMap.get(key)!.rows.push(row);
   }
 
-  // Sort batches chronologically
-  const batches = Array.from(batchMap.values()).sort(
-    (a, b) => a.date.getTime() - b.date.getTime()
-  );
+  // Sort batches: most recent first
+  const batches: BatchData[] = Array.from(batchMap.values())
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .map((b) => ({
+      dateStr: batchKey(b.date),
+      label: batchLabel(b.date),
+      rows: b.rows,
+    }));
+
+  // Unique company names for filter
+  const companies = Array.from(new Set(rows.map((r) => r.companyName))).sort();
 
   const totalPending = rows.reduce((s, r) => s + r.effectivePending, 0);
   const totalPaidRows = rows.filter((r) => r.effectivePending <= 0.005).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pagos a proveedores</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {rows.length} facturas de compra · {totalPaidRows} pagadas ·{" "}
-            <span className="font-medium text-red-600">{formatCurrency(totalPending)} pendiente</span>
-          </p>
-        </div>
-      </div>
-
-      {batches.map((batch) => {
-        const batchPending = batch.rows.reduce((s, r) => s + r.effectivePending, 0);
-        const now = new Date();
-        const isOverdue = batch.date < now;
-        const allPaid = batchPending <= 0.005;
-
-        return (
-          <div key={batchKey(batch.date)} className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-semibold text-gray-700">
-                Pago del {batchLabel(batch.date)}
-              </h2>
-              {!allPaid && isOverdue && (
-                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                  Vencido
-                </span>
-              )}
-              {!allPaid && !isOverdue && (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                  {formatCurrency(batchPending)} pendiente
-                </span>
-              )}
-              {allPaid && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                  Pagado
-                </span>
-              )}
-            </div>
-
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-0 bg-gray-50 border-b border-gray-100 px-4 py-2 text-xs font-medium text-gray-500">
-                <div className="w-6" />
-                <div>Proveedor / Factura</div>
-                <div className="w-28 text-right">Total</div>
-                <div className="w-28 text-right">Pendiente</div>
-                <div className="w-[110px]" />
-              </div>
-              {batch.rows.map((row) => (
-                <PaymentRow key={row.id} invoice={row} />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-
-      {noDueRows.length > 0 && (
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold text-gray-700">Sin fecha de vencimiento</h2>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            {noDueRows.map((row) => (
-              <PaymentRow key={row.id} invoice={row} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {rows.length === 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-12 text-center text-gray-400">
-          No hay facturas de compra. Sincroniza primero.
-        </div>
-      )}
-    </div>
+    <PaymentsView
+      batches={batches}
+      noDueRows={noDueRows}
+      companies={companies}
+      totalRows={rows.length}
+      totalPaidRows={totalPaidRows}
+      totalPending={totalPending}
+    />
   );
 }
