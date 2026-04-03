@@ -2,19 +2,20 @@ import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "./prisma";
 import { authConfig } from "./auth.config";
-
-const ALLOWED_EMAILS = [
-  "jaume@somosgigson.com",
-  "emmelin@latroupestudio.com",
-];
+import { normalizeEmail } from "./sso-allowlist";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   callbacks: {
-    signIn({ user }) {
-      return ALLOWED_EMAILS.includes(user.email ?? "");
+    async signIn({ user }) {
+      const email = normalizeEmail(user.email ?? "");
+      if (!email) return false;
+      const row = await prisma.ssoAllowedEmail.findUnique({
+        where: { email },
+      });
+      return !!row;
     },
     jwt({ token, user }) {
       if (user) token.id = user.id;

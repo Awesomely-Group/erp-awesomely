@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { formatCurrency } from "@/lib/utils";
 import { PaymentRow, type PaymentInvoice } from "./payment-row";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
-
 export interface BatchData {
   dateStr: string;
   label: string;
@@ -45,24 +43,30 @@ export function PaymentsView({
     });
   }
 
-  function filterRows(rows: PaymentInvoice[], batchDateStr?: string): PaymentInvoice[] {
-    return rows.filter((row) => {
-      if (search && !row.counterparty?.toLowerCase().includes(search.toLowerCase())) return false;
-      if (company !== "all" && row.companyName !== company) return false;
-      if (status === "paid" && row.effectivePending > 0.005) return false;
-      if (status === "pending") {
-        if (row.effectivePending <= 0.005) return false;
-        if (batchDateStr && new Date(batchDateStr) < new Date()) return false;
-      }
-      if (status === "overdue") {
-        if (row.effectivePending <= 0.005) return false;
-        if (!batchDateStr || new Date(batchDateStr) >= new Date()) return false;
-      }
-      return true;
-    });
-  }
+  const filterRows = useCallback(
+    (rows: PaymentInvoice[], batchDateStr?: string): PaymentInvoice[] =>
+      rows.filter((row) => {
+        if (search && !row.counterparty?.toLowerCase().includes(search.toLowerCase()))
+          return false;
+        if (company !== "all" && row.companyName !== company) return false;
+        if (status === "paid" && row.effectivePending > 0.005) return false;
+        if (status === "pending") {
+          if (row.effectivePending <= 0.005) return false;
+          if (batchDateStr && new Date(batchDateStr) < new Date()) return false;
+        }
+        if (status === "overdue") {
+          if (row.effectivePending <= 0.005) return false;
+          if (!batchDateStr || new Date(batchDateStr) >= new Date()) return false;
+        }
+        return true;
+      }),
+    [search, company, status]
+  );
 
-  const filteredNoDue = useMemo(() => filterRows(noDueRows), [noDueRows, search, company, status]);
+  const filteredNoDue = useMemo(
+    () => filterRows(noDueRows),
+    [noDueRows, filterRows]
+  );
 
   return (
     <div className="space-y-6">

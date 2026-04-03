@@ -18,6 +18,12 @@ function parseSortDir(v: string | undefined): SortDir {
   return v === "asc" ? "asc" : "desc";
 }
 
+function sortThAlignClass(align: "left" | "right" | "center"): string {
+  if (align === "right") return "text-right";
+  if (align === "center") return "text-center";
+  return "text-left";
+}
+
 function SortTh({
   col,
   label,
@@ -40,7 +46,7 @@ function SortTh({
       : ChevronDown
     : ChevronsUpDown;
   return (
-    <th className={`px-4 py-3 text-${align} font-medium text-gray-600`}>
+    <th className={`px-4 py-3 ${sortThAlignClass(align)} font-medium text-gray-600`}>
       <Link
         href={href}
         className="inline-flex items-center gap-1 hover:text-gray-900"
@@ -88,24 +94,20 @@ function getDateRange(
   }
 }
 
-export default async function InvoicesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    search?: string;
-    status?: string;
-    type?: string;
-    company?: string;
-    period?: string;
-    dateFrom?: string;
-    dateTo?: string;
-    page?: string;
-    sortBy?: string;
-    sortDir?: string;
-  }>;
-}): Promise<React.JSX.Element> {
-  try {
-  const params = await searchParams;
+type InvoicePageParams = {
+  search?: string;
+  status?: string;
+  type?: string;
+  company?: string;
+  period?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: string;
+  sortBy?: string;
+  sortDir?: string;
+};
+
+async function loadInvoicesPageData(params: InvoicePageParams) {
   const page = Math.max(1, parseInt(params.page ?? "1", 10));
   const pageSize = 50;
   const sortBy = parseSortKey(params.sortBy);
@@ -132,10 +134,10 @@ export default async function InvoicesPage({
     sortBy === "totalEur"
       ? { totalEur: sortDir }
       : sortBy === "status"
-      ? { status: sortDir }
-      : sortBy === "counterparty"
-      ? { counterparty: sortDir }
-      : { date: sortDir };
+        ? { status: sortDir }
+        : sortBy === "counterparty"
+          ? { counterparty: sortDir }
+          : { date: sortDir };
 
   const [invoices, total, companies] = await Promise.all([
     prisma.invoice.findMany({
@@ -151,19 +153,67 @@ export default async function InvoicesPage({
 
   const totalPages = Math.ceil(total / pageSize);
 
+  return {
+    searchParams: params,
+    page,
+    pageSize,
+    sortBy,
+    sortDir,
+    invoices,
+    total,
+    companies,
+    totalPages,
+  };
+}
+
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<InvoicePageParams>;
+}): Promise<React.JSX.Element> {
+  const params = await searchParams;
+  let data: Awaited<ReturnType<typeof loadInvoicesPageData>>;
+  try {
+    data = await loadInvoicesPageData(params);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : "";
+    return (
+      <div className="p-8 space-y-4">
+        <h1 className="text-xl font-bold text-red-700">Error cargando facturas</h1>
+        <pre className="text-sm bg-red-50 border border-red-200 rounded p-4 overflow-auto whitespace-pre-wrap">
+          {msg}
+          {"\n\n"}
+          {stack}
+        </pre>
+      </div>
+    );
+  }
+
+  const {
+    searchParams: q,
+    page,
+    sortBy,
+    sortDir,
+    invoices,
+    total,
+    companies,
+    totalPages,
+  } = data;
+
   function buildUrl(overrides: Record<string, string | undefined>): string {
     const sp = new URLSearchParams();
     const merged = {
-      search: params.search,
-      status: params.status,
-      type: params.type,
-      company: params.company,
-      period: params.period,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-      sortBy: params.sortBy,
-      sortDir: params.sortDir,
-      page: params.page,
+      search: q.search,
+      status: q.status,
+      type: q.type,
+      company: q.company,
+      period: q.period,
+      dateFrom: q.dateFrom,
+      dateTo: q.dateTo,
+      sortBy: q.sortBy,
+      sortDir: q.sortDir,
+      page: q.page,
       ...overrides,
     };
     for (const [k, v] of Object.entries(merged)) {
@@ -287,16 +337,4 @@ export default async function InvoicesPage({
       )}
     </div>
   );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : "";
-    return (
-      <div className="p-8 space-y-4">
-        <h1 className="text-xl font-bold text-red-700">Error cargando facturas</h1>
-        <pre className="text-sm bg-red-50 border border-red-200 rounded p-4 overflow-auto whitespace-pre-wrap">
-          {msg}{"\n\n"}{stack}
-        </pre>
-      </div>
-    );
-  }
 }

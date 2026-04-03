@@ -1,4 +1,4 @@
-import { PageHeaderSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
+import { Skeleton, TableSkeleton } from "@/components/skeleton";
 
 export default function SyncLoading(): React.JSX.Element {
   return (

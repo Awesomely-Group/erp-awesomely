@@ -33,11 +33,41 @@ const RESULT_COLORS: Record<SyncResult, string> = {
 type SortKey = "startedAt" | "source" | "entityName" | "records" | "result";
 type SortDir = "asc" | "desc";
 
-function SortIcon({ col, active, dir }: { col: string; active: boolean; dir: SortDir }): React.JSX.Element {
+function SortIcon({ active, dir }: { col?: string; active: boolean; dir: SortDir }): React.JSX.Element {
   if (!active) return <ChevronsUpDown className="inline h-3.5 w-3.5 text-gray-300 ml-1" />;
   return dir === "asc"
     ? <ChevronUp className="inline h-3.5 w-3.5 text-indigo-600 ml-1" />
     : <ChevronDown className="inline h-3.5 w-3.5 text-indigo-600 ml-1" />;
+}
+
+function syncThAlignClass(align: "left" | "right"): string {
+  return align === "right" ? "text-right" : "text-left";
+}
+
+function SyncSortTh({
+  label,
+  col,
+  align = "left",
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: SortKey;
+  align?: "left" | "right";
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}): React.JSX.Element {
+  return (
+    <th
+      className={`px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:text-gray-900 ${syncThAlignClass(align)}`}
+      onClick={() => onSort(col)}
+    >
+      {label}
+      <SortIcon col={col} active={sortKey === col} dir={sortDir} />
+    </th>
+  );
 }
 
 export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
@@ -82,18 +112,6 @@ export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
     });
   }, [rows, sourceFilter, resultFilter, sortKey, sortDir]);
 
-  function Th({ label, col, align = "left" }: { label: string; col: SortKey; align?: "left" | "right" }): React.JSX.Element {
-    return (
-      <th
-        className={`px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:text-gray-900 text-${align}`}
-        onClick={() => handleSort(col)}
-      >
-        {label}
-        <SortIcon col={col} active={sortKey === col} dir={sortDir} />
-      </th>
-    );
-  }
-
   return (
     <div className="space-y-3">
       {/* Filters */}
@@ -135,15 +153,15 @@ export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <Th label="Fecha" col="startedAt" />
-              <Th label="Fuente" col="source" />
-              <Th label="Entidad" col="entityName" />
+              <SyncSortTh label="Fecha" col="startedAt" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <SyncSortTh label="Fuente" col="source" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <SyncSortTh label="Entidad" col="entityName" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
               <th className="px-4 py-3 text-right font-medium text-gray-600 cursor-pointer select-none hover:text-gray-900"
                   onClick={() => handleSort("records")}>
                 Registros
                 <SortIcon col="records" active={sortKey === "records"} dir={sortDir} />
               </th>
-              <Th label="Resultado" col="result" />
+              <SyncSortTh label="Resultado" col="result" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
               <th className="px-4 py-3 text-left font-medium text-gray-600">Error</th>
             </tr>
           </thead>

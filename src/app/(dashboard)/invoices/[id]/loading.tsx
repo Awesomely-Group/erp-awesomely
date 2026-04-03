@@ -1,4 +1,4 @@
-import { Skeleton, TableSkeleton } from "@/components/skeleton";
+import { Skeleton } from "@/components/skeleton";
 
 export default function InvoiceDetailLoading(): React.JSX.Element {
   return (

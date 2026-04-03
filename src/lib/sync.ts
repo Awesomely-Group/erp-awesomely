@@ -177,8 +177,6 @@ async function upsertInvoice(
       const qty = product.units ?? 0;
       const price = product.price ?? 0;
       const discountPct = product.discount ?? 0;
-      const taxRatePct = product.tax ?? 0; // Holded returns tax RATE (e.g. 21), not amount
-
       const lineSubtotal = qty * price * (1 - discountPct / 100);
       // Use invoice-level total proportionally so retentions and extra taxes are accounted for
       const lineTotal =

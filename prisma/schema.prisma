@@ -55,6 +55,16 @@ model VerificationToken {
   @@id([identifier, token])
 }
 
+/// Emails allowed to complete SSO (Google / Microsoft). Managed in Configuración.
+model SsoAllowedEmail {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  createdAt       DateTime @default(now())
+  createdByUserId String?
+
+  @@map("sso_allowed_emails")
+}
+
 // ─── Companies ─────────────────────────────────────────────────────────────────
 
 model Company {

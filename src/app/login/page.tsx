@@ -1,6 +1,16 @@
 import { signIn } from "@/lib/auth";
 
-export default function LoginPage(): React.JSX.Element {
+type LoginPageProps = {
+  searchParams?: Promise<{ error?: string }>;
+};
+
+export default async function LoginPage({
+  searchParams,
+}: LoginPageProps): Promise<React.JSX.Element> {
+  const err = searchParams ? (await searchParams).error : undefined;
+  const accessDenied =
+    err === "AccessDenied" || err === "OAuthAccountNotLinked";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm space-y-8">
@@ -12,6 +22,16 @@ export default function LoginPage(): React.JSX.Element {
             Accede con tu cuenta corporativa
           </p>
         </div>
+
+        {accessDenied ? (
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            role="alert"
+          >
+            Tu cuenta no está autorizada para acceder. Pide a un administrador
+            que añada tu correo en Configuración → Acceso SSO.
+          </div>
+        ) : null}
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 space-y-4">
           <form

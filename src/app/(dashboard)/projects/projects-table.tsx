@@ -24,6 +24,38 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }): React.JSX
     : <ChevronDown className="inline h-3.5 w-3.5 text-indigo-600 ml-1" />;
 }
 
+function alignClass(align: "left" | "right" | "center"): string {
+  if (align === "right") return "text-right";
+  if (align === "center") return "text-center";
+  return "text-left";
+}
+
+function ProjectsSortTh({
+  label,
+  col,
+  align = "left",
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: SortKey;
+  align?: "left" | "right" | "center";
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}): React.JSX.Element {
+  return (
+    <th
+      className={`px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:text-gray-900 ${alignClass(align)}`}
+      onClick={() => onSort(col)}
+    >
+      {label}
+      <SortIcon active={sortKey === col} dir={sortDir} />
+    </th>
+  );
+}
+
 interface Props {
   projects: ProjectRow[];
   workspaceName: string;
@@ -60,26 +92,6 @@ export function ProjectsTable({ projects, workspaceName, workspaceDomain, totalP
     });
   }, [projects, sortKey, sortDir]);
 
-  function Th({
-    label,
-    col,
-    align = "left",
-  }: {
-    label: string;
-    col: SortKey;
-    align?: "left" | "right" | "center";
-  }): React.JSX.Element {
-    return (
-      <th
-        className={`px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:text-gray-900 text-${align}`}
-        onClick={() => handleSort(col)}
-      >
-        {label}
-        <SortIcon active={sortKey === col} dir={sortDir} />
-      </th>
-    );
-  }
-
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
@@ -94,12 +106,12 @@ export function ProjectsTable({ projects, workspaceName, workspaceDomain, totalP
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <Th label="Clave" col="jiraKey" />
-              <Th label="Proyecto" col="name" />
-              <Th label="Ingresos (EUR)" col="revenue" align="right" />
-              <Th label="Costes (EUR)" col="costs" align="right" />
-              <Th label="Margen (EUR)" col="margin" align="right" />
-              <Th label="Clasificaciones" col="classifications" align="center" />
+              <ProjectsSortTh label="Clave" col="jiraKey" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <ProjectsSortTh label="Proyecto" col="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <ProjectsSortTh label="Ingresos (EUR)" col="revenue" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <ProjectsSortTh label="Costes (EUR)" col="costs" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <ProjectsSortTh label="Margen (EUR)" col="margin" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <ProjectsSortTh label="Clasificaciones" col="classifications" align="center" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>

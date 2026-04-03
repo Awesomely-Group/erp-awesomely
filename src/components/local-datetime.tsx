@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 interface Props {
   date: Date | string;
@@ -21,15 +21,22 @@ const FORMAT_DATE: Intl.DateTimeFormatOptions = {
   year: "numeric",
 };
 
-// Renders date/time in the browser's local timezone.
-// Starts empty to avoid SSR/hydration mismatch — fills in after mount.
+function noopSubscribe(): () => void {
+  return () => {};
+}
+
+/** Renders date/time in the browser's local timezone (empty on server, then hydrates). */
 export function LocalDateTime({ date, dateOnly = false }: Props): React.JSX.Element {
-  const [text, setText] = useState("");
+  const opts = dateOnly ? FORMAT_DATE : FORMAT_DATETIME;
+  const text = useSyncExternalStore(
+    noopSubscribe,
+    () => new Intl.DateTimeFormat("es-ES", opts).format(new Date(date)),
+    () => ""
+  );
 
-  useEffect(() => {
-    const opts = dateOnly ? FORMAT_DATE : FORMAT_DATETIME;
-    setText(new Intl.DateTimeFormat("es-ES", opts).format(new Date(date)));
-  }, [date, dateOnly]);
-
-  return <span>{text}</span>;
+  return (
+    <span suppressHydrationWarning title={text}>
+      {text}
+    </span>
+  );
 }

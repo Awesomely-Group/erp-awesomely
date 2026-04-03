@@ -4,6 +4,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AuditAction } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import {
+  canManageSsoAllowlist,
+  normalizeEmail,
+} from "@/lib/sso-allowlist";
 
 export async function createCompany(data: FormData): Promise<void> {
   const session = await auth();
@@ -81,4 +85,82 @@ export async function updateWorkspace(id: string, data: FormData): Promise<void>
   });
 
   revalidatePath("/settings");
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export type SsoAllowlistFormState = { error?: string } | undefined;
+
+export async function addSsoAllowedEmail(
+  _prev: SsoAllowlistFormState,
+  formData: FormData
+): Promise<SsoAllowlistFormState> {
+  const session = await auth();
+  if (!session?.user?.email || !canManageSsoAllowlist(session.user.email)) {
+    return { error: "No autorizado" };
+  }
+
+  const raw = formData.get("email") as string;
+  const email = normalizeEmail(raw);
+  if (!email || !EMAIL_RE.test(email)) {
+    return { error: "Email no válido" };
+  }
+
+  await prisma.ssoAllowedEmail.upsert({
+    where: { email },
+    create: {
+      email,
+      createdByUserId: session.user.id,
+    },
+    update: {},
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.CREATE,
+      entityType: "SsoAllowedEmail",
+      entityId: email,
+      newValue: { email },
+    },
+  });
+
+  revalidatePath("/settings");
+  return undefined;
+}
+
+export async function removeSsoAllowedEmail(
+  _prev: SsoAllowlistFormState,
+  formData: FormData
+): Promise<SsoAllowlistFormState> {
+  const session = await auth();
+  if (!session?.user?.email || !canManageSsoAllowlist(session.user.email)) {
+    return { error: "No autorizado" };
+  }
+
+  const id = formData.get("id") as string;
+  if (!id) return { error: "Falta id" };
+
+  const count = await prisma.ssoAllowedEmail.count();
+  if (count <= 1) {
+    return { error: "Debe quedar al menos un email autorizado para SSO" };
+  }
+
+  const row = await prisma.ssoAllowedEmail.findUnique({ where: { id } });
+  if (!row) return { error: "No encontrado" };
+
+  await prisma.ssoAllowedEmail.delete({ where: { id } });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.DELETE,
+      entityType: "SsoAllowedEmail",
+      entityId: row.email,
+      previousValue: { email: row.email },
+    },
+  });
+
+  revalidatePath("/settings");
+  return undefined;
 }

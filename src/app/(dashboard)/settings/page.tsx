@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { formatDate } from "@/lib/utils";
 import { CompanyForm } from "./company-form";
 import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
+import { SsoAllowlistSection } from "./sso-allowlist";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
   const [companies, workspaces, auditLogs] = await Promise.all([
@@ -75,6 +75,8 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         </div>
         <WorkspaceForm />
       </section>
+
+      <SsoAllowlistSection />
 
       {/* Audit log */}
       <section className="space-y-4">
