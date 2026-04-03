@@ -63,22 +63,39 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
   let invoicesSynced = 0;
   let errorMessage: string | undefined;
 
+  // Process a list of invoices in parallel batches to reduce total sync time
+  async function upsertBatch(
+    invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
+    type: InvoiceType,
+    batchSize = 10
+  ): Promise<void> {
+    for (let i = 0; i < invoices.length; i += batchSize) {
+      const chunk = invoices.slice(i, i + batchSize);
+      await Promise.all(
+        chunk.map((inv) =>
+          upsertInvoice(inv, companyId, type)
+            .then(() => { invoicesSynced++; })
+            .catch((err: unknown) => {
+              console.error(`[sync] Error upserting ${type} invoice ${inv.id} (${inv.docNumber}):`, err);
+            })
+        )
+      );
+    }
+  }
+
   try {
     const client = new HoldedClient(company.holdedApiKey);
 
-    // Sync sales invoices
-    const salesInvoices = await client.getAllInvoicesPaginated("invoice");
-    for (const inv of salesInvoices) {
-      await upsertInvoice(inv, companyId, InvoiceType.SALE);
-      invoicesSynced++;
-    }
+    // Fetch both invoice types in parallel, then upsert in parallel batches
+    const [salesInvoices, purchaseInvoices] = await Promise.all([
+      client.getAllInvoicesPaginated("invoice"),
+      client.getAllInvoicesPaginated("purchase"),
+    ]);
 
-    // Sync purchase invoices
-    const purchaseInvoices = await client.getAllInvoicesPaginated("purchase");
-    for (const inv of purchaseInvoices) {
-      await upsertInvoice(inv, companyId, InvoiceType.PURCHASE);
-      invoicesSynced++;
-    }
+    await Promise.all([
+      upsertBatch(salesInvoices, InvoiceType.SALE),
+      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE),
+    ]);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
   }

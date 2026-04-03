@@ -4,32 +4,80 @@ import { prisma } from "@/lib/prisma";
 
 const HOLDED_BASE = "https://api.holded.com/api/invoicing/v1";
 
-// Tests a single Holded document type endpoint and returns count + first item
-async function testHoldedEndpoint(
-  apiKey: string,
-  type: string
-): Promise<{ ok: boolean; count?: number; pageSize?: number; firstItem?: unknown; error?: string; rawBody?: string }> {
+type HoldedPageResult = {
+  ok: boolean;
+  count?: number;
+  firstId?: string;
+  error?: string;
+  rawBody?: string;
+};
+
+async function fetchHoldedPage(apiKey: string, type: string, page: number): Promise<HoldedPageResult> {
   try {
-    const url = `${HOLDED_BASE}/documents/${type}?page=1`;
+    const url = `${HOLDED_BASE}/documents/${type}?page=${page}`;
     const res = await fetch(url, {
       headers: { key: apiKey, "Content-Type": "application/json" },
       next: { revalidate: 0 },
     });
     const text = await res.text();
     if (!res.ok) {
-      return { ok: false, error: `HTTP ${res.status}`, rawBody: text.slice(0, 500) };
+      return { ok: false, error: `HTTP ${res.status}`, rawBody: text.slice(0, 300) };
     }
     let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return { ok: false, error: "Invalid JSON", rawBody: text.slice(0, 500) };
+    try { parsed = JSON.parse(text); } catch {
+      return { ok: false, error: "Invalid JSON", rawBody: text.slice(0, 300) };
     }
-    if (Array.isArray(parsed)) {
-      return { ok: true, count: parsed.length, pageSize: parsed.length, firstItem: parsed[0] ?? null };
+    const arr: Array<{ id?: string }> = Array.isArray(parsed)
+      ? (parsed as Array<{ id?: string }>)
+      : ((parsed as { data?: Array<{ id?: string }> }).data ?? []);
+    return { ok: true, count: arr.length, firstId: arr[0]?.id ?? undefined };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Tests a Holded endpoint across multiple pages to diagnose pagination behavior
+async function testHoldedEndpoint(
+  apiKey: string,
+  type: string
+): Promise<{
+  ok: boolean;
+  page1?: HoldedPageResult;
+  page2?: HoldedPageResult;
+  page3?: HoldedPageResult;
+  page999?: HoldedPageResult;
+  paginationBehavior?: string;
+  error?: string;
+  rawBody?: string;
+}> {
+  try {
+    // Fetch pages 1, 2, 3 and a high page in parallel to diagnose pagination
+    const [page1, page2, page3, page999] = await Promise.all([
+      fetchHoldedPage(apiKey, type, 1),
+      fetchHoldedPage(apiKey, type, 2),
+      fetchHoldedPage(apiKey, type, 3),
+      fetchHoldedPage(apiKey, type, 999),
+    ]);
+
+    if (!page1.ok) return { ok: false, error: page1.error, rawBody: page1.rawBody };
+
+    // Diagnose pagination behavior
+    let paginationBehavior: string;
+    if (page1.count === 0) {
+      paginationBehavior = "no_data";
+    } else if (page999.ok && (page999.count ?? 0) > 0 && page999.firstId === page1.firstId) {
+      paginationBehavior = "INFINITE_LOOP — page 999 returns same data as page 1 (no real pagination)";
+    } else if (page2.ok && (page2.count ?? 0) > 0 && page2.firstId === page1.firstId) {
+      paginationBehavior = "INFINITE_LOOP — page 2 returns same data as page 1";
+    } else if (page2.ok && (page2.count ?? 0) > 0 && page2.firstId !== page1.firstId) {
+      paginationBehavior = "pagination_ok — page 2 has different items than page 1";
+    } else if (page2.ok && (page2.count ?? 0) === 0) {
+      paginationBehavior = "single_page — page 2 is empty (all data fits in page 1)";
+    } else {
+      paginationBehavior = "unknown";
     }
-    // Might be wrapped: { data: [...] } or { error: ... }
-    return { ok: true, count: -1, rawBody: text.slice(0, 500), firstItem: parsed };
+
+    return { ok: true, page1, page2, page3, page999, paginationBehavior };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -80,21 +128,17 @@ export async function GET(): Promise<NextResponse> {
     prisma.jiraWorkspace.findMany({ where: { active: true } }),
   ]);
 
-  // Test all Holded companies — test multiple purchase invoice endpoint names
+  // Test all Holded companies — check pagination behavior for invoice and purchase
   const holdedResults = await Promise.all(
     companies.map(async (c) => {
-      const [invoice, expense, purchase, purchaseorder] = await Promise.all([
+      const [invoice, purchase] = await Promise.all([
         testHoldedEndpoint(c.holdedApiKey, "invoice"),
-        testHoldedEndpoint(c.holdedApiKey, "expense"),
         testHoldedEndpoint(c.holdedApiKey, "purchase"),
-        testHoldedEndpoint(c.holdedApiKey, "purchaseorder"),
       ]);
       return {
         company: c.name,
         invoice,
-        expense,
         purchase,
-        purchaseorder,
       };
     })
   );

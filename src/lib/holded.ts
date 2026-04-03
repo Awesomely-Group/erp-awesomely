@@ -103,15 +103,29 @@ export class HoldedClient {
 
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     const all: HoldedInvoice[] = [];
+    const seenIds = new Set<string>();
     let page = 1;
+    const MAX_PAGES = 50; // safety cap: 50 pages × ~100 items = 5000 invoices max
 
-    while (true) {
-      const batch = await this.fetch<HoldedInvoice[]>(
+    while (page <= MAX_PAGES) {
+      const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
         `/documents/${type}`,
         { page: page.toString() }
       );
 
-      if (!batch || batch.length === 0) break;
+      // Holded may return a plain array or a wrapped { data: [...] } object
+      const batch: HoldedInvoice[] = Array.isArray(raw)
+        ? raw
+        : ((raw as HoldedListResponse).data ?? []);
+
+      if (batch.length === 0) break;
+
+      // Guard against infinite loops: if the first ID of this page was already seen,
+      // Holded is returning the same page repeatedly — stop immediately
+      const firstId = batch[0]?.id;
+      if (firstId && seenIds.has(firstId)) break;
+
+      for (const inv of batch) seenIds.add(inv.id);
       all.push(...batch);
       page++;
     }
