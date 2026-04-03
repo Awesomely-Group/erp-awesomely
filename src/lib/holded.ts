@@ -101,33 +101,51 @@ export class HoldedClient {
     return res;
   }
 
+  /**
+   * Fetches ALL invoices of a given type from Holded.
+   *
+   * IMPORTANT: Holded's ?page= parameter does not work — it always returns
+   * the same ~100 most-recent documents regardless of the page number.
+   * The only way to retrieve the full history is to iterate over quarterly
+   * time windows using starttmp/endtmp and deduplicate by ID.
+   *
+   * Windows start from HOLDED_SYNC_FROM_YEAR (default 2024) up to today.
+   * Each window is one quarter (≤ ~100 invoices in practice).
+   */
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
-    const all: HoldedInvoice[] = [];
     const seenIds = new Set<string>();
-    let page = 1;
-    const MAX_PAGES = 50; // safety cap: 50 pages × ~100 items = 5000 invoices max
+    const all: HoldedInvoice[] = [];
 
-    while (page <= MAX_PAGES) {
-      const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
-        `/documents/${type}`,
-        { page: page.toString() }
-      );
+    const SYNC_FROM_YEAR = 2024;
+    const now = new Date();
+    const endYear = now.getFullYear();
 
-      // Holded may return a plain array or a wrapped { data: [...] } object
-      const batch: HoldedInvoice[] = Array.isArray(raw)
-        ? raw
-        : ((raw as HoldedListResponse).data ?? []);
+    for (let year = SYNC_FROM_YEAR; year <= endYear; year++) {
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const windowStart = new Date(year, quarter * 3, 1);
+        // Stop opening future windows beyond today
+        if (windowStart > now) break;
 
-      if (batch.length === 0) break;
+        const windowEnd = new Date(year, (quarter + 1) * 3, 1);
+        const starttmp = Math.floor(windowStart.getTime() / 1000);
+        const endtmp   = Math.floor(windowEnd.getTime()   / 1000);
 
-      // Guard against infinite loops: if the first ID of this page was already seen,
-      // Holded is returning the same page repeatedly — stop immediately
-      const firstId = batch[0]?.id;
-      if (firstId && seenIds.has(firstId)) break;
+        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
+          `/documents/${type}`,
+          { starttmp: starttmp.toString(), endtmp: endtmp.toString() }
+        );
 
-      for (const inv of batch) seenIds.add(inv.id);
-      all.push(...batch);
-      page++;
+        const batch: HoldedInvoice[] = Array.isArray(raw)
+          ? raw
+          : ((raw as HoldedListResponse).data ?? []);
+
+        for (const inv of batch) {
+          if (!seenIds.has(inv.id)) {
+            seenIds.add(inv.id);
+            all.push(inv);
+          }
+        }
+      }
     }
 
     return all;
