@@ -1,45 +1,31 @@
-import type { Empresa, Marca } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
-/** Empresa jurídica (filtros / asignación por cuenta Holded). */
-export const EMPRESA_OPTIONS: { value: Empresa; label: string }[] = [
-  { value: "AWESOMELY_SL", label: "Awesomely SL" },
-  { value: "AWESOMELY_OU", label: "Awesomely OU" },
+/** Marca comercial del grupo — valores legibles mapeados desde tags de Holded. */
+export const MARCA_OPTIONS: { value: string; label: string }[] = [
+  { value: "Gigson Solutions", label: "Gigson Solutions" },
+  { value: "Gigson", label: "Gigson" },
+  { value: "Awesomely", label: "Awesomely" },
+  { value: "LaTroupe", label: "LaTroupe" },
 ];
 
-/** Marca comercial del grupo. */
-export const MARCA_OPTIONS: { value: Marca; label: string }[] = [
-  { value: "GIGSON_SOLUTIONS", label: "Gigson Solutions" },
-  { value: "GIGSON", label: "Gigson" },
-  { value: "AWESOMELY", label: "Awesomely" },
-  { value: "LATROUPE", label: "LaTroupe" },
-];
+/** Valor de query param para filtrar facturas sin marca (`invoice.marca` null). */
+export const MARCA_FILTER_UNASSIGNED = "__unassigned__";
 
-export function parseEmpresaParam(v: string | undefined): Empresa | undefined {
-  if (v === "AWESOMELY_SL" || v === "AWESOMELY_OU") return v;
-  return undefined;
-}
+/** Estado: pendiente o parcial de clasificación (sin terminar de asignar proyecto). */
+export const STATUS_FILTER_UNASSIGNED = "__status_unassigned__";
 
-export function parseMarcaParam(v: string | undefined): Marca | undefined {
-  if (
-    v === "GIGSON_SOLUTIONS" ||
-    v === "GIGSON" ||
-    v === "AWESOMELY" ||
-    v === "LATROUPE"
-  ) {
-    return v;
+const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
+
+/** Filtro Prisma por invoice.marca (valor conocido o sin asignar). */
+export function invoiceWhereMarca(
+  marca?: string
+): Prisma.InvoiceWhereInput | undefined {
+  if (!marca) return undefined;
+  if (marca === MARCA_FILTER_UNASSIGNED) {
+    return { marca: null };
+  }
+  if (MARCA_VALUES.has(marca)) {
+    return { marca };
   }
   return undefined;
-}
-
-/** Filtro por relación company (facturas / agregados). */
-export function invoiceWhereCompanyOrg(
-  empresa?: Empresa,
-  marca?: Marca
-): { company: Prisma.CompanyWhereInput } | undefined {
-  if (!empresa && !marca) return undefined;
-  const company: Prisma.CompanyWhereInput = {};
-  if (empresa) company.empresa = empresa;
-  if (marca) company.marca = marca;
-  return { company };
 }

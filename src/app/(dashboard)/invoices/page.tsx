@@ -1,11 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
-import {
-  MARCA_OPTIONS,
-  parseEmpresaParam,
-  parseMarcaParam,
-  invoiceWhereCompanyOrg,
-} from "@/lib/org";
+import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED } from "@/lib/org";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -69,7 +64,6 @@ type InvoicePageParams = {
   search?: string;
   status?: string;
   type?: string;
-  empresa?: string;
   marca?: string;
   period?: string;
   dateFrom?: string;
@@ -87,9 +81,14 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
 
   const dateRange = getDateRange(params.period ?? "", params.dateFrom, params.dateTo);
 
-  const empresa = parseEmpresaParam(params.empresa);
-  const marca = parseMarcaParam(params.marca);
-  const org = invoiceWhereCompanyOrg(empresa, marca);
+  const marcaFilter = invoiceWhereMarca(params.marca);
+
+  const statusWhere =
+    params.status === STATUS_FILTER_UNASSIGNED
+      ? { status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] } }
+      : params.status
+        ? { status: params.status as InvoiceStatus }
+        : {};
 
   const where = {
     ...(params.search
@@ -100,9 +99,9 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
           ],
         }
       : {}),
-    ...(params.status ? { status: params.status as InvoiceStatus } : {}),
+    ...statusWhere,
     ...(params.type ? { type: params.type as InvoiceType } : {}),
-    ...(org ?? {}),
+    ...(marcaFilter ?? {}),
     ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
 
@@ -180,7 +179,6 @@ export default async function InvoicesPage({
       search: q.search,
       status: q.status,
       type: q.type,
-      empresa: q.empresa,
       marca: q.marca,
       period: q.period,
       dateFrom: q.dateFrom,
@@ -250,9 +248,7 @@ export default async function InvoicesPage({
                 totalEur: Number(inv.totalEur),
                 status: inv.status,
                 companyName: inv.company.name,
-                brand: inv.company.marca
-                  ? (MARCA_OPTIONS.find((o) => o.value === inv.company.marca)?.label ?? inv.company.marca)
-                  : null,
+                brand: inv.marca,
                 lineCount: inv._count.lines,
               }))}
             />

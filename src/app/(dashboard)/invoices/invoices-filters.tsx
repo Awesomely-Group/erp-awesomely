@@ -2,7 +2,11 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { EMPRESA_OPTIONS, MARCA_OPTIONS } from "@/lib/org";
+import {
+  MARCA_FILTER_UNASSIGNED,
+  MARCA_OPTIONS,
+  STATUS_FILTER_UNASSIGNED,
+} from "@/lib/org";
 
 const PERIODS = [
   { value: "", label: "Todos los periodos" },
@@ -25,7 +29,6 @@ export function InvoicesFilters(): React.JSX.Element {
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [type, setType] = useState(sp.get("type") ?? "");
-  const [empresa, setEmpresa] = useState(sp.get("empresa") ?? "");
   const [marca, setMarca] = useState(sp.get("marca") ?? "");
 
   function apply(): void {
@@ -33,7 +36,6 @@ export function InvoicesFilters(): React.JSX.Element {
     if (search) params.set("search", search);
     if (status) params.set("status", status);
     if (type) params.set("type", type);
-    if (empresa) params.set("empresa", empresa);
     if (marca) params.set("marca", marca);
     if (period) params.set("period", period);
     if (period === "custom") {
@@ -50,7 +52,6 @@ export function InvoicesFilters(): React.JSX.Element {
     setDateTo("");
     setStatus("");
     setType("");
-    setEmpresa("");
     setMarca("");
     router.push("/invoices");
   }
@@ -113,6 +114,7 @@ export function InvoicesFilters(): React.JSX.Element {
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         >
           <option value="">Todos</option>
+          <option value={STATUS_FILTER_UNASSIGNED}>Sin asignar</option>
           <option value="PENDING">Sin clasificar</option>
           <option value="PARTIAL">Parcial</option>
           <option value="CLASSIFIED">Clasificado</option>
@@ -135,22 +137,6 @@ export function InvoicesFilters(): React.JSX.Element {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Empresa</label>
-        <select
-          value={empresa}
-          onChange={(e) => setEmpresa(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
-        >
-          <option value="">Todas</option>
-          {EMPRESA_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Marca</label>
         <select
           value={marca}
@@ -158,6 +144,7 @@ export function InvoicesFilters(): React.JSX.Element {
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
         >
           <option value="">Todas</option>
+          <option value={MARCA_FILTER_UNASSIGNED}>Sin asignar</option>
           {MARCA_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

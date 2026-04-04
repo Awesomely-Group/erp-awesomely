@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { EMPRESA_OPTIONS, MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_FILTER_UNASSIGNED, MARCA_OPTIONS } from "@/lib/org";
 
 const PERIODS = [
   { value: "", label: "Todas las fechas" },
@@ -22,7 +22,6 @@ export function DashboardFilters(): React.JSX.Element {
   const [period, setPeriod] = useState(sp.get("period") ?? "");
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
-  const [empresa, setEmpresa] = useState(sp.get("empresa") ?? "");
   const [marca, setMarca] = useState(sp.get("marca") ?? "");
 
   function apply(): void {
@@ -32,7 +31,6 @@ export function DashboardFilters(): React.JSX.Element {
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
     }
-    if (empresa) params.set("empresa", empresa);
     if (marca) params.set("marca", marca);
     const q = params.toString();
     router.push(q ? `/dashboard?${q}` : "/dashboard");
@@ -42,7 +40,6 @@ export function DashboardFilters(): React.JSX.Element {
     setPeriod("");
     setDateFrom("");
     setDateTo("");
-    setEmpresa("");
     setMarca("");
     router.push("/dashboard");
   }
@@ -90,22 +87,6 @@ export function DashboardFilters(): React.JSX.Element {
         )}
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Empresa</label>
-          <select
-            value={empresa}
-            onChange={(e) => setEmpresa(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[12rem]"
-          >
-            <option value="">Todas</option>
-            {EMPRESA_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Marca</label>
           <select
             value={marca}
@@ -113,6 +94,7 @@ export function DashboardFilters(): React.JSX.Element {
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[12rem]"
           >
             <option value="">Todas</option>
+            <option value={MARCA_FILTER_UNASSIGNED}>Sin asignar</option>
             {MARCA_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
