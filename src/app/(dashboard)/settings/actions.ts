@@ -15,9 +15,12 @@ export async function createCompany(data: FormData): Promise<void> {
 
   const name = data.get("name") as string;
   const holdedApiKey = data.get("holdedApiKey") as string;
+  const legalEntityIdRaw = data.get("legalEntityId") as string | null;
+  const legalEntityId =
+    legalEntityIdRaw && legalEntityIdRaw.length > 0 ? legalEntityIdRaw : undefined;
 
   const company = await prisma.company.create({
-    data: { name, holdedApiKey },
+    data: { name, holdedApiKey, legalEntityId },
   });
 
   await prisma.auditLog.create({
@@ -31,6 +34,58 @@ export async function createCompany(data: FormData): Promise<void> {
   });
 
   revalidatePath("/settings");
+  revalidatePath("/dashboard");
+}
+
+export async function createLegalEntity(data: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const name = (data.get("name") as string)?.trim();
+  if (!name) throw new Error("Nombre requerido");
+
+  const entity = await prisma.legalEntity.create({ data: { name } });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.CREATE,
+      entityType: "LegalEntity",
+      entityId: entity.id,
+      newValue: { name },
+    },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+}
+
+export async function updateCompanyLegalEntity(
+  companyId: string,
+  legalEntityId: string | null
+): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.company.update({
+    where: { id: companyId },
+    data: {
+      legalEntityId: legalEntityId && legalEntityId.length > 0 ? legalEntityId : null,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Company",
+      entityId: companyId,
+      newValue: { legalEntityId: legalEntityId || null },
+    },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
 }
 
 export async function createWorkspace(data: FormData): Promise<void> {

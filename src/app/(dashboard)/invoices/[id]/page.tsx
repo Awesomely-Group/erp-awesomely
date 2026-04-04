@@ -69,7 +69,7 @@ export default async function InvoiceDetailPage({
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {invoice.type === "SALE" ? "Venta" : "Compra"} ·{" "}
-            {invoice.company.name} · {formatDate(invoice.date)}
+            {invoice.company.name} · {invoice.brand ?? "—"} · {formatDate(invoice.date)}
           </p>
         </div>
         <div className="text-right">

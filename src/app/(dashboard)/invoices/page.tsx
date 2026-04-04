@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getDateRange } from "@/lib/date-range";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -58,47 +59,13 @@ function SortTh({
   );
 }
 
-function getDateRange(
-  period: string,
-  dateFrom?: string,
-  dateTo?: string
-): { gte?: Date; lte?: Date } {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const q = Math.floor(m / 3);
-
-  switch (period) {
-    case "this_month":
-      return { gte: new Date(y, m, 1), lte: new Date(y, m + 1, 0, 23, 59, 59) };
-    case "last_month":
-      return { gte: new Date(y, m - 1, 1), lte: new Date(y, m, 0, 23, 59, 59) };
-    case "this_quarter":
-      return { gte: new Date(y, q * 3, 1), lte: new Date(y, q * 3 + 3, 0, 23, 59, 59) };
-    case "last_quarter": {
-      const lq = q === 0 ? 3 : q - 1;
-      const lqy = q === 0 ? y - 1 : y;
-      return { gte: new Date(lqy, lq * 3, 1), lte: new Date(lqy, lq * 3 + 3, 0, 23, 59, 59) };
-    }
-    case "this_year":
-      return { gte: new Date(y, 0, 1), lte: new Date(y, 11, 31, 23, 59, 59) };
-    case "last_year":
-      return { gte: new Date(y - 1, 0, 1), lte: new Date(y - 1, 11, 31, 23, 59, 59) };
-    case "custom":
-      return {
-        gte: dateFrom ? new Date(dateFrom) : undefined,
-        lte: dateTo ? new Date(dateTo + "T23:59:59") : undefined,
-      };
-    default:
-      return {};
-  }
-}
-
 type InvoicePageParams = {
   search?: string;
   status?: string;
   type?: string;
+  legalEntity?: string;
   company?: string;
+  brand?: string;
   period?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -126,7 +93,12 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       : {}),
     ...(params.status ? { status: params.status as InvoiceStatus } : {}),
     ...(params.type ? { type: params.type as InvoiceType } : {}),
-    ...(params.company ? { companyId: params.company } : {}),
+    ...(params.company
+      ? { companyId: params.company }
+      : params.legalEntity
+        ? { company: { legalEntityId: params.legalEntity } }
+        : {}),
+    ...(params.brand ? { brand: params.brand } : {}),
     ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
 
@@ -139,7 +111,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
           ? { counterparty: sortDir }
           : { date: sortDir };
 
-  const [invoices, total, companies] = await Promise.all([
+  const [invoices, total, companies, legalEntities] = await Promise.all([
     prisma.invoice.findMany({
       where,
       include: { company: true, _count: { select: { lines: true } } },
@@ -149,6 +121,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     }),
     prisma.invoice.count({ where }),
     prisma.company.findMany({ where: { active: true } }),
+    prisma.legalEntity.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const totalPages = Math.ceil(total / pageSize);
@@ -162,6 +135,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     invoices,
     total,
     companies,
+    legalEntities,
     totalPages,
   };
 }
@@ -198,6 +172,7 @@ export default async function InvoicesPage({
     invoices,
     total,
     companies,
+    legalEntities,
     totalPages,
   } = data;
 
@@ -207,7 +182,9 @@ export default async function InvoicesPage({
       search: q.search,
       status: q.status,
       type: q.type,
+      legalEntity: q.legalEntity,
       company: q.company,
+      brand: q.brand,
       period: q.period,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -245,7 +222,7 @@ export default async function InvoicesPage({
       </div>
 
       <Suspense>
-        <InvoicesFilters companies={companies} />
+        <InvoicesFilters companies={companies} legalEntities={legalEntities} />
       </Suspense>
 
       {/* Table */}
@@ -255,7 +232,8 @@ export default async function InvoicesPage({
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Empresa</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
               <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
               <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
               <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
@@ -275,6 +253,7 @@ export default async function InvoicesPage({
                 totalEur: Number(inv.totalEur),
                 status: inv.status,
                 companyName: inv.company.name,
+                brand: inv.brand,
                 lineCount: inv._count.lines,
               }))}
             />

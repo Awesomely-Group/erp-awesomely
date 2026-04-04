@@ -1,38 +1,99 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
-import { InvoiceStatus } from "@prisma/client";
+import { getDateRange } from "@/lib/date-range";
+import { InvoiceStatus, type Prisma } from "@prisma/client";
+import { DashboardFilters } from "./dashboard-filters";
+import { Suspense } from "react";
 
-async function getDashboardStats() {
-  const [
-    totalInvoices,
-    pendingClassification,
-    totalSaleEur,
-    totalPurchaseEur,
-  ] = await Promise.all([
-    prisma.invoice.count(),
-    prisma.invoice.count({
-      where: { status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] } },
-    }),
-    prisma.invoice.aggregate({
-      _sum: { totalEur: true },
-      where: { type: "SALE" },
-    }),
-    prisma.invoice.aggregate({
-      _sum: { totalEur: true },
-      where: { type: "PURCHASE" },
-    }),
-  ]);
+type DashboardParams = {
+  period?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  legalEntity?: string;
+  company?: string;
+};
+
+function buildDashboardInvoiceWhere(
+  params: DashboardParams
+): Prisma.InvoiceWhereInput {
+  const dateRange = getDateRange(
+    params.period ?? "",
+    params.dateFrom,
+    params.dateTo
+  );
+  const where: Prisma.InvoiceWhereInput = {};
+  if (dateRange.gte || dateRange.lte) {
+    where.date = dateRange;
+  }
+  if (params.company) {
+    where.companyId = params.company;
+  } else if (params.legalEntity) {
+    where.company = { legalEntityId: params.legalEntity };
+  }
+  return where;
+}
+
+async function getDashboardStats(where: Prisma.InvoiceWhereInput = {}) {
+  const pendingWhere: Prisma.InvoiceWhereInput = {
+    ...where,
+    status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] },
+  };
+  const saleWhere: Prisma.InvoiceWhereInput = { ...where, type: "SALE" };
+  const purchaseWhere: Prisma.InvoiceWhereInput = { ...where, type: "PURCHASE" };
+
+  const [totalInvoices, pendingClassification, totalSaleEur, totalPurchaseEur] =
+    await Promise.all([
+      prisma.invoice.count({ where }),
+      prisma.invoice.count({ where: pendingWhere }),
+      prisma.invoice.aggregate({
+        _sum: { totalEur: true },
+        where: saleWhere,
+      }),
+      prisma.invoice.aggregate({
+        _sum: { totalEur: true },
+        where: purchaseWhere,
+      }),
+    ]);
 
   const revenue = Number(totalSaleEur._sum.totalEur ?? 0);
   const costs = Number(totalPurchaseEur._sum.totalEur ?? 0);
 
-  return { totalInvoices, pendingClassification, revenue, costs, margin: revenue - costs };
+  return {
+    totalInvoices,
+    pendingClassification,
+    revenue,
+    costs,
+    margin: revenue - costs,
+  };
 }
 
-export default async function DashboardPage(): Promise<React.JSX.Element> {
-  const session = await auth();
-  const stats = await getDashboardStats();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<DashboardParams>;
+}): Promise<React.JSX.Element> {
+  const params = await searchParams;
+  const invoiceWhere = buildDashboardInvoiceWhere(params);
+
+  const [session, stats, legalEntities, companies] = await Promise.all([
+    auth(),
+    getDashboardStats(invoiceWhere),
+    prisma.legalEntity.findMany({ orderBy: { name: "asc" } }),
+    prisma.company.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  const hasFilters = Boolean(
+    params.period ||
+      params.dateFrom ||
+      params.dateTo ||
+      params.legalEntity ||
+      params.company
+  );
 
   const cards = [
     {
@@ -69,8 +130,21 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
         </h1>
         <p className="text-sm text-gray-500 mt-1">
           Resumen global del grupo Awesomely
+          {hasFilters && (
+            <span className="text-indigo-600 font-medium">
+              {" "}
+              · cifras filtradas
+            </span>
+          )}
         </p>
       </div>
+
+      <Suspense fallback={null}>
+        <DashboardFilters
+          legalEntities={legalEntities}
+          companies={companies}
+        />
+      </Suspense>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {cards.map((card) => (
@@ -89,8 +163,15 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           Estado del sistema
         </h2>
         <div className="space-y-3">
-          <StatusRow label="Total facturas importadas" value={stats.totalInvoices.toString()} />
-          <StatusRow label="Facturas pendientes de clasificar" value={stats.pendingClassification.toString()} badge="warning" />
+          <StatusRow
+            label="Total facturas (según filtros)"
+            value={stats.totalInvoices.toString()}
+          />
+          <StatusRow
+            label="Facturas pendientes de clasificar"
+            value={stats.pendingClassification.toString()}
+            badge="warning"
+          />
         </div>
       </div>
     </div>

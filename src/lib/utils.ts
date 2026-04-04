@@ -29,6 +29,19 @@ export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): s
   return `https://app.holded.com/expenses/list#open:purchase-${holdedId}`;
 }
 
+const TAG_TO_BRAND: Record<string, string> = {
+  gsolutions:     "Gigson Solutions",
+  latroupestudio: "LaTroupe",
+  awesomely:      "Awesomely",
+  gigson:         "Gigson",
+};
+
+/** Maps the first Holded tag to a human-readable brand name. Returns null if no tags. */
+export function tagToBrand(tags?: string[]): string | null {
+  if (!tags || tags.length === 0) return null;
+  return TAG_TO_BRAND[tags[0]] ?? tags[0];
+}
+
 export function formatDateTime(date: Date | string): string {
   return new Intl.DateTimeFormat("es-ES", {
     day: "2-digit",

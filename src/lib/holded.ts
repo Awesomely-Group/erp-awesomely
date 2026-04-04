@@ -37,6 +37,7 @@ export interface HoldedInvoice {
   status: number; // 0=draft, 1=pending, 2=paid/accepted, 3=late
   paymentsTotal?: number;
   paymentsPending?: number;
+  tags?: string[];
 }
 
 export interface HoldedListResponse {

@@ -65,6 +65,19 @@ model SsoAllowedEmail {
   @@map("sso_allowed_emails")
 }
 
+// ─── Legal entities (grupo / sociedad matriz) ──────────────────────────────────
+
+model LegalEntity {
+  id        String    @id @default(cuid())
+  name      String
+  companies Company[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("legal_entities")
+}
+
 // ─── Companies ─────────────────────────────────────────────────────────────────
 
 model Company {
@@ -73,6 +86,9 @@ model Company {
   holdedApiKey String
   currency     String   @default("EUR")
   active       Boolean  @default(true)
+
+  legalEntityId String?
+  legalEntity   LegalEntity? @relation(fields: [legalEntityId], references: [id], onDelete: SetNull)
 
   invoices     Invoice[]
   syncLogs     SyncLog[]
@@ -154,6 +170,9 @@ model Invoice {
   tax          Decimal @default(0)
   total        Decimal @default(0)
   totalEur     Decimal @default(0)
+
+  // Brand (first Holded tag mapped to readable name)
+  brand           String?
 
   // Payment tracking (synced from Holded)
   paymentsTotal   Decimal @default(0)
