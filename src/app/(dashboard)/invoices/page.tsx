@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
+import {
+  MARCA_OPTIONS,
+  parseEmpresaParam,
+  parseMarcaParam,
+  invoiceWhereCompanyOrg,
+} from "@/lib/org";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -63,9 +69,8 @@ type InvoicePageParams = {
   search?: string;
   status?: string;
   type?: string;
-  legalEntity?: string;
-  company?: string;
-  brand?: string;
+  empresa?: string;
+  marca?: string;
   period?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -82,6 +87,10 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
 
   const dateRange = getDateRange(params.period ?? "", params.dateFrom, params.dateTo);
 
+  const empresa = parseEmpresaParam(params.empresa);
+  const marca = parseMarcaParam(params.marca);
+  const org = invoiceWhereCompanyOrg(empresa, marca);
+
   const where = {
     ...(params.search
       ? {
@@ -93,12 +102,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       : {}),
     ...(params.status ? { status: params.status as InvoiceStatus } : {}),
     ...(params.type ? { type: params.type as InvoiceType } : {}),
-    ...(params.company
-      ? { companyId: params.company }
-      : params.legalEntity
-        ? { company: { legalEntityId: params.legalEntity } }
-        : {}),
-    ...(params.brand ? { brand: params.brand } : {}),
+    ...(org ?? {}),
     ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
 
@@ -111,7 +115,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
           ? { counterparty: sortDir }
           : { date: sortDir };
 
-  const [invoices, total, companies, legalEntities] = await Promise.all([
+  const [invoices, total] = await Promise.all([
     prisma.invoice.findMany({
       where,
       include: { company: true, _count: { select: { lines: true } } },
@@ -120,8 +124,6 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       take: pageSize,
     }),
     prisma.invoice.count({ where }),
-    prisma.company.findMany({ where: { active: true } }),
-    prisma.legalEntity.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const totalPages = Math.ceil(total / pageSize);
@@ -134,8 +136,6 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     sortDir,
     invoices,
     total,
-    companies,
-    legalEntities,
     totalPages,
   };
 }
@@ -171,8 +171,6 @@ export default async function InvoicesPage({
     sortDir,
     invoices,
     total,
-    companies,
-    legalEntities,
     totalPages,
   } = data;
 
@@ -182,9 +180,8 @@ export default async function InvoicesPage({
       search: q.search,
       status: q.status,
       type: q.type,
-      legalEntity: q.legalEntity,
-      company: q.company,
-      brand: q.brand,
+      empresa: q.empresa,
+      marca: q.marca,
       period: q.period,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -222,7 +219,7 @@ export default async function InvoicesPage({
       </div>
 
       <Suspense>
-        <InvoicesFilters companies={companies} legalEntities={legalEntities} />
+        <InvoicesFilters />
       </Suspense>
 
       {/* Table */}
@@ -253,7 +250,9 @@ export default async function InvoicesPage({
                 totalEur: Number(inv.totalEur),
                 status: inv.status,
                 companyName: inv.company.name,
-                brand: inv.brand,
+                brand: inv.company.marca
+                  ? (MARCA_OPTIONS.find((o) => o.value === inv.company.marca)?.label ?? inv.company.marca)
+                  : null,
                 lineCount: inv._count.lines,
               }))}
             />

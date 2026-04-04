@@ -2,7 +2,6 @@ import { prisma } from "./prisma";
 import { HoldedClient } from "./holded";
 import { JiraClient } from "./jira";
 import { convertToEur } from "./exchange-rates";
-import { tagToBrand } from "./utils";
 import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
@@ -134,8 +133,6 @@ async function upsertInvoice(
 
   const totalEur = (inv.total ?? 0) * resolvedFxRate;
 
-  const brand = tagToBrand(inv.tags);
-
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
     update: {
@@ -149,7 +146,6 @@ async function upsertInvoice(
       tax: inv.tax ?? 0,
       total: inv.total ?? 0,
       totalEur,
-      brand,
       paymentsTotal: inv.paymentsTotal ?? 0,
       paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
     },
@@ -167,7 +163,6 @@ async function upsertInvoice(
       tax: inv.tax ?? 0,
       total: inv.total ?? 0,
       totalEur,
-      brand,
       paymentsTotal: inv.paymentsTotal ?? 0,
       paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
     },

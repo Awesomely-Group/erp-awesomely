@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { EMPRESA_OPTIONS, MARCA_OPTIONS } from "@/lib/org";
 
 const PERIODS = [
   { value: "", label: "Todas las fechas" },
@@ -14,20 +15,15 @@ const PERIODS = [
   { value: "custom", label: "Personalizado…" },
 ];
 
-interface Props {
-  legalEntities: { id: string; name: string }[];
-  companies: { id: string; name: string }[];
-}
-
-export function DashboardFilters({ legalEntities, companies }: Props): React.JSX.Element {
+export function DashboardFilters(): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
   const [period, setPeriod] = useState(sp.get("period") ?? "");
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
-  const [legalEntity, setLegalEntity] = useState(sp.get("legalEntity") ?? "");
-  const [company, setCompany] = useState(sp.get("company") ?? "");
+  const [empresa, setEmpresa] = useState(sp.get("empresa") ?? "");
+  const [marca, setMarca] = useState(sp.get("marca") ?? "");
 
   function apply(): void {
     const params = new URLSearchParams();
@@ -36,8 +32,8 @@ export function DashboardFilters({ legalEntities, companies }: Props): React.JSX
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
     }
-    if (legalEntity) params.set("legalEntity", legalEntity);
-    if (company) params.set("company", company);
+    if (empresa) params.set("empresa", empresa);
+    if (marca) params.set("marca", marca);
     const q = params.toString();
     router.push(q ? `/dashboard?${q}` : "/dashboard");
   }
@@ -46,8 +42,8 @@ export function DashboardFilters({ legalEntities, companies }: Props): React.JSX
     setPeriod("");
     setDateFrom("");
     setDateTo("");
-    setLegalEntity("");
-    setCompany("");
+    setEmpresa("");
+    setMarca("");
     router.push("/dashboard");
   }
 
@@ -94,32 +90,32 @@ export function DashboardFilters({ legalEntities, companies }: Props): React.JSX
         )}
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Entidad legal</label>
+          <label className="text-xs text-gray-500 font-medium">Empresa</label>
           <select
-            value={legalEntity}
-            onChange={(e) => setLegalEntity(e.target.value)}
+            value={empresa}
+            onChange={(e) => setEmpresa(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[12rem]"
           >
             <option value="">Todas</option>
-            {legalEntities.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
+            {EMPRESA_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </select>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Empresa Holded</label>
+          <label className="text-xs text-gray-500 font-medium">Marca</label>
           <select
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
+            value={marca}
+            onChange={(e) => setMarca(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[12rem]"
           >
             <option value="">Todas</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+            {MARCA_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </select>

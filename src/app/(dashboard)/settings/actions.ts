@@ -8,6 +8,7 @@ import {
   canManageSsoAllowlist,
   normalizeEmail,
 } from "@/lib/sso-allowlist";
+import { parseEmpresaParam, parseMarcaParam } from "@/lib/org";
 
 export async function createCompany(data: FormData): Promise<void> {
   const session = await auth();
@@ -15,12 +16,18 @@ export async function createCompany(data: FormData): Promise<void> {
 
   const name = data.get("name") as string;
   const holdedApiKey = data.get("holdedApiKey") as string;
-  const legalEntityIdRaw = data.get("legalEntityId") as string | null;
-  const legalEntityId =
-    legalEntityIdRaw && legalEntityIdRaw.length > 0 ? legalEntityIdRaw : undefined;
+  const empresaStr = ((data.get("empresa") as string) || "").trim();
+  const marcaStr = ((data.get("marca") as string) || "").trim();
+  const empresa = empresaStr ? parseEmpresaParam(empresaStr) ?? null : null;
+  const marca = marcaStr ? parseMarcaParam(marcaStr) ?? null : null;
 
   const company = await prisma.company.create({
-    data: { name, holdedApiKey, legalEntityId },
+    data: {
+      name,
+      holdedApiKey,
+      empresa,
+      marca,
+    },
   });
 
   await prisma.auditLog.create({
@@ -35,43 +42,24 @@ export async function createCompany(data: FormData): Promise<void> {
 
   revalidatePath("/settings");
   revalidatePath("/dashboard");
+  revalidatePath("/invoices");
 }
 
-export async function createLegalEntity(data: FormData): Promise<void> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
-
-  const name = (data.get("name") as string)?.trim();
-  if (!name) throw new Error("Nombre requerido");
-
-  const entity = await prisma.legalEntity.create({ data: { name } });
-
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      action: AuditAction.CREATE,
-      entityType: "LegalEntity",
-      entityId: entity.id,
-      newValue: { name },
-    },
-  });
-
-  revalidatePath("/settings");
-  revalidatePath("/dashboard");
-}
-
-export async function updateCompanyLegalEntity(
+export async function updateCompanyOrg(
   companyId: string,
-  legalEntityId: string | null
+  raw: { empresa: string | null; marca: string | null }
 ): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
+  const empresa = raw.empresa
+    ? parseEmpresaParam(raw.empresa) ?? null
+    : null;
+  const marca = raw.marca ? parseMarcaParam(raw.marca) ?? null : null;
+
   await prisma.company.update({
     where: { id: companyId },
-    data: {
-      legalEntityId: legalEntityId && legalEntityId.length > 0 ? legalEntityId : null,
-    },
+    data: { empresa, marca },
   });
 
   await prisma.auditLog.create({
@@ -80,12 +68,13 @@ export async function updateCompanyLegalEntity(
       action: AuditAction.UPDATE,
       entityType: "Company",
       entityId: companyId,
-      newValue: { legalEntityId: legalEntityId || null },
+      newValue: { empresa, marca },
     },
   });
 
   revalidatePath("/settings");
   revalidatePath("/dashboard");
+  revalidatePath("/invoices");
 }
 
 export async function createWorkspace(data: FormData): Promise<void> {

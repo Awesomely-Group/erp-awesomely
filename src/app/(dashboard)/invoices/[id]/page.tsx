@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import { MARCA_OPTIONS } from "@/lib/org";
 import { notFound } from "next/navigation";
 import { ClassifyLinesForm } from "./classify-lines-form";
 import { getSuggestionsForLine } from "@/lib/suggestions";
@@ -69,7 +70,12 @@ export default async function InvoiceDetailPage({
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {invoice.type === "SALE" ? "Venta" : "Compra"} ·{" "}
-            {invoice.company.name} · {invoice.brand ?? "—"} · {formatDate(invoice.date)}
+            {invoice.company.name}
+            {invoice.company.marca
+              ? ` · ${MARCA_OPTIONS.find((o) => o.value === invoice.company.marca)?.label ?? invoice.company.marca}`
+              : ""}
+            {" · "}
+            {formatDate(invoice.date)}
           </p>
         </div>
         <div className="text-right">

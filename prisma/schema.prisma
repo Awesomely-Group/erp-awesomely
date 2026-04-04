@@ -65,17 +65,18 @@ model SsoAllowedEmail {
   @@map("sso_allowed_emails")
 }
 
-// ─── Legal entities (grupo / sociedad matriz) ──────────────────────────────────
+// ─── Empresa jurídica & marca (clasificación Holded) ───────────────────────────
 
-model LegalEntity {
-  id        String    @id @default(cuid())
-  name      String
-  companies Company[]
+enum Empresa {
+  AWESOMELY_SL
+  AWESOMELY_OU
+}
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("legal_entities")
+enum Marca {
+  GIGSON_SOLUTIONS
+  GIGSON
+  AWESOMELY
+  LATROUPE
 }
 
 // ─── Companies ─────────────────────────────────────────────────────────────────
@@ -87,8 +88,8 @@ model Company {
   currency     String   @default("EUR")
   active       Boolean  @default(true)
 
-  legalEntityId String?
-  legalEntity   LegalEntity? @relation(fields: [legalEntityId], references: [id], onDelete: SetNull)
+  empresa Empresa?
+  marca   Marca?
 
   invoices     Invoice[]
   syncLogs     SyncLog[]
@@ -170,9 +171,6 @@ model Invoice {
   tax          Decimal @default(0)
   total        Decimal @default(0)
   totalEur     Decimal @default(0)
-
-  // Brand (first Holded tag mapped to readable name)
-  brand           String?
 
   // Payment tracking (synced from Holded)
   paymentsTotal   Decimal @default(0)

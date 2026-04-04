@@ -3,12 +3,9 @@
 import { useState, useTransition } from "react";
 import { createCompany } from "./actions";
 import { Plus } from "lucide-react";
+import { EMPRESA_OPTIONS, MARCA_OPTIONS } from "@/lib/org";
 
-interface Props {
-  legalEntities: { id: string; name: string }[];
-}
-
-export function CompanyForm({ legalEntities }: Props): React.JSX.Element {
+export function CompanyForm(): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -24,6 +21,7 @@ export function CompanyForm({ legalEntities }: Props): React.JSX.Element {
   if (!open) {
     return (
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
       >
@@ -46,7 +44,7 @@ export function CompanyForm({ legalEntities }: Props): React.JSX.Element {
           <input
             name="name"
             required
-            placeholder="Awesomely SL"
+            placeholder="Cuenta en Holded"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
@@ -62,18 +60,34 @@ export function CompanyForm({ legalEntities }: Props): React.JSX.Element {
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div className="sm:col-span-2">
+        <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Entidad legal (opcional)
+            Empresa (opcional)
           </label>
           <select
-            name="legalEntityId"
-            className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            name="empresa"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
             <option value="">Sin asignar</option>
-            {legalEntities.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
+            {EMPRESA_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Marca (opcional)
+          </label>
+          <select
+            name="marca"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">Sin asignar</option>
+            {MARCA_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </select>

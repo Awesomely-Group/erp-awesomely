@@ -2,6 +2,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
+import {
+  parseEmpresaParam,
+  parseMarcaParam,
+  invoiceWhereCompanyOrg,
+} from "@/lib/org";
 import { InvoiceStatus, type Prisma } from "@prisma/client";
 import { DashboardFilters } from "./dashboard-filters";
 import { Suspense } from "react";
@@ -10,8 +15,8 @@ type DashboardParams = {
   period?: string;
   dateFrom?: string;
   dateTo?: string;
-  legalEntity?: string;
-  company?: string;
+  empresa?: string;
+  marca?: string;
 };
 
 function buildDashboardInvoiceWhere(
@@ -26,11 +31,10 @@ function buildDashboardInvoiceWhere(
   if (dateRange.gte || dateRange.lte) {
     where.date = dateRange;
   }
-  if (params.company) {
-    where.companyId = params.company;
-  } else if (params.legalEntity) {
-    where.company = { legalEntityId: params.legalEntity };
-  }
+  const empresa = parseEmpresaParam(params.empresa);
+  const marca = parseMarcaParam(params.marca);
+  const org = invoiceWhereCompanyOrg(empresa, marca);
+  if (org) Object.assign(where, org);
   return where;
 }
 
@@ -76,23 +80,17 @@ export default async function DashboardPage({
   const params = await searchParams;
   const invoiceWhere = buildDashboardInvoiceWhere(params);
 
-  const [session, stats, legalEntities, companies] = await Promise.all([
+  const [session, stats] = await Promise.all([
     auth(),
     getDashboardStats(invoiceWhere),
-    prisma.legalEntity.findMany({ orderBy: { name: "asc" } }),
-    prisma.company.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
   ]);
 
   const hasFilters = Boolean(
     params.period ||
       params.dateFrom ||
       params.dateTo ||
-      params.legalEntity ||
-      params.company
+      params.empresa ||
+      params.marca
   );
 
   const cards = [
@@ -140,10 +138,7 @@ export default async function DashboardPage({
       </div>
 
       <Suspense fallback={null}>
-        <DashboardFilters
-          legalEntities={legalEntities}
-          companies={companies}
-        />
+        <DashboardFilters />
       </Suspense>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

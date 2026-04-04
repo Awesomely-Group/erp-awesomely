@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { EMPRESA_OPTIONS, MARCA_OPTIONS } from "@/lib/org";
 
 const PERIODS = [
   { value: "", label: "Todos los periodos" },
@@ -14,12 +15,7 @@ const PERIODS = [
   { value: "custom", label: "Personalizado…" },
 ];
 
-interface Props {
-  companies: { id: string; name: string }[];
-  legalEntities: { id: string; name: string }[];
-}
-
-export function InvoicesFilters({ companies, legalEntities }: Props): React.JSX.Element {
+export function InvoicesFilters(): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -29,18 +25,16 @@ export function InvoicesFilters({ companies, legalEntities }: Props): React.JSX.
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [type, setType] = useState(sp.get("type") ?? "");
-  const [legalEntity, setLegalEntity] = useState(sp.get("legalEntity") ?? "");
-  const [company, setCompany] = useState(sp.get("company") ?? "");
-  const [brand, setBrand] = useState(sp.get("brand") ?? "");
+  const [empresa, setEmpresa] = useState(sp.get("empresa") ?? "");
+  const [marca, setMarca] = useState(sp.get("marca") ?? "");
 
   function apply(): void {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (status) params.set("status", status);
     if (type) params.set("type", type);
-    if (legalEntity) params.set("legalEntity", legalEntity);
-    if (company) params.set("company", company);
-    if (brand) params.set("brand", brand);
+    if (empresa) params.set("empresa", empresa);
+    if (marca) params.set("marca", marca);
     if (period) params.set("period", period);
     if (period === "custom") {
       if (dateFrom) params.set("dateFrom", dateFrom);
@@ -56,9 +50,8 @@ export function InvoicesFilters({ companies, legalEntities }: Props): React.JSX.
     setDateTo("");
     setStatus("");
     setType("");
-    setLegalEntity("");
-    setCompany("");
-    setBrand("");
+    setEmpresa("");
+    setMarca("");
     router.push("/invoices");
   }
 
@@ -142,31 +135,17 @@ export function InvoicesFilters({ companies, legalEntities }: Props): React.JSX.
       </div>
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Entidad legal</label>
+        <label className="text-xs text-gray-500 font-medium">Empresa</label>
         <select
-          value={legalEntity}
-          onChange={(e) => setLegalEntity(e.target.value)}
+          value={empresa}
+          onChange={(e) => setEmpresa(e.target.value)}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
         >
           <option value="">Todas</option>
-          {legalEntities.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}
+          {EMPRESA_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Empresa</label>
-        <select
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">Todas</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
       </div>
@@ -174,26 +153,29 @@ export function InvoicesFilters({ companies, legalEntities }: Props): React.JSX.
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Marca</label>
         <select
-          value={brand}
-          onChange={(e) => setBrand(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          value={marca}
+          onChange={(e) => setMarca(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
         >
           <option value="">Todas</option>
-          <option value="Awesomely">Awesomely</option>
-          <option value="LaTroupe">LaTroupe</option>
-          <option value="Gigson Solutions">Gigson Solutions</option>
-          <option value="Gigson">Gigson</option>
+          {MARCA_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
       </div>
 
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={apply}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
         >
           Filtrar
         </button>
         <button
+          type="button"
           onClick={reset}
           className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
         >

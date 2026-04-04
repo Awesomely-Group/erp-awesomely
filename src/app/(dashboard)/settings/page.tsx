@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { CompanyForm } from "./company-form";
-import { CompanyLegalEntityPicker } from "./company-legal-entity-picker";
-import { LegalEntityForm } from "./legal-entity-form";
+import { CompanyOrgPicker } from "./company-org-picker";
 import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
 import { SsoAllowlistSection } from "./sso-allowlist";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
-  const [companies, workspaces, auditLogs, legalEntities] = await Promise.all([
+  const [companies, workspaces, auditLogs] = await Promise.all([
     prisma.company.findMany({ orderBy: { name: "asc" } }),
     prisma.jiraWorkspace.findMany({ orderBy: { name: "asc" } }),
     prisma.auditLog.findMany({
@@ -15,7 +14,6 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
-    prisma.legalEntity.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -27,32 +25,14 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         </p>
       </div>
 
-      {/* Legal entities */}
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-900">
-          Entidades legales
-        </h2>
-        <p className="text-sm text-gray-500">
-          Agrupa empresas Holded (cuentas) bajo una misma sociedad o grupo para
-          filtrar el dashboard.
-        </p>
-        {legalEntities.length > 0 && (
-          <ul className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-            {legalEntities.map((e) => (
-              <li key={e.id} className="px-4 py-3 text-sm text-gray-900">
-                {e.name}
-              </li>
-            ))}
-          </ul>
-        )}
-        <LegalEntityForm />
-      </section>
-
-      {/* Holded companies */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-900">
           Empresas Holded
         </h2>
+        <p className="text-sm text-gray-500">
+          Asigna cada cuenta Holded a una empresa jurídica (Awesomely SL / OU) y
+          a una marca para filtrar el dashboard y las facturas.
+        </p>
         <div className="space-y-3">
           {companies.map((c) => (
             <div
@@ -65,11 +45,11 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
                   API key: ••••••••{c.holdedApiKey.slice(-4)}
                 </p>
               </div>
-              <div className="flex flex-wrap items-end gap-4">
-                <CompanyLegalEntityPicker
+              <div className="flex flex-wrap items-center gap-4">
+                <CompanyOrgPicker
                   companyId={c.id}
-                  legalEntityId={c.legalEntityId}
-                  entities={legalEntities}
+                  empresa={c.empresa}
+                  marca={c.marca}
                 />
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full h-fit ${
@@ -84,7 +64,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
             </div>
           ))}
         </div>
-        <CompanyForm legalEntities={legalEntities} />
+        <CompanyForm />
       </section>
 
       {/* Jira workspaces */}
