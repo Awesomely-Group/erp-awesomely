@@ -2,10 +2,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
-import { invoiceWhereMarca } from "@/lib/org";
-import { InvoiceStatus, type Prisma } from "@prisma/client";
+import { invoiceWhereMarca, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
+import { InvoiceStatus, Prisma, type Prisma as PrismaTypes } from "@prisma/client";
 import { DashboardFilters } from "./dashboard-filters";
 import { Suspense } from "react";
+import { CashflowChart, type CashflowMonthlyPoint } from "@/app/(dashboard)/cashflow/cashflow-chart";
 
 type DashboardParams = {
   period?: string;
@@ -31,7 +32,72 @@ function buildDashboardInvoiceWhere(
   return where;
 }
 
-async function getDashboardStats(where: Prisma.InvoiceWhereInput = {}) {
+type RawMonthlyRow = {
+  month: Date;
+  invoice_type: string;
+  total_eur: unknown;
+};
+
+async function getDashboardCashflow(
+  params: DashboardParams
+): Promise<CashflowMonthlyPoint[]> {
+  const dateRange = getDateRange(
+    params.period ?? "",
+    params.dateFrom,
+    params.dateTo
+  );
+  const conditions: Prisma.Sql[] = [];
+
+  if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
+  if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
+
+  if (params.marca === MARCA_FILTER_UNASSIGNED) {
+    conditions.push(Prisma.sql`marca IS NULL`);
+  } else if (params.marca) {
+    conditions.push(Prisma.sql`marca = ${params.marca}`);
+  }
+
+  const whereClause =
+    conditions.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+      : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<RawMonthlyRow[]>`
+    SELECT
+      DATE_TRUNC('month', date) AS month,
+      type AS invoice_type,
+      SUM("totalEur") AS total_eur
+    FROM invoices
+    ${whereClause}
+    GROUP BY DATE_TRUNC('month', date), type
+    ORDER BY month ASC
+  `;
+
+  const pointMap = new Map<string, CashflowMonthlyPoint>();
+  for (const row of rows) {
+    const d = new Date(row.month);
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const monthLabel = d.toLocaleDateString("es-ES", {
+      month: "short",
+      year: "numeric",
+    });
+    if (!pointMap.has(monthKey)) {
+      pointMap.set(monthKey, { monthKey, monthLabel, inflows: 0, outflows: 0, net: 0 });
+    }
+    const point = pointMap.get(monthKey)!;
+    const amount = Number(row.total_eur);
+    if (row.invoice_type === "SALE") {
+      point.inflows += amount;
+    } else {
+      point.outflows += amount;
+    }
+    point.net = point.inflows - point.outflows;
+  }
+
+  return Array.from(pointMap.values());
+}
+
+async function getDashboardStats(where: PrismaTypes.InvoiceWhereInput = {}) {
   const pendingWhere: Prisma.InvoiceWhereInput = {
     ...where,
     status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] },
@@ -73,9 +139,10 @@ export default async function DashboardPage({
   const params = await searchParams;
   const invoiceWhere = buildDashboardInvoiceWhere(params);
 
-  const [session, stats] = await Promise.all([
+  const [session, stats, cashflowMonthly] = await Promise.all([
     auth(),
     getDashboardStats(invoiceWhere),
+    getDashboardCashflow(params),
   ]);
 
   const hasFilters = Boolean(
@@ -143,6 +210,13 @@ export default async function DashboardPage({
             <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">
+          Flujo de caja mensual
+        </h2>
+        <CashflowChart data={cashflowMonthly} height={260} />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">

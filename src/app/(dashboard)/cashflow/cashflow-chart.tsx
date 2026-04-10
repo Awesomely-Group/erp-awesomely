@@ -57,8 +57,10 @@ function CustomTooltip({
 
 export function CashflowChart({
   data,
+  height = 350,
 }: {
   data: CashflowMonthlyPoint[];
+  height?: number;
 }): React.JSX.Element {
   if (data.length === 0) {
     return (
@@ -69,7 +71,7 @@ export function CashflowChart({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={350}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
         <XAxis
