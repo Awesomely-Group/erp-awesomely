@@ -47,6 +47,7 @@ interface Project {
 
 interface Props {
   invoiceId: string;
+  invoiceMarca?: string | null;
   lines: Line[];
   projects: Project[];
 }
@@ -63,7 +64,7 @@ const STATUS_COLORS: Record<string, string> = {
   APPROVED: "text-green-600 bg-green-50 border-green-200",
 };
 
-export function ClassifyLinesForm({ invoiceId, lines, projects }: Props): React.JSX.Element {
+export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: Props): React.JSX.Element {
   const [localLines, setLocalLines] = useState(lines);
   const [expandedLine, setExpandedLine] = useState<string | null>(
     lines.find((l) => !l.classification)?.id ?? null
@@ -115,6 +116,7 @@ export function ClassifyLinesForm({ invoiceId, lines, projects }: Props): React.
           key={line.id}
           line={line}
           projects={projects}
+          invoiceMarca={invoiceMarca}
           isExpanded={expandedLine === line.id}
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
@@ -131,6 +133,7 @@ export function ClassifyLinesForm({ invoiceId, lines, projects }: Props): React.
 function LineRow({
   line,
   projects,
+  invoiceMarca,
   isExpanded,
   isPending,
   onToggle,
@@ -139,6 +142,7 @@ function LineRow({
 }: {
   line: Line;
   projects: Project[];
+  invoiceMarca?: string | null;
   isExpanded: boolean;
   isPending: boolean;
   onToggle: () => void;
@@ -148,7 +152,13 @@ function LineRow({
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
   const [notes, setNotes] = useState(line.classification?.notes ?? "");
   const [notesOpen, setNotesOpen] = useState(!!(line.classification?.notes));
-  const [workspaceFilter, setWorkspaceFilter] = useState("");
+
+  // Pre-select the workspace chip that matches the invoice marca (if any)
+  const defaultWorkspace =
+    invoiceMarca && projects.some((p) => p.workspaceName === invoiceMarca)
+      ? invoiceMarca
+      : "";
+  const [workspaceFilter, setWorkspaceFilter] = useState(defaultWorkspace);
   const [projectSearch, setProjectSearch] = useState("");
 
   const workspaces = Array.from(new Set(projects.map((p) => p.workspaceName))).sort();

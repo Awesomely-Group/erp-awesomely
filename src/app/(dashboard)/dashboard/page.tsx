@@ -2,11 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
-import {
-  parseEmpresaParam,
-  parseMarcaParam,
-  invoiceWhereCompanyOrg,
-} from "@/lib/org";
+import { invoiceWhereMarca } from "@/lib/org";
 import { InvoiceStatus, type Prisma } from "@prisma/client";
 import { DashboardFilters } from "./dashboard-filters";
 import { Suspense } from "react";
@@ -15,7 +11,6 @@ type DashboardParams = {
   period?: string;
   dateFrom?: string;
   dateTo?: string;
-  empresa?: string;
   marca?: string;
 };
 
@@ -31,10 +26,8 @@ function buildDashboardInvoiceWhere(
   if (dateRange.gte || dateRange.lte) {
     where.date = dateRange;
   }
-  const empresa = parseEmpresaParam(params.empresa);
-  const marca = parseMarcaParam(params.marca);
-  const org = invoiceWhereCompanyOrg(empresa, marca);
-  if (org) Object.assign(where, org);
+  const marcaFilter = invoiceWhereMarca(params.marca);
+  if (marcaFilter) Object.assign(where, marcaFilter);
   return where;
 }
 
@@ -89,7 +82,6 @@ export default async function DashboardPage({
     params.period ||
       params.dateFrom ||
       params.dateTo ||
-      params.empresa ||
       params.marca
   );
 

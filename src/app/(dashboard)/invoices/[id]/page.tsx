@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
-import { MARCA_OPTIONS } from "@/lib/org";
 import { notFound } from "next/navigation";
 import { ClassifyLinesForm } from "./classify-lines-form";
+import { MarcaEditor } from "./marca-editor";
 import { getSuggestionsForLine } from "@/lib/suggestions";
 
 export default async function InvoiceDetailPage({
@@ -68,12 +68,10 @@ export default async function InvoiceDetailPage({
               Ver en Holded ↗
             </a>
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-1 flex items-center gap-1 flex-wrap">
             {invoice.type === "SALE" ? "Venta" : "Compra"} ·{" "}
-            {invoice.company.name}
-            {invoice.company.marca
-              ? ` · ${MARCA_OPTIONS.find((o) => o.value === invoice.company.marca)?.label ?? invoice.company.marca}`
-              : ""}
+            {invoice.company.name} ·{" "}
+            <MarcaEditor invoiceId={invoice.id} marca={invoice.marca} />
             {" · "}
             {formatDate(invoice.date)}
           </p>
@@ -122,6 +120,7 @@ export default async function InvoiceDetailPage({
         </h2>
         <ClassifyLinesForm
           invoiceId={invoice.id}
+          invoiceMarca={invoice.marca}
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,

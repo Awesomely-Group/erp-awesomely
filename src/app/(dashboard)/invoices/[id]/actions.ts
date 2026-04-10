@@ -141,3 +141,38 @@ export async function updateClassificationStatus({
   await updateInvoiceStatus(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
 }
+
+export async function updateInvoiceMarca({
+  invoiceId,
+  marca,
+}: {
+  invoiceId: string;
+  marca: string | null;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const previous = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { marca: true },
+  });
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { marca: marca ?? null },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Invoice",
+      entityId: invoiceId,
+      previousValue: { marca: previous?.marca ?? null },
+      newValue: { marca: marca ?? null },
+      invoiceId,
+    },
+  });
+
+  revalidatePath(`/invoices/${invoiceId}`);
+}

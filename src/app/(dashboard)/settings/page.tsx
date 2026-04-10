@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { CompanyForm } from "./company-form";
-import { CompanyOrgPicker } from "./company-org-picker";
 import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
 import { SsoAllowlistSection } from "./sso-allowlist";
@@ -30,14 +29,14 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
           Empresas Holded
         </h2>
         <p className="text-sm text-gray-500">
-          Asigna cada cuenta Holded a una empresa jurídica (Awesomely SL / OU) y
-          a una marca para filtrar el dashboard y las facturas.
+          Cada cuenta de Holded conectada al ERP. La marca de cada factura se
+          determina automáticamente a partir de los tags de Holded.
         </p>
         <div className="space-y-3">
           {companies.map((c) => (
             <div
               key={c.id}
-              className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+              className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between gap-4"
             >
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-900">{c.name}</p>
@@ -45,22 +44,15 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
                   API key: ••••••••{c.holdedApiKey.slice(-4)}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-4">
-                <CompanyOrgPicker
-                  companyId={c.id}
-                  empresa={c.empresa}
-                  marca={c.marca}
-                />
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full h-fit ${
-                    c.active
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {c.active ? "Activa" : "Inactiva"}
-                </span>
-              </div>
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full h-fit ${
+                  c.active
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {c.active ? "Activa" : "Inactiva"}
+              </span>
             </div>
           ))}
         </div>

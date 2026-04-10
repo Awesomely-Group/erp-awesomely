@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { createCompany } from "./actions";
 import { Plus } from "lucide-react";
-import { EMPRESA_OPTIONS, MARCA_OPTIONS } from "@/lib/org";
 
 export function CompanyForm(): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -59,38 +58,6 @@ export function CompanyForm(): React.JSX.Element {
             placeholder="••••••••••••"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Empresa (opcional)
-          </label>
-          <select
-            name="empresa"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Sin asignar</option>
-            {EMPRESA_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Marca (opcional)
-          </label>
-          <select
-            name="marca"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Sin asignar</option>
-            {MARCA_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
       <div className="flex gap-3">

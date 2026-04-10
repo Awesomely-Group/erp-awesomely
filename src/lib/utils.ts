@@ -31,15 +31,16 @@ export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): s
 
 const TAG_TO_BRAND: Record<string, string> = {
   gsolutions:     "Gigson Solutions",
-  latroupestudio: "LaTroupe",
-  awesomely:      "Awesomely",
   gigson:         "Gigson",
+  awesomely:      "Awesomely",
+  latroupestudio: "LaTroupe",
+  latroupe:       "LaTroupe",  // variante sin "studio"
 };
 
-/** Maps the first Holded tag to a human-readable brand name. Returns null if no tags. */
+/** Maps the first Holded tag to a human-readable brand name. Returns null if unknown or no tags. */
 export function tagToBrand(tags?: string[]): string | null {
   if (!tags || tags.length === 0) return null;
-  return TAG_TO_BRAND[tags[0]] ?? tags[0];
+  return TAG_TO_BRAND[tags[0]] ?? null;
 }
 
 export function formatDateTime(date: Date | string): string {

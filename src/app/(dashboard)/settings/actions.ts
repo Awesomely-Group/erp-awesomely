@@ -8,7 +8,6 @@ import {
   canManageSsoAllowlist,
   normalizeEmail,
 } from "@/lib/sso-allowlist";
-import { parseEmpresaParam, parseMarcaParam } from "@/lib/org";
 
 export async function createCompany(data: FormData): Promise<void> {
   const session = await auth();
@@ -16,17 +15,11 @@ export async function createCompany(data: FormData): Promise<void> {
 
   const name = data.get("name") as string;
   const holdedApiKey = data.get("holdedApiKey") as string;
-  const empresaStr = ((data.get("empresa") as string) || "").trim();
-  const marcaStr = ((data.get("marca") as string) || "").trim();
-  const empresa = empresaStr ? parseEmpresaParam(empresaStr) ?? null : null;
-  const marca = marcaStr ? parseMarcaParam(marcaStr) ?? null : null;
 
   const company = await prisma.company.create({
     data: {
       name,
       holdedApiKey,
-      empresa,
-      marca,
     },
   });
 
@@ -37,38 +30,6 @@ export async function createCompany(data: FormData): Promise<void> {
       entityType: "Company",
       entityId: company.id,
       newValue: { name },
-    },
-  });
-
-  revalidatePath("/settings");
-  revalidatePath("/dashboard");
-  revalidatePath("/invoices");
-}
-
-export async function updateCompanyOrg(
-  companyId: string,
-  raw: { empresa: string | null; marca: string | null }
-): Promise<void> {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
-
-  const empresa = raw.empresa
-    ? parseEmpresaParam(raw.empresa) ?? null
-    : null;
-  const marca = raw.marca ? parseMarcaParam(raw.marca) ?? null : null;
-
-  await prisma.company.update({
-    where: { id: companyId },
-    data: { empresa, marca },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      action: AuditAction.UPDATE,
-      entityType: "Company",
-      entityId: companyId,
-      newValue: { empresa, marca },
     },
   });
 

@@ -65,20 +65,6 @@ model SsoAllowedEmail {
   @@map("sso_allowed_emails")
 }
 
-// ─── Empresa jurídica & marca (clasificación Holded) ───────────────────────────
-
-enum Empresa {
-  AWESOMELY_SL
-  AWESOMELY_OU
-}
-
-enum Marca {
-  GIGSON_SOLUTIONS
-  GIGSON
-  AWESOMELY
-  LATROUPE
-}
-
 // ─── Companies ─────────────────────────────────────────────────────────────────
 
 model Company {
@@ -87,9 +73,6 @@ model Company {
   holdedApiKey String
   currency     String   @default("EUR")
   active       Boolean  @default(true)
-
-  empresa Empresa?
-  marca   Marca?
 
   invoices     Invoice[]
   syncLogs     SyncLog[]
@@ -171,6 +154,9 @@ model Invoice {
   tax          Decimal @default(0)
   total        Decimal @default(0)
   totalEur     Decimal @default(0)
+
+  // Brand from Holded tags (mapped to readable name)
+  marca           String?
 
   // Payment tracking (synced from Holded)
   paymentsTotal   Decimal @default(0)
