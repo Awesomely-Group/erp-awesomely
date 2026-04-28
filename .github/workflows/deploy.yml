@@ -45,11 +45,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Trigger Vercel production deploy hook
-        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL != '' }}
-        run: curl -fsS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}"
-
-      - name: Warn when deploy hook is missing
-        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL == '' }}
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
-          echo "Missing VERCEL_DEPLOY_HOOK_URL secret."
-          echo "Add a Vercel Deploy Hook URL in repository secrets to enable auto deployment from this workflow."
+          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
+            echo "Missing VERCEL_DEPLOY_HOOK_URL secret."
+            echo "Add a Vercel Deploy Hook URL in repository secrets to enable auto deployment from this workflow."
+            exit 1
+          fi
+          curl -fsS -X POST "$VERCEL_DEPLOY_HOOK_URL"
