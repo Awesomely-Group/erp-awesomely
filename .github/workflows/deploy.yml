@@ -17,24 +17,27 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "pnpm"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
+          cache: "npm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
 
       - name: Run typecheck
-        run: pnpm typecheck
+        run: |
+          corepack enable
+          pnpm typecheck
 
       - name: Run tests
-        run: pnpm test
+        run: |
+          corepack enable
+          pnpm test
 
       - name: Build project
-        run: pnpm build
+        run: |
+          corepack enable
+          pnpm build
 
   deploy:
     needs: build
