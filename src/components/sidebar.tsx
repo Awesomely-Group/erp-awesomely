@@ -22,7 +22,7 @@ const navigation = [
   { name: "Proyectos", href: "/projects", icon: FolderKanban },
   { name: "Rentabilidad", href: "/profitability", icon: BarChart3 },
   { name: "Flujo de Caja", href: "/cashflow", icon: TrendingUp },
-  { name: "Pagos", href: "/payments", icon: CreditCard },
+  { name: "Pagos y Cobros", href: "/payments", icon: CreditCard },
   { name: "Sincronización", href: "/sync", icon: RefreshCw },
   { name: "Configuración", href: "/settings", icon: Settings },
 ];

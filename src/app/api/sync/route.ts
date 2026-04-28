@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { syncAll } from "@/lib/sync";
 
-// Called by Vercel Cron (every hour) or manually from the UI
-// Header: Authorization: Bearer <CRON_SECRET>
-export async function POST(req: Request): Promise<NextResponse> {
+async function handleSync(req: Request): Promise<NextResponse> {
   // Allow both authenticated users and the cron job
   const session = await auth();
   const authHeader = req.headers.get("authorization");
@@ -24,4 +22,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
+}
+
+// Manual sync from the dashboard
+export async function POST(req: Request): Promise<NextResponse> {
+  return handleSync(req);
+}
+
+// Vercel Cron requests use GET
+export async function GET(req: Request): Promise<NextResponse> {
+  return handleSync(req);
 }
