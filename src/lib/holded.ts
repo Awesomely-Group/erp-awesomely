@@ -2,6 +2,7 @@
 // Docs: https://developers.holded.com/
 
 const HOLDED_BASE_URL = "https://api.holded.com/api/invoicing/v1";
+const HOLDED_ACCOUNTING_BASE_URL = "https://api.holded.com/api/accounting/v1";
 
 export interface HoldedContact {
   id: string;
@@ -45,6 +46,12 @@ export interface HoldedListResponse {
   data: HoldedInvoice[];
 }
 
+export interface HoldedAccountingAccount {
+  id: string;
+  account: string; // numeric code e.g. "62300000"
+  name: string;
+}
+
 export class HoldedClient {
   private readonly apiKey: string;
 
@@ -52,8 +59,8 @@ export class HoldedClient {
     this.apiKey = apiKey;
   }
 
-  private async fetch<T>(path: string, params?: Record<string, string>): Promise<T> {
-    const url = new URL(`${HOLDED_BASE_URL}${path}`);
+  private async fetchFromBase<T>(baseUrl: string, path: string, params?: Record<string, string>): Promise<T> {
+    const url = new URL(`${baseUrl}${path}`);
     if (params) {
       Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
     }
@@ -71,6 +78,10 @@ export class HoldedClient {
     }
 
     return res.json() as Promise<T>;
+  }
+
+  private async fetch<T>(path: string, params?: Record<string, string>): Promise<T> {
+    return this.fetchFromBase<T>(HOLDED_BASE_URL, path, params);
   }
 
   async getInvoices(params?: {
@@ -101,6 +112,29 @@ export class HoldedClient {
 
     const res = await this.fetch<HoldedInvoice[]>("/documents/purchase", stringParams);
     return res;
+  }
+
+  /**
+   * Fetches the chart of accounts from Holded.
+   * Returns a map of account code → account name for fast lookup during sync.
+   */
+  async getAccountNameMap(): Promise<Map<string, string>> {
+    try {
+      const accounts = await this.fetchFromBase<HoldedAccountingAccount[]>(
+        HOLDED_ACCOUNTING_BASE_URL,
+        "/account"
+      );
+      const map = new Map<string, string>();
+      for (const acc of accounts) {
+        if (acc.account && acc.name) {
+          map.set(acc.account, acc.name);
+        }
+      }
+      return map;
+    } catch {
+      // Non-fatal: if accounting API fails, sync continues without names
+      return new Map();
+    }
   }
 
   /**

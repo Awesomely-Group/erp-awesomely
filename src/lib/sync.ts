@@ -68,13 +68,14 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
   async function upsertBatch(
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
     type: InvoiceType,
+    accountNameMap: Map<string, string>,
     batchSize = 10
   ): Promise<void> {
     for (let i = 0; i < invoices.length; i += batchSize) {
       const chunk = invoices.slice(i, i + batchSize);
       await Promise.all(
         chunk.map((inv) =>
-          upsertInvoice(inv, companyId, type)
+          upsertInvoice(inv, companyId, type, accountNameMap)
             .then(() => { invoicesSynced++; })
             .catch((err: unknown) => {
               console.error(`[sync] Error upserting ${type} invoice ${inv.id} (${inv.docNumber}):`, err);
@@ -87,15 +88,16 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
   try {
     const client = new HoldedClient(company.holdedApiKey);
 
-    // Fetch both invoice types in parallel, then upsert in parallel batches
-    const [salesInvoices, purchaseInvoices] = await Promise.all([
+    // Fetch chart of accounts and both invoice types in parallel
+    const [accountNameMap, salesInvoices, purchaseInvoices] = await Promise.all([
+      client.getAccountNameMap(),
       client.getAllInvoicesPaginated("invoice"),
       client.getAllInvoicesPaginated("purchase"),
     ]);
 
     await Promise.all([
-      upsertBatch(salesInvoices, InvoiceType.SALE),
-      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE),
+      upsertBatch(salesInvoices, InvoiceType.SALE, accountNameMap),
+      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountNameMap),
     ]);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
@@ -119,7 +121,8 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
 async function upsertInvoice(
   inv: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>[number],
   companyId: string,
-  type: InvoiceType
+  type: InvoiceType,
+  accountNameMap: Map<string, string> = new Map()
 ): Promise<void> {
   const date = new Date(inv.date * 1000);
   const currency = (inv.currency ?? "EUR").toUpperCase();
@@ -220,10 +223,13 @@ async function upsertInvoice(
             typeof product.account === "object"
               ? (product.account?.num ?? null)
               : (product.account ?? null),
-          accountingAccountName:
-            typeof product.account === "object"
-              ? (product.account?.name ?? null)
-              : null,
+          accountingAccountName: (() => {
+            if (typeof product.account === "object") {
+              return product.account?.name ?? null;
+            }
+            const num = product.account ?? null;
+            return num ? (accountNameMap.get(num) ?? null) : null;
+          })(),
           sortOrder: i,
         },
       });
