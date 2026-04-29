@@ -33,20 +33,16 @@ export function PaymentsView({
 
   const hasFilters = company !== "all" || fromDate !== "" || toDate !== "";
 
-  function inDateRange(dueDate: string | null): boolean {
-    if (!fromDate && !toDate) return true;
-    if (!dueDate) return false;
-    const due = new Date(dueDate);
-    if (fromDate && due < new Date(fromDate)) return false;
-    if (toDate && due > new Date(toDate)) return false;
-    return true;
-  }
-
   const filteredPayments = useMemo(
     () =>
       pendingPayments.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
-        if (!inDateRange(row.dueDate)) return false;
+        if (fromDate || toDate) {
+          if (!row.dueDate) return false;
+          const due = new Date(row.dueDate);
+          if (fromDate && due < new Date(fromDate)) return false;
+          if (toDate && due > new Date(toDate)) return false;
+        }
         return true;
       }),
     [pendingPayments, company, fromDate, toDate]
@@ -56,7 +52,12 @@ export function PaymentsView({
     () =>
       pendingCollections.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
-        if (!inDateRange(row.dueDate)) return false;
+        if (fromDate || toDate) {
+          if (!row.dueDate) return false;
+          const due = new Date(row.dueDate);
+          if (fromDate && due < new Date(fromDate)) return false;
+          if (toDate && due > new Date(toDate)) return false;
+        }
         return true;
       }),
     [pendingCollections, company, fromDate, toDate]
