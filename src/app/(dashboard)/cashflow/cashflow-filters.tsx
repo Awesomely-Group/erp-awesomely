@@ -15,12 +15,14 @@ const PERIODS = [
 
 type Company = { id: string; name: string };
 
+type AccountOption = { num: string; name: string | null };
+
 export function CashflowFilters({
   companies,
   accounts,
 }: {
   companies: Company[];
-  accounts: string[];
+  accounts: AccountOption[];
 }): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
@@ -154,7 +156,9 @@ export function CashflowFilters({
           >
             <option value="">Todas</option>
             {accounts.map((a) => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a.num} value={a.num}>
+                {a.name ? `${a.num} · ${a.name}` : a.num}
+              </option>
             ))}
           </select>
         </div>

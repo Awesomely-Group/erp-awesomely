@@ -31,6 +31,7 @@ interface InvoiceRow {
   companyName: string;
   brand: string | null;
   lineCount: number;
+  accounts: { num: string; name: string | null }[];
 }
 
 interface Props {
@@ -43,7 +44,7 @@ export function InvoicesTable({ invoices }: Props): React.JSX.Element {
   if (invoices.length === 0) {
     return (
       <tr>
-        <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+        <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
           No hay facturas con estos filtros
         </td>
       </tr>
@@ -95,6 +96,20 @@ export function InvoicesTable({ invoices }: Props): React.JSX.Element {
             >
               {STATUS_LABELS[inv.status] ?? inv.status}
             </span>
+          </td>
+          <td className="px-4 py-3 text-gray-600 max-w-[180px]">
+            {inv.accounts.length === 0 ? (
+              <span className="text-gray-300">—</span>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {inv.accounts.map((a) => (
+                  <span key={a.num} className="text-xs truncate" title={a.name ?? a.num}>
+                    <span className="font-medium text-gray-800">{a.num}</span>
+                    {a.name && <span className="text-gray-500"> · {a.name}</span>}
+                  </span>
+                ))}
+              </div>
+            )}
           </td>
           <td className="px-4 py-3 text-center text-gray-500">{inv.lineCount}</td>
         </tr>

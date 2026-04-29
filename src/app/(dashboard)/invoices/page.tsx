@@ -117,7 +117,14 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
   const [invoices, total] = await Promise.all([
     prisma.invoice.findMany({
       where,
-      include: { company: true, _count: { select: { lines: true } } },
+      include: {
+        company: true,
+        _count: { select: { lines: true } },
+        lines: {
+          select: { accountingAccount: true, accountingAccountName: true },
+          where: { accountingAccount: { not: null } },
+        },
+      },
       orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -233,24 +240,36 @@ export default async function InvoicesPage({
               <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
               <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
               <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Cta. contable</th>
               <th className="px-4 py-3 text-center font-medium text-gray-600">Líneas</th>
             </tr>
           </thead>
           <tbody>
             <InvoicesTable
-              invoices={invoices.map((inv) => ({
-                id: inv.id,
-                holdedId: inv.holdedId,
-                type: inv.type,
-                number: inv.number,
-                counterparty: inv.counterparty,
-                date: inv.date.toISOString(),
-                totalEur: Number(inv.totalEur),
-                status: inv.status,
-                companyName: inv.company.name,
-                brand: inv.marca,
-                lineCount: inv._count.lines,
-              }))}
+              invoices={invoices.map((inv) => {
+                const seenNums = new Set<string>();
+                const accounts: { num: string; name: string | null }[] = [];
+                for (const l of inv.lines) {
+                  if (l.accountingAccount && !seenNums.has(l.accountingAccount)) {
+                    seenNums.add(l.accountingAccount);
+                    accounts.push({ num: l.accountingAccount, name: l.accountingAccountName });
+                  }
+                }
+                return {
+                  id: inv.id,
+                  holdedId: inv.holdedId,
+                  type: inv.type,
+                  number: inv.number,
+                  counterparty: inv.counterparty,
+                  date: inv.date.toISOString(),
+                  totalEur: Number(inv.totalEur),
+                  status: inv.status,
+                  companyName: inv.company.name,
+                  brand: inv.marca,
+                  lineCount: inv._count.lines,
+                  accounts,
+                };
+              })}
             />
 
           </tbody>

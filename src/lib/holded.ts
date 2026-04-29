@@ -18,7 +18,7 @@ export interface HoldedInvoiceProduct {
   total?: number;    // not returned by Holded API — calculated in sync
   discount?: number; // discount percent
   sku?: string;
-  account?: string;  // cuenta contable (e.g. "700", "600")
+  account?: string | { id?: string; num?: string; name?: string }; // cuenta contable
 }
 
 export interface HoldedInvoice {

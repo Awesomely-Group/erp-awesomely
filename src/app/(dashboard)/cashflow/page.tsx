@@ -161,14 +161,14 @@ async function getCompanies(): Promise<{ id: string; name: string }[]> {
   });
 }
 
-async function getAccounts(): Promise<string[]> {
+async function getAccounts(): Promise<{ num: string; name: string | null }[]> {
   const rows = await prisma.invoiceLine.findMany({
     where: { accountingAccount: { not: null } },
-    select: { accountingAccount: true },
+    select: { accountingAccount: true, accountingAccountName: true },
     distinct: ["accountingAccount"],
     orderBy: { accountingAccount: "asc" },
   });
-  return rows.map((r) => r.accountingAccount!);
+  return rows.map((r) => ({ num: r.accountingAccount!, name: r.accountingAccountName }));
 }
 
 export default async function CashflowPage({

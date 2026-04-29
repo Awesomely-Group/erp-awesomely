@@ -202,7 +202,8 @@ model InvoiceLine {
   total       Decimal @default(0)
   totalEur    Decimal @default(0)
 
-  accountingAccount String?
+  accountingAccount     String?
+  accountingAccountName String?
 
   sortOrder Int @default(0)
 

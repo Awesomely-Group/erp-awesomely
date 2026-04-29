@@ -216,7 +216,14 @@ async function upsertInvoice(
           tax: lineTaxAmount,
           total: lineTotal,
           totalEur: lineTotalEur,
-          accountingAccount: product.account ?? null,
+          accountingAccount:
+            typeof product.account === "object"
+              ? (product.account?.num ?? null)
+              : (product.account ?? null),
+          accountingAccountName:
+            typeof product.account === "object"
+              ? (product.account?.name ?? null)
+              : null,
           sortOrder: i,
         },
       });
