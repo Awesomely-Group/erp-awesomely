@@ -14,6 +14,7 @@ type CashflowParams = {
   marca?: string;
   company?: string;
   type?: string;
+  account?: string;
 };
 
 type CashflowKpis = {
@@ -45,7 +46,6 @@ function resolveDateRange(params: CashflowParams): { gte?: Date; lte?: Date } {
     case "custom":
       return getDateRange(params.period, params.dateFrom, params.dateTo);
     default:
-      // Default: últimos 12 meses
       return { gte: new Date(y, m - 12, 1) };
   }
 }
@@ -55,50 +55,77 @@ async function getCashflowData(params: CashflowParams): Promise<{
   kpis: CashflowKpis;
 }> {
   const dateRange = resolveDateRange(params);
-  const conditions: Prisma.Sql[] = [];
+  let rows: RawMonthlyRow[];
 
-  if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
-  if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
+  if (params.account) {
+    // Line-level query when filtering by accounting account
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`il."accountingAccount" = ${params.account}`,
+    ];
+    if (dateRange.gte) conditions.push(Prisma.sql`i.date >= ${dateRange.gte}`);
+    if (dateRange.lte) conditions.push(Prisma.sql`i.date <= ${dateRange.lte}`);
+    if (params.marca === MARCA_FILTER_UNASSIGNED) {
+      conditions.push(Prisma.sql`i.marca IS NULL`);
+    } else if (params.marca) {
+      conditions.push(Prisma.sql`i.marca = ${params.marca}`);
+    }
+    if (params.company) {
+      conditions.push(Prisma.sql`i."companyId" = ${params.company}`);
+    }
 
-  if (params.marca === MARCA_FILTER_UNASSIGNED) {
-    conditions.push(Prisma.sql`marca IS NULL`);
-  } else if (params.marca) {
-    conditions.push(Prisma.sql`marca = ${params.marca}`);
+    const where = Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`;
+
+    rows = await prisma.$queryRaw<RawMonthlyRow[]>`
+      SELECT
+        DATE_TRUNC('month', i.date) AS month,
+        i.type                      AS invoice_type,
+        SUM(il."totalEur")          AS total_eur
+      FROM invoices i
+      JOIN invoice_lines il ON il."invoiceId" = i.id
+      ${where}
+      GROUP BY DATE_TRUNC('month', i.date), i.type
+      ORDER BY month ASC
+    `;
+  } else {
+    // Invoice-level query (original behaviour)
+    const conditions: Prisma.Sql[] = [];
+    if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
+    if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
+    if (params.marca === MARCA_FILTER_UNASSIGNED) {
+      conditions.push(Prisma.sql`marca IS NULL`);
+    } else if (params.marca) {
+      conditions.push(Prisma.sql`marca = ${params.marca}`);
+    }
+    if (params.company) {
+      conditions.push(Prisma.sql`"companyId" = ${params.company}`);
+    }
+
+    const where =
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+        : Prisma.empty;
+
+    rows = await prisma.$queryRaw<RawMonthlyRow[]>`
+      SELECT
+        DATE_TRUNC('month', date) AS month,
+        type                      AS invoice_type,
+        SUM("totalEur")           AS total_eur
+      FROM invoices
+      ${where}
+      GROUP BY DATE_TRUNC('month', date), type
+      ORDER BY month ASC
+    `;
   }
-
-  if (params.company) {
-    conditions.push(Prisma.sql`"companyId" = ${params.company}`);
-  }
-
-  const whereClause =
-    conditions.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
-      : Prisma.empty;
-
-  const rows = await prisma.$queryRaw<RawMonthlyRow[]>`
-    SELECT
-      DATE_TRUNC('month', date) AS month,
-      type AS invoice_type,
-      SUM("totalEur") AS total_eur
-    FROM invoices
-    ${whereClause}
-    GROUP BY DATE_TRUNC('month', date), type
-    ORDER BY month ASC
-  `;
 
   const pointMap = new Map<string, CashflowMonthlyPoint>();
 
   for (const row of rows) {
-    // Apply type filter in TypeScript to avoid SQL enum cast complexity
     if (params.type === "SALE" && row.invoice_type !== "SALE") continue;
     if (params.type === "PURCHASE" && row.invoice_type !== "PURCHASE") continue;
 
     const d = new Date(row.month);
     const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const monthLabel = d.toLocaleDateString("es-ES", {
-      month: "short",
-      year: "numeric",
-    });
+    const monthLabel = d.toLocaleDateString("es-ES", { month: "short", year: "numeric" });
 
     if (!pointMap.has(monthKey)) {
       pointMap.set(monthKey, { monthKey, monthLabel, inflows: 0, outflows: 0, net: 0 });
@@ -116,7 +143,6 @@ async function getCashflowData(params: CashflowParams): Promise<{
   }
 
   const monthly = Array.from(pointMap.values());
-
   const kpis: CashflowKpis = {
     totalInflows: monthly.reduce((s, p) => s + p.inflows, 0),
     totalOutflows: monthly.reduce((s, p) => s + p.outflows, 0),
@@ -135,6 +161,16 @@ async function getCompanies(): Promise<{ id: string; name: string }[]> {
   });
 }
 
+async function getAccounts(): Promise<string[]> {
+  const rows = await prisma.invoiceLine.findMany({
+    where: { accountingAccount: { not: null } },
+    select: { accountingAccount: true },
+    distinct: ["accountingAccount"],
+    orderBy: { accountingAccount: "asc" },
+  });
+  return rows.map((r) => r.accountingAccount!);
+}
+
 export default async function CashflowPage({
   searchParams,
 }: {
@@ -142,74 +178,48 @@ export default async function CashflowPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
 
-  const [{ monthly, kpis }, companies] = await Promise.all([
+  const [{ monthly, kpis }, companies, accounts] = await Promise.all([
     getCashflowData(params),
     getCompanies(),
+    getAccounts(),
   ]);
 
   const netIsPositive = kpis.netCashflow >= 0;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Flujo de Caja</h1>
         <p className="text-sm text-gray-500 mt-1">Consolidado · en EUR</p>
       </div>
 
-      {/* Filters */}
       <Suspense>
-        <CashflowFilters companies={companies} />
+        <CashflowFilters companies={companies} accounts={accounts} />
       </Suspense>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Entradas totales
-          </p>
-          <p className="mt-2 text-2xl font-bold text-green-600">
-            {formatCurrency(kpis.totalInflows)}
-          </p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Entradas totales</p>
+          <p className="mt-2 text-2xl font-bold text-green-600">{formatCurrency(kpis.totalInflows)}</p>
         </div>
-
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Salidas totales
-          </p>
-          <p className="mt-2 text-2xl font-bold text-red-500">
-            {formatCurrency(kpis.totalOutflows)}
-          </p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Salidas totales</p>
+          <p className="mt-2 text-2xl font-bold text-red-500">{formatCurrency(kpis.totalOutflows)}</p>
         </div>
-
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Flujo neto
-          </p>
-          <p
-            className={`mt-2 text-2xl font-bold ${
-              netIsPositive ? "text-indigo-600" : "text-red-600"
-            }`}
-          >
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Flujo neto</p>
+          <p className={`mt-2 text-2xl font-bold ${netIsPositive ? "text-indigo-600" : "text-red-600"}`}>
             {formatCurrency(kpis.netCashflow)}
           </p>
         </div>
-
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Meses analizados
-          </p>
-          <p className="mt-2 text-2xl font-bold text-gray-700">
-            {kpis.monthCount}
-          </p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Meses analizados</p>
+          <p className="mt-2 text-2xl font-bold text-gray-700">{kpis.monthCount}</p>
         </div>
       </div>
 
-      {/* Chart */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">
-          Entradas vs. Salidas por mes
-        </h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Entradas vs. Salidas por mes</h2>
         <CashflowChart data={monthly} />
       </div>
     </div>

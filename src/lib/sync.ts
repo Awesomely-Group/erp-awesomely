@@ -216,6 +216,7 @@ async function upsertInvoice(
           tax: lineTaxAmount,
           total: lineTotal,
           totalEur: lineTotalEur,
+          accountingAccount: product.account ?? null,
           sortOrder: i,
         },
       });

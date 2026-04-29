@@ -17,8 +17,10 @@ type Company = { id: string; name: string };
 
 export function CashflowFilters({
   companies,
+  accounts,
 }: {
   companies: Company[];
+  accounts: string[];
 }): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
@@ -29,6 +31,7 @@ export function CashflowFilters({
   const [marca, setMarca] = useState(sp.get("marca") ?? "");
   const [company, setCompany] = useState(sp.get("company") ?? "");
   const [type, setType] = useState(sp.get("type") ?? "");
+  const [account, setAccount] = useState(sp.get("account") ?? "");
 
   function apply(): void {
     const params = new URLSearchParams();
@@ -40,6 +43,7 @@ export function CashflowFilters({
     if (marca) params.set("marca", marca);
     if (company) params.set("company", company);
     if (type) params.set("type", type);
+    if (account) params.set("account", account);
     router.push(`/cashflow?${params.toString()}`);
   }
 
@@ -50,6 +54,7 @@ export function CashflowFilters({
     setMarca("");
     setCompany("");
     setType("");
+    setAccount("");
     router.push("/cashflow");
   }
 
@@ -138,6 +143,22 @@ export function CashflowFilters({
           <option value="PURCHASE">Compra</option>
         </select>
       </div>
+
+      {accounts.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
+          <select
+            value={account}
+            onChange={(e) => setAccount(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
+          >
+            <option value="">Todas</option>
+            {accounts.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
