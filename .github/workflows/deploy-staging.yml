@@ -1,14 +1,15 @@
-name: Build and Deploy
+name: Deploy staging environment
 
 on:
   push:
     branches:
-      - main
+      - staging
   workflow_dispatch:
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment: staging
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,19 +40,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production
-    steps:
-      - name: Trigger Vercel production deploy hook
+      - name: Trigger Vercel staging deploy hook
         env:
-          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_STAGING }}
         run: |
           if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
-            echo "Missing VERCEL_DEPLOY_HOOK_URL secret."
-            echo "Add a Vercel Deploy Hook URL in repository secrets to enable auto deployment from this workflow."
+            echo "Missing VERCEL_DEPLOY_HOOK_URL_STAGING secret."
+            echo "Add a Vercel Staging Deploy Hook URL in repository secrets to enable auto deployment from this workflow."
             exit 1
           fi
           curl -fsS -X POST "$VERCEL_DEPLOY_HOOK_URL"
