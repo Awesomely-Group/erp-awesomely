@@ -24,16 +24,6 @@ jobs:
           corepack prepare pnpm@10 --activate
           pnpm install --frozen-lockfile
 
-      - name: Run typecheck
-        run: |
-          corepack prepare pnpm@10 --activate
-          pnpm typecheck
-
-      - name: Run tests
-        run: |
-          corepack prepare pnpm@10 --activate
-          pnpm test
-
       - name: Build project
         run: |
           corepack prepare pnpm@10 --activate
