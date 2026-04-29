@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm prisma generate
+
       - name: Lint
         run: pnpm lint
 
@@ -35,7 +38,7 @@ jobs:
         run: pnpm test
 
       - name: Build project
-        run: pnpm build
+        run: pnpm next build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
