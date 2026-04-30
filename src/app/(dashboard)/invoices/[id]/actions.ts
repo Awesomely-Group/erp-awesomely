@@ -78,6 +78,7 @@ export async function classifyLine({
 
   await updateInvoiceStatus(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
   return { classificationId };
 }
 
@@ -140,6 +141,7 @@ export async function updateClassificationStatus({
 
   await updateInvoiceStatus(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
 }
 
 export async function updateInvoiceMarca({

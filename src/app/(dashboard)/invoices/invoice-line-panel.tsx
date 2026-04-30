@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { HoldedClient } from "@/lib/holded";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import { getSuggestionsForLine } from "@/lib/suggestions";
+import { ClassifyLinesForm } from "./[id]/classify-lines-form";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
@@ -19,37 +20,31 @@ const STATUS_COLORS: Record<string, string> = {
   APPROVED: "bg-green-100 text-green-700",
 };
 
-const LINE_STATUS_COLORS: Record<string, string> = {
-  PENDING: "bg-red-50 text-red-600",
-  CLASSIFIED: "bg-blue-50 text-blue-600",
-  REVIEWED: "bg-purple-50 text-purple-600",
-  APPROVED: "bg-green-50 text-green-600",
-};
-
-const LINE_STATUS_LABELS: Record<string, string> = {
-  PENDING: "Sin clasificar",
-  CLASSIFIED: "Clasificado",
-  REVIEWED: "Revisado",
-  APPROVED: "Aprobado",
-};
-
 export async function InvoiceLinePanel({
   invoiceId,
 }: {
   invoiceId: string;
 }): Promise<React.JSX.Element> {
-  const [invoice, companies] = await Promise.all([
+  const [invoice, projects] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: {
         company: true,
         lines: {
           orderBy: { sortOrder: "asc" },
-          include: { classification: true },
+          include: {
+            classification: {
+              include: { project: { include: { workspace: true } } },
+            },
+          },
         },
       },
     }),
-    prisma.company.findMany({ where: { active: true }, select: { holdedApiKey: true } }),
+    prisma.jiraProject.findMany({
+      where: { active: true },
+      include: { workspace: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   if (!invoice) {
@@ -60,23 +55,21 @@ export async function InvoiceLinePanel({
     );
   }
 
-  // Resolve account names from Holded
-  const holdedById = new Map<string, string>();
-  const holdedByNum = new Map<string, string>();
+  // Fetch AI suggestions for unclassified lines
+  const suggestionsMap = await Promise.all(
+    invoice.lines
+      .filter((l) => !l.classification)
+      .map(async (line) => {
+        const suggestions = await getSuggestionsForLine({
+          counterparty: invoice.counterparty,
+          lineName: line.name,
+          lineDescription: line.description,
+        });
+        return [line.id, suggestions] as const;
+      })
+  ).then((entries) => new Map(entries));
 
-  await Promise.all(
-    companies.map(async (c) => {
-      const maps = await new HoldedClient(c.holdedApiKey).getAccountMaps();
-      for (const [k, v] of maps.byId) holdedById.set(k, v.name);
-      for (const [k, v] of maps.byNum) holdedByNum.set(k, v);
-    })
-  );
-
-  function resolveAccountName(line: { accountingAccount: string | null; accountingAccountName: string | null }): string | null {
-    const key = line.accountingAccount;
-    if (!key) return null;
-    return line.accountingAccountName ?? holdedById.get(key) ?? holdedByNum.get(key) ?? null;
-  }
+  const classifiedCount = invoice.lines.filter((l) => l.classification).length;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 flex flex-col max-h-[calc(100vh-8rem)] overflow-hidden">
@@ -104,70 +97,55 @@ export async function InvoiceLinePanel({
           </div>
           <Link
             href={`/invoices/${invoice.id}`}
-            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex-shrink-0 transition-colors"
+            className="text-xs text-gray-400 hover:text-indigo-600 font-medium flex-shrink-0 transition-colors"
           >
-            Ver detalle →
+            ↗ detalle
           </Link>
         </div>
         <div className="text-xs text-gray-500 space-y-0.5">
           <p className="truncate">{invoice.counterparty ?? "—"} · {invoice.company.name}</p>
           <p className="flex items-center justify-between">
-            <span>{formatDate(invoice.date)}</span>
+            <span>{formatDate(invoice.date)} · {classifiedCount}/{invoice.lines.length} líneas</span>
             <span className="font-semibold text-gray-700">{formatCurrency(Number(invoice.totalEur))}</span>
           </p>
         </div>
       </div>
 
-      {/* Lines */}
-      <div className="overflow-y-auto flex-1">
-        {invoice.lines.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">Sin líneas.</p>
-        ) : (
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-gray-50 z-10">
-              <tr className="border-b border-gray-100">
-                <th className="px-3 py-2 text-left font-medium text-gray-500">Descripción</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-500 whitespace-nowrap">Total EUR</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-500 whitespace-nowrap">Cta. contable</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-500">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoice.lines.map((line) => {
-                const accountName = resolveAccountName(line);
-                const classStatus = line.classification?.status ?? "PENDING";
-                return (
-                  <tr key={line.id} className="border-b border-gray-50 last:border-0">
-                    <td className="px-3 py-2 max-w-[160px]">
-                      <p className="font-medium text-gray-800 truncate" title={line.name}>{line.name}</p>
-                      {line.description && (
-                        <p className="text-gray-400 truncate" title={line.description ?? undefined}>{line.description}</p>
-                      )}
-                      <p className="text-gray-400 mt-0.5">
-                        {Number(line.quantity)} × {formatCurrency(Number(line.unitPrice))}
-                      </p>
-                    </td>
-                    <td className="px-3 py-2 text-right font-medium text-gray-700 whitespace-nowrap">
-                      {formatCurrency(Number(line.totalEur))}
-                    </td>
-                    <td className="px-3 py-2 text-gray-500 max-w-[120px]">
-                      {accountName ? (
-                        <span className="truncate block" title={accountName}>{accountName}</span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${LINE_STATUS_COLORS[classStatus] ?? ""}`}>
-                        {LINE_STATUS_LABELS[classStatus] ?? classStatus}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+      {/* Classification form */}
+      <div className="overflow-y-auto flex-1 p-3">
+        <ClassifyLinesForm
+          invoiceId={invoice.id}
+          invoiceMarca={invoice.marca}
+          lines={invoice.lines.map((l) => ({
+            id: l.id,
+            name: l.name,
+            description: l.description,
+            quantity: Number(l.quantity),
+            unitPrice: Number(l.unitPrice),
+            subtotal: Number(l.subtotal),
+            tax: Number(l.tax),
+            total: Number(l.total),
+            totalEur: Number(l.totalEur),
+            currency: invoice.currency,
+            classification: l.classification
+              ? {
+                  id: l.classification.id,
+                  status: l.classification.status,
+                  projectId: l.classification.projectId,
+                  projectName: l.classification.project.name,
+                  workspaceName: l.classification.project.workspace.name,
+                  notes: l.classification.notes,
+                }
+              : null,
+            suggestions: suggestionsMap.get(l.id) ?? [],
+          }))}
+          projects={projects.map((p) => ({
+            id: p.id,
+            name: p.name,
+            key: p.jiraKey,
+            workspaceName: p.workspace.name,
+          }))}
+        />
       </div>
     </div>
   );
