@@ -92,7 +92,17 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
               {inv.type === "SALE" ? "Venta" : "Compra"}
             </td>
             <td className="px-4 py-3 text-gray-600">{inv.companyName}</td>
-            <td className="px-4 py-3 text-gray-600">{inv.brand ?? "—"}</td>
+            <td className="px-4 py-3">
+              {inv.brand ? (
+                <div className="flex flex-wrap gap-1">
+                  {inv.brand.split(",").map((m) => (
+                    <span key={m} className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 whitespace-nowrap">{m}</span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-gray-300">—</span>
+              )}
+            </td>
             <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
               {inv.counterparty ?? "—"}
             </td>

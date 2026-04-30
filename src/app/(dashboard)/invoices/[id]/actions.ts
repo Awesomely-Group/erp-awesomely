@@ -3,8 +3,33 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateInvoiceStatus } from "@/lib/sync";
+import { MARCA_OPTIONS } from "@/lib/org";
 import { AuditAction, ClassificationStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+
+const VALID_MARCAS = new Set(MARCA_OPTIONS.map((o) => o.value));
+
+async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
+  const classifications = await prisma.classification.findMany({
+    where: { invoiceLine: { invoiceId } },
+    include: { project: { include: { workspace: true } } },
+  });
+
+  const marcas = [
+    ...new Set(
+      classifications
+        .map((c) => c.project.workspace.name)
+        .filter((name) => VALID_MARCAS.has(name))
+    ),
+  ].sort();
+
+  if (marcas.length === 0) return;
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { marca: marcas.join(",") },
+  });
+}
 
 export async function classifyLine({
   lineId,
@@ -77,6 +102,7 @@ export async function classifyLine({
   }
 
   await updateInvoiceStatus(invoiceId);
+  await deriveMarcaFromLines(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   return { classificationId };
@@ -140,6 +166,7 @@ export async function updateClassificationStatus({
   });
 
   await updateInvoiceStatus(invoiceId);
+  await deriveMarcaFromLines(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
 }
