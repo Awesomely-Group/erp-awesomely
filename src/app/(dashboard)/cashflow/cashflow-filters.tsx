@@ -104,7 +104,7 @@ export function CashflowFilters({
     selectedAccounts.length === 0
       ? "Todas"
       : selectedAccounts.length === 1
-        ? selectedAccounts[0]
+        ? (accounts.find((a) => a.num === selectedAccounts[0])?.name ?? selectedAccounts[0])
         : `${selectedAccounts.length} seleccionadas`;
 
   return (
@@ -229,8 +229,8 @@ export function CashflowFilters({
                       className="mt-0.5 rounded border-gray-300 text-indigo-600 flex-shrink-0"
                     />
                     <span className="text-sm leading-snug">
-                      <span className="font-medium text-gray-800">{a.num}</span>
-                      {a.name && <span className="text-gray-500"> · {a.name}</span>}
+                      <span className="text-gray-800">{a.name ?? a.num}</span>
+                      <span className="text-gray-400 text-xs ml-1">({a.num})</span>
                     </span>
                   </label>
                 ))}

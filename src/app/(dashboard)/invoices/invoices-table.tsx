@@ -103,9 +103,8 @@ export function InvoicesTable({ invoices }: Props): React.JSX.Element {
             ) : (
               <div className="flex flex-col gap-0.5">
                 {inv.accounts.map((a) => (
-                  <span key={a.num} className="text-xs truncate" title={a.name ?? a.num}>
-                    <span className="font-medium text-gray-800">{a.num}</span>
-                    {a.name && <span className="text-gray-500"> · {a.name}</span>}
+                  <span key={a.num} className="text-xs truncate" title={a.num}>
+                    {a.name ?? a.num}
                   </span>
                 ))}
               </div>
