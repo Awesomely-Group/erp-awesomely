@@ -141,8 +141,8 @@ function resolveAccount(
   const nameFromNum = maps.byNum.get(raw);
   if (nameFromNum) return { num: raw, name: nameFromNum };
 
-  // Unknown string — discard rather than store a meaningless ID
-  return { num: null, name: null };
+  // Unknown string (probably a Holded internal ID) — store it so it can be resolved later
+  return { num: raw, name: null };
 }
 
 async function upsertInvoice(
