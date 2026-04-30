@@ -10,43 +10,30 @@ export async function GET(req: Request): Promise<NextResponse> {
   if (!company) return NextResponse.json({ error: "No company" }, { status: 404 });
 
   const key = company.holdedApiKey;
+  const sampleId = "68bffdd1300a62d5890b9347";
 
-  async function tryEndpoint(url: string): Promise<{ status: number; isJson: boolean; sample: unknown }> {
-    const res = await fetch(url, { headers: { key } });
+  async function probe(label: string, url: string, headers?: Record<string, string>): Promise<unknown> {
+    const res = await fetch(url, { headers: { key, ...headers } });
     const text = await res.text();
-    let parsed: unknown = null;
-    let isJson = false;
-    try { parsed = JSON.parse(text); isJson = true; } catch { /* html */ }
-    const sample = isJson ? parsed : text.slice(0, 200);
-    return { status: res.status, isJson, sample };
+    let json: unknown = null;
+    try { json = JSON.parse(text); } catch { /* html */ }
+    if (json !== null) return { status: res.status, ok: true, sample: Array.isArray(json) ? (json as unknown[]).slice(0, 1) : json };
+    return { status: res.status, ok: false, preview: text.slice(0, 100) };
   }
 
-  // Get a sample account ID from recent invoice products
-  const invRes = await fetch("https://api.holded.com/api/invoicing/v1/documents/invoice?page=1", {
-    headers: { key },
-  });
-  const invArr = await invRes.json() as Record<string, unknown>[];
-  const sampleAccountId = (invArr[0]?.products as Record<string, unknown>[] | undefined)?.[0]?.account as string | undefined;
+  const results: Record<string, unknown> = {};
 
-  const results: Record<string, unknown> = {
-    sampleAccountId,
-  };
-
-  if (sampleAccountId) {
-    results["GET /api/accounting/v1/account"] = await tryEndpoint(
-      "https://api.holded.com/api/accounting/v1/account"
-    );
-    results[`GET /api/accounting/v1/account/${sampleAccountId}`] = await tryEndpoint(
-      `https://api.holded.com/api/accounting/v1/account/${sampleAccountId}`
-    );
-    // Try getting a single invoice with full detail
-    const firstInvoiceId = invArr[0]?.id as string | undefined;
-    if (firstInvoiceId) {
-      results[`GET /api/invoicing/v1/documents/invoice/${firstInvoiceId}`] = await tryEndpoint(
-        `https://api.holded.com/api/invoicing/v1/documents/invoice/${firstInvoiceId}`
-      );
-    }
-  }
+  await Promise.all([
+    probe("invoicing/account", "https://api.holded.com/api/invoicing/v1/account").then(r => { results["invoicing/account"] = r; }),
+    probe("invoicing/account/id", `https://api.holded.com/api/invoicing/v1/account/${sampleId}`).then(r => { results["invoicing/account/id"] = r; }),
+    probe("accounting/ledger", "https://api.holded.com/api/accounting/v1/ledger").then(r => { results["accounting/ledger"] = r; }),
+    probe("accounting/journal", "https://api.holded.com/api/accounting/v1/journal").then(r => { results["accounting/journal"] = r; }),
+    probe("erp/v1/account", "https://api.holded.com/api/erp/v1/account").then(r => { results["erp/v1/account"] = r; }),
+    // Try with Authorization header instead of key
+    probe("accounting/account (Bearer)", "https://api.holded.com/api/accounting/v1/account", {
+      Authorization: `Bearer ${key}`,
+    }).then(r => { results["accounting/account-bearer"] = r; }),
+  ]);
 
   return NextResponse.json(results);
 }
