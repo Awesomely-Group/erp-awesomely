@@ -31,16 +31,22 @@ export function InvoicesFilters(): React.JSX.Element {
   const [type, setType] = useState(sp.get("type") ?? "");
   const [marca, setMarca] = useState(sp.get("marca") ?? "");
 
-  function apply(): void {
+  function applyWith(overrides: Partial<{
+    search: string; period: string; dateFrom: string; dateTo: string;
+    status: string; type: string; marca: string;
+  }>): void {
+    const m = { search, period, dateFrom, dateTo, status, type, marca, ...overrides };
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (status) params.set("status", status);
-    if (type) params.set("type", type);
-    if (marca) params.set("marca", marca);
-    if (period) params.set("period", period);
-    if (period === "custom") {
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
+    if (m.search) params.set("search", m.search);
+    if (m.status) params.set("status", m.status);
+    if (m.type) params.set("type", m.type);
+    if (m.marca) params.set("marca", m.marca);
+    if (m.period) {
+      params.set("period", m.period);
+      if (m.period === "custom") {
+        if (m.dateFrom) params.set("dateFrom", m.dateFrom);
+        if (m.dateTo) params.set("dateTo", m.dateTo);
+      }
     }
     router.push(`/invoices?${params.toString()}`);
   }
@@ -64,7 +70,8 @@ export function InvoicesFilters(): React.JSX.Element {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && apply()}
+          onKeyDown={(e) => e.key === "Enter" && applyWith({ search: (e.target as HTMLInputElement).value })}
+          onBlur={(e) => { if (e.target.value !== (sp.get("search") ?? "")) applyWith({ search: e.target.value }); }}
           placeholder="Número o contraparte…"
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white w-52"
         />
@@ -74,7 +81,11 @@ export function InvoicesFilters(): React.JSX.Element {
         <label className="text-xs text-gray-500 font-medium">Periodo</label>
         <select
           value={period}
-          onChange={(e) => setPeriod(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setPeriod(v);
+            if (v !== "custom") applyWith({ period: v, dateFrom: "", dateTo: "" });
+          }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         >
           {PERIODS.map((p) => (
@@ -91,6 +102,7 @@ export function InvoicesFilters(): React.JSX.Element {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              onBlur={(e) => applyWith({ dateFrom: e.target.value })}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
             />
           </div>
@@ -100,6 +112,7 @@ export function InvoicesFilters(): React.JSX.Element {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              onBlur={(e) => applyWith({ dateTo: e.target.value })}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
             />
           </div>
@@ -110,7 +123,7 @@ export function InvoicesFilters(): React.JSX.Element {
         <label className="text-xs text-gray-500 font-medium">Estado</label>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => { const v = e.target.value; setStatus(v); applyWith({ status: v }); }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         >
           <option value="">Todos</option>
@@ -127,7 +140,7 @@ export function InvoicesFilters(): React.JSX.Element {
         <label className="text-xs text-gray-500 font-medium">Tipo</label>
         <select
           value={type}
-          onChange={(e) => setType(e.target.value)}
+          onChange={(e) => { const v = e.target.value; setType(v); applyWith({ type: v }); }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         >
           <option value="">Compra y venta</option>
@@ -140,35 +153,24 @@ export function InvoicesFilters(): React.JSX.Element {
         <label className="text-xs text-gray-500 font-medium">Marca</label>
         <select
           value={marca}
-          onChange={(e) => setMarca(e.target.value)}
+          onChange={(e) => { const v = e.target.value; setMarca(v); applyWith({ marca: v }); }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
         >
           <option value="">Todas</option>
           <option value={MARCA_FILTER_UNASSIGNED}>Sin asignar</option>
           {MARCA_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
+            <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
       </div>
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={apply}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-        >
-          Filtrar
-        </button>
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-        >
-          Limpiar
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={reset}
+        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+      >
+        Limpiar
+      </button>
     </div>
   );
 }

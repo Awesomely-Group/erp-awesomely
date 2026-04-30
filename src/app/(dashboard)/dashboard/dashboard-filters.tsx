@@ -24,14 +24,19 @@ export function DashboardFilters(): React.JSX.Element {
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [marca, setMarca] = useState(sp.get("marca") ?? "");
 
-  function apply(): void {
+  function applyWith(overrides: Partial<{
+    period: string; dateFrom: string; dateTo: string; marca: string;
+  }>): void {
+    const m = { period, dateFrom, dateTo, marca, ...overrides };
     const params = new URLSearchParams();
-    if (period) params.set("period", period);
-    if (period === "custom") {
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
+    if (m.period) {
+      params.set("period", m.period);
+      if (m.period === "custom") {
+        if (m.dateFrom) params.set("dateFrom", m.dateFrom);
+        if (m.dateTo) params.set("dateTo", m.dateTo);
+      }
     }
-    if (marca) params.set("marca", marca);
+    if (m.marca) params.set("marca", m.marca);
     const q = params.toString();
     router.push(q ? `/dashboard?${q}` : "/dashboard");
   }
@@ -52,13 +57,15 @@ export function DashboardFilters(): React.JSX.Element {
           <label className="text-xs text-gray-500 font-medium">Periodo</label>
           <select
             value={period}
-            onChange={(e) => setPeriod(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPeriod(v);
+              if (v !== "custom") applyWith({ period: v, dateFrom: "", dateTo: "" });
+            }}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
           >
             {PERIODS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
+              <option key={p.value} value={p.value}>{p.label}</option>
             ))}
           </select>
         </div>
@@ -71,6 +78,7 @@ export function DashboardFilters(): React.JSX.Element {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
+                onBlur={(e) => applyWith({ dateFrom: e.target.value })}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
               />
             </div>
@@ -80,6 +88,7 @@ export function DashboardFilters(): React.JSX.Element {
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
+                onBlur={(e) => applyWith({ dateTo: e.target.value })}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
               />
             </div>
@@ -90,35 +99,24 @@ export function DashboardFilters(): React.JSX.Element {
           <label className="text-xs text-gray-500 font-medium">Marca</label>
           <select
             value={marca}
-            onChange={(e) => setMarca(e.target.value)}
+            onChange={(e) => { const v = e.target.value; setMarca(v); applyWith({ marca: v }); }}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[12rem]"
           >
             <option value="">Todas</option>
             <option value={MARCA_FILTER_UNASSIGNED}>Sin asignar</option>
             {MARCA_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
+              <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={apply}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-          >
-            Aplicar
-          </button>
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            Limpiar
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          Limpiar
+        </button>
       </div>
     </div>
   );

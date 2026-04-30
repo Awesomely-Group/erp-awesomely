@@ -57,10 +57,12 @@ async function getCashflowData(params: CashflowParams): Promise<{
   const dateRange = resolveDateRange(params);
   let rows: RawMonthlyRow[];
 
-  if (params.account) {
-    // Line-level query when filtering by accounting account
+  const accounts = params.account?.split(",").filter(Boolean) ?? [];
+
+  if (accounts.length > 0) {
+    // Line-level query when filtering by accounting account(s)
     const conditions: Prisma.Sql[] = [
-      Prisma.sql`il."accountingAccount" = ${params.account}`,
+      Prisma.sql`il."accountingAccount" IN (${Prisma.join(accounts.map((a) => Prisma.sql`${a}`))})`,
     ];
     if (dateRange.gte) conditions.push(Prisma.sql`i.date >= ${dateRange.gte}`);
     if (dateRange.lte) conditions.push(Prisma.sql`i.date <= ${dateRange.lte}`);
@@ -87,7 +89,7 @@ async function getCashflowData(params: CashflowParams): Promise<{
       ORDER BY month ASC
     `;
   } else {
-    // Invoice-level query (original behaviour)
+    // Invoice-level query (no account filter)
     const conditions: Prisma.Sql[] = [];
     if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
     if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
