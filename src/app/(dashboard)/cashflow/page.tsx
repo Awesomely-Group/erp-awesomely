@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
 import { MARCA_FILTER_UNASSIGNED } from "@/lib/org";
+import { HoldedClient } from "@/lib/holded";
 import { CashflowFilters } from "./cashflow-filters";
 import { CashflowChart, type CashflowMonthlyPoint } from "./cashflow-chart";
 
@@ -163,14 +164,36 @@ async function getCompanies(): Promise<{ id: string; name: string }[]> {
   });
 }
 
-async function getAccounts(): Promise<{ num: string; name: string | null }[]> {
-  const rows = await prisma.invoiceLine.findMany({
-    where: { accountingAccount: { not: null } },
-    select: { accountingAccount: true, accountingAccountName: true },
-    distinct: ["accountingAccount"],
-    orderBy: { accountingAccount: "asc" },
-  });
-  return rows.map((r) => ({ num: r.accountingAccount!, name: r.accountingAccountName }));
+async function getAccounts(): Promise<{ num: string; name: string }[]> {
+  const [rows, companies] = await Promise.all([
+    prisma.invoiceLine.findMany({
+      where: { accountingAccount: { not: null } },
+      select: { accountingAccount: true, accountingAccountName: true },
+      distinct: ["accountingAccount"],
+      orderBy: { accountingAccount: "asc" },
+    }),
+    prisma.company.findMany({ where: { active: true }, select: { holdedApiKey: true } }),
+  ]);
+
+  // Build name lookup maps from Holded's chart of accounts (non-fatal)
+  const holdedById = new Map<string, string>();
+  const holdedByNum = new Map<string, string>();
+
+  await Promise.all(
+    companies.map(async (c) => {
+      const maps = await new HoldedClient(c.holdedApiKey).getAccountMaps();
+      for (const [k, v] of maps.byId) holdedById.set(k, v.name);
+      for (const [k, v] of maps.byNum) holdedByNum.set(k, v);
+    })
+  );
+
+  const result: { num: string; name: string }[] = [];
+  for (const r of rows) {
+    const dbKey = r.accountingAccount!;
+    const name = r.accountingAccountName ?? holdedById.get(dbKey) ?? holdedByNum.get(dbKey);
+    if (name) result.push({ num: dbKey, name });
+  }
+  return result;
 }
 
 export default async function CashflowPage({

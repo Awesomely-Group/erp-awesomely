@@ -14,7 +14,7 @@ const PERIODS = [
 ];
 
 type Company = { id: string; name: string };
-type AccountOption = { num: string; name: string | null };
+type AccountOption = { num: string; name: string };
 
 export function CashflowFilters({
   companies,
@@ -228,10 +228,7 @@ export function CashflowFilters({
                       onChange={() => toggleAccount(a.num)}
                       className="mt-0.5 rounded border-gray-300 text-indigo-600 flex-shrink-0"
                     />
-                    <span className="text-sm leading-snug">
-                      <span className="text-gray-800">{a.name ?? a.num}</span>
-                      <span className="text-gray-400 text-xs ml-1">({a.num})</span>
-                    </span>
+                    <span className="text-sm leading-snug text-gray-800">{a.name}</span>
                   </label>
                 ))}
               </div>

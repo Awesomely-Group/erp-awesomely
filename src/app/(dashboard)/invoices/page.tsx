@@ -5,6 +5,8 @@ import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
 import { InvoicesTable } from "./invoices-table";
+import { InvoiceLinePanel } from "./invoice-line-panel";
+import { InvoicesSplitLayout } from "./invoices-split-layout";
 import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
@@ -71,6 +73,7 @@ type InvoicePageParams = {
   page?: string;
   sortBy?: string;
   sortDir?: string;
+  invoiceId?: string;
 };
 
 async function loadInvoicesPageData(params: InvoicePageParams) {
@@ -119,11 +122,6 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       where,
       include: {
         company: true,
-        _count: { select: { lines: true } },
-        lines: {
-          select: { accountingAccount: true, accountingAccountName: true },
-          where: { accountingAccount: { not: null } },
-        },
       },
       orderBy,
       skip: (page - 1) * pageSize,
@@ -193,6 +191,7 @@ export default async function InvoicesPage({
       sortBy: q.sortBy,
       sortDir: q.sortDir,
       page: q.page,
+      invoiceId: q.invoiceId,
       ...overrides,
     };
     for (const [k, v] of Object.entries(merged)) {
@@ -211,6 +210,42 @@ export default async function InvoicesPage({
     return buildUrl({ sortBy: col, sortDir: nextDir, page: "1" });
   }
 
+  const tableSection = (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-100 bg-gray-50">
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
+            <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
+            <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
+            <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
+            <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
+          </tr>
+        </thead>
+        <tbody>
+          <InvoicesTable
+            selectedId={params.invoiceId}
+            invoices={invoices.map((inv) => ({
+              id: inv.id,
+              holdedId: inv.holdedId,
+              type: inv.type,
+              number: inv.number,
+              counterparty: inv.counterparty,
+              date: inv.date.toISOString(),
+              totalEur: Number(inv.totalEur),
+              status: inv.status,
+              companyName: inv.company.name,
+              brand: inv.marca,
+            }))}
+          />
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -227,54 +262,23 @@ export default async function InvoicesPage({
         <InvoicesFilters />
       </Suspense>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
-              <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
-              <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
-              <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
-              <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Cta. contable</th>
-              <th className="px-4 py-3 text-center font-medium text-gray-600">Líneas</th>
-            </tr>
-          </thead>
-          <tbody>
-            <InvoicesTable
-              invoices={invoices.map((inv) => {
-                const seenNums = new Set<string>();
-                const accounts: { num: string; name: string | null }[] = [];
-                for (const l of inv.lines) {
-                  if (l.accountingAccount && !seenNums.has(l.accountingAccount)) {
-                    seenNums.add(l.accountingAccount);
-                    accounts.push({ num: l.accountingAccount, name: l.accountingAccountName });
-                  }
-                }
-                return {
-                  id: inv.id,
-                  holdedId: inv.holdedId,
-                  type: inv.type,
-                  number: inv.number,
-                  counterparty: inv.counterparty,
-                  date: inv.date.toISOString(),
-                  totalEur: Number(inv.totalEur),
-                  status: inv.status,
-                  companyName: inv.company.name,
-                  brand: inv.marca,
-                  lineCount: inv._count.lines,
-                  accounts,
-                };
-              })}
-            />
-
-          </tbody>
-        </table>
-      </div>
+      <InvoicesSplitLayout
+        panel={
+          params.invoiceId ? (
+            <Suspense
+              fallback={
+                <div className="bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-400 animate-pulse">
+                  Cargando líneas…
+                </div>
+              }
+            >
+              <InvoiceLinePanel invoiceId={params.invoiceId} />
+            </Suspense>
+          ) : null
+        }
+      >
+        {tableSection}
+      </InvoicesSplitLayout>
 
       {/* Pagination */}
       {totalPages > 1 && (
