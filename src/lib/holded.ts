@@ -50,6 +50,19 @@ export interface HoldedAccountingAccount {
   id: string;
   account: string; // numeric code e.g. "62300000"
   name: string;
+  group?: string;
+  debit?: number;
+  credit?: number;
+  balance?: number;
+}
+
+export interface AccountEntry {
+  cuenta: string;
+  num: string;
+  group?: string;
+  debit?: number;
+  credit?: number;
+  balance?: number;
 }
 
 export class HoldedClient {
@@ -135,6 +148,37 @@ export class HoldedClient {
       // Non-fatal: if accounting API fails, sync continues without names
       return new Map();
     }
+  }
+
+  /**
+   * Fetches the full chart of accounts from Holded and returns it as
+   * clean AccountEntry[] (no internal id, name → cuenta, sorted by num,
+   * duplicate names disambiguated as "<num> - <name>").
+   */
+  async getAccounts(): Promise<AccountEntry[]> {
+    const raw = await this.fetchFromBase<HoldedAccountingAccount[]>(
+      HOLDED_ACCOUNTING_BASE_URL,
+      "/account"
+    );
+
+    const nameCounts = new Map<string, number>();
+    for (const a of raw) {
+      if (a.name) nameCounts.set(a.name, (nameCounts.get(a.name) ?? 0) + 1);
+    }
+
+    const entries: AccountEntry[] = raw
+      .filter((a) => a.account)
+      .map((a) => ({
+        cuenta: (nameCounts.get(a.name) ?? 0) > 1 ? `${a.account} - ${a.name}` : a.name,
+        num: a.account,
+        ...(a.group !== undefined && { group: a.group }),
+        ...(a.debit !== undefined && { debit: a.debit }),
+        ...(a.credit !== undefined && { credit: a.credit }),
+        ...(a.balance !== undefined && { balance: a.balance }),
+      }));
+
+    entries.sort((a, b) => a.num.localeCompare(b.num));
+    return entries;
   }
 
   /**
