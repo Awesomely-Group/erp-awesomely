@@ -3,11 +3,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateInvoiceStatus } from "@/lib/sync";
-import { MARCA_OPTIONS } from "@/lib/org";
 import { AuditAction, ClassificationStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-
-const VALID_MARCAS = new Set(MARCA_OPTIONS.map((o) => o.value));
 
 async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   const classifications = await prisma.classification.findMany({
@@ -16,11 +13,7 @@ async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   });
 
   const marcas = [
-    ...new Set(
-      classifications
-        .map((c) => c.project.workspace.name)
-        .filter((name) => VALID_MARCAS.has(name))
-    ),
+    ...new Set(classifications.map((c) => c.project.workspace.name)),
   ].sort();
 
   if (marcas.length === 0) return;
