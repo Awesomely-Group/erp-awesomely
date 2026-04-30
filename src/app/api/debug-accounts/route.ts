@@ -9,33 +9,44 @@ export async function GET(req: Request): Promise<NextResponse> {
   const company = await prisma.company.findFirst({ where: { active: true } });
   if (!company) return NextResponse.json({ error: "No company" }, { status: 404 });
 
-  // Fetch accounting API as raw text to see exact response
-  const accRes = await fetch("https://api.holded.com/api/accounting/v1/account", {
-    headers: { key: company.holdedApiKey },
-  });
-  const accText = await accRes.text();
-  let accParsed: unknown = null;
-  try { accParsed = JSON.parse(accText); } catch { /* HTML or non-JSON */ }
+  const key = company.holdedApiKey;
 
-  // Fetch a sample invoice to see raw product.account format
+  async function tryEndpoint(url: string): Promise<{ status: number; isJson: boolean; sample: unknown }> {
+    const res = await fetch(url, { headers: { key } });
+    const text = await res.text();
+    let parsed: unknown = null;
+    let isJson = false;
+    try { parsed = JSON.parse(text); isJson = true; } catch { /* html */ }
+    const sample = isJson ? parsed : text.slice(0, 200);
+    return { status: res.status, isJson, sample };
+  }
+
+  // Get a sample account ID from recent invoice products
   const invRes = await fetch("https://api.holded.com/api/invoicing/v1/documents/invoice?page=1", {
-    headers: { key: company.holdedApiKey },
+    headers: { key },
   });
-  const invText = await invRes.text();
-  let invArr: Record<string, unknown>[] = [];
-  try {
-    const parsed = JSON.parse(invText);
-    invArr = Array.isArray(parsed) ? parsed : [];
-  } catch { /* ignore */ }
+  const invArr = await invRes.json() as Record<string, unknown>[];
+  const sampleAccountId = (invArr[0]?.products as Record<string, unknown>[] | undefined)?.[0]?.account as string | undefined;
 
-  const sampleProducts = (invArr[0]?.products as Record<string, unknown>[] | undefined)?.slice(0, 2) ?? [];
+  const results: Record<string, unknown> = {
+    sampleAccountId,
+  };
 
-  return NextResponse.json({
-    accountingStatus: accRes.status,
-    accountingRaw: accText.slice(0, 500),
-    accountingParsedCount: Array.isArray(accParsed) ? accParsed.length : null,
-    accountingSample: Array.isArray(accParsed) ? (accParsed as unknown[]).slice(0, 2) : null,
-    invoiceStatus: invRes.status,
-    sampleProducts,
-  });
+  if (sampleAccountId) {
+    results["GET /api/accounting/v1/account"] = await tryEndpoint(
+      "https://api.holded.com/api/accounting/v1/account"
+    );
+    results[`GET /api/accounting/v1/account/${sampleAccountId}`] = await tryEndpoint(
+      `https://api.holded.com/api/accounting/v1/account/${sampleAccountId}`
+    );
+    // Try getting a single invoice with full detail
+    const firstInvoiceId = invArr[0]?.id as string | undefined;
+    if (firstInvoiceId) {
+      results[`GET /api/invoicing/v1/documents/invoice/${firstInvoiceId}`] = await tryEndpoint(
+        `https://api.holded.com/api/invoicing/v1/documents/invoice/${firstInvoiceId}`
+      );
+    }
+  }
+
+  return NextResponse.json(results);
 }
