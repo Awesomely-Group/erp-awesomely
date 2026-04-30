@@ -6,34 +6,36 @@ export async function GET(req: Request): Promise<NextResponse> {
     req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`;
   if (!isCron) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const company = await prisma.company.findFirst({ where: { active: true } });
-  if (!company) return NextResponse.json({ error: "No company" }, { status: 404 });
-
-  const key = company.holdedApiKey;
-  const sampleId = "68bffdd1300a62d5890b9347";
-
-  async function probe(label: string, url: string, headers?: Record<string, string>): Promise<unknown> {
-    const res = await fetch(url, { headers: { key, ...headers } });
-    const text = await res.text();
-    let json: unknown = null;
-    try { json = JSON.parse(text); } catch { /* html */ }
-    if (json !== null) return { status: res.status, ok: true, sample: Array.isArray(json) ? (json as unknown[]).slice(0, 1) : json };
-    return { status: res.status, ok: false, preview: text.slice(0, 100) };
-  }
+  const companies = await prisma.company.findMany({ where: { active: true } });
+  if (!companies.length) return NextResponse.json({ error: "No companies" }, { status: 404 });
 
   const results: Record<string, unknown> = {};
 
-  await Promise.all([
-    probe("invoicing/account", "https://api.holded.com/api/invoicing/v1/account").then(r => { results["invoicing/account"] = r; }),
-    probe("invoicing/account/id", `https://api.holded.com/api/invoicing/v1/account/${sampleId}`).then(r => { results["invoicing/account/id"] = r; }),
-    probe("accounting/ledger", "https://api.holded.com/api/accounting/v1/ledger").then(r => { results["accounting/ledger"] = r; }),
-    probe("accounting/journal", "https://api.holded.com/api/accounting/v1/journal").then(r => { results["accounting/journal"] = r; }),
-    probe("erp/v1/account", "https://api.holded.com/api/erp/v1/account").then(r => { results["erp/v1/account"] = r; }),
-    // Try with Authorization header instead of key
-    probe("accounting/account (Bearer)", "https://api.holded.com/api/accounting/v1/account", {
-      Authorization: `Bearer ${key}`,
-    }).then(r => { results["accounting/account-bearer"] = r; }),
-  ]);
+  for (const company of companies) {
+    const key = company.holdedApiKey;
+    const sampleId = "68bffdd1300a62d5890b9347";
+
+    async function probe(url: string): Promise<unknown> {
+      const res = await fetch(url, { headers: { key } });
+      const text = await res.text();
+      try {
+        const json = JSON.parse(text);
+        return { status: res.status, ok: true, sample: Array.isArray(json) ? (json as unknown[]).slice(0, 1) : json };
+      } catch {
+        return { status: res.status, ok: false, preview: text.slice(0, 80) };
+      }
+    }
+
+    const companyResults: Record<string, unknown> = {};
+    await Promise.all([
+      probe(`https://api-ng.holded.com/api/accounting/v1/account`).then(r => { companyResults["api-ng/accounting/account"] = r; }),
+      probe(`https://api-ng.holded.com/api/invoicing/v1/account/${sampleId}`).then(r => { companyResults["api-ng/invoicing/account/id"] = r; }),
+      probe(`https://api.holded.com/api/accounting/v1/account/${sampleId}?key=${key}`).then(r => { companyResults["accounting/account/id?key=param"] = r; }),
+      probe(`https://api.holded.com/api/invoicing/v1/products`).then(r => { companyResults["invoicing/products"] = r; }),
+    ]);
+
+    results[company.name] = companyResults;
+  }
 
   return NextResponse.json(results);
 }
