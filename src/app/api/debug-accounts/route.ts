@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: Request): Promise<NextResponse> {
   const session = await auth();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isCron = process.env.CRON_SECRET &&
+    req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`;
+  if (!session && !isCron) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const company = await prisma.company.findFirst({ where: { active: true } });
   if (!company) return NextResponse.json({ error: "No company" }, { status: 404 });
