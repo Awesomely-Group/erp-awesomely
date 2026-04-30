@@ -65,17 +65,19 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
   let errorMessage: string | undefined;
 
   // Process a list of invoices in parallel batches to reduce total sync time
+  type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
+
   async function upsertBatch(
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
     type: InvoiceType,
-    accountNameMap: Map<string, string>,
+    accountMaps: AccountMaps,
     batchSize = 10
   ): Promise<void> {
     for (let i = 0; i < invoices.length; i += batchSize) {
       const chunk = invoices.slice(i, i + batchSize);
       await Promise.all(
         chunk.map((inv) =>
-          upsertInvoice(inv, companyId, type, accountNameMap)
+          upsertInvoice(inv, companyId, type, accountMaps)
             .then(() => { invoicesSynced++; })
             .catch((err: unknown) => {
               console.error(`[sync] Error upserting ${type} invoice ${inv.id} (${inv.docNumber}):`, err);
@@ -89,15 +91,15 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
     const client = new HoldedClient(company.holdedApiKey);
 
     // Fetch chart of accounts and both invoice types in parallel
-    const [accountNameMap, salesInvoices, purchaseInvoices] = await Promise.all([
-      client.getAccountNameMap(),
+    const [accountMaps, salesInvoices, purchaseInvoices] = await Promise.all([
+      client.getAccountMaps(),
       client.getAllInvoicesPaginated("invoice"),
       client.getAllInvoicesPaginated("purchase"),
     ]);
 
     await Promise.all([
-      upsertBatch(salesInvoices, InvoiceType.SALE, accountNameMap),
-      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountNameMap),
+      upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
+      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
     ]);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
@@ -118,11 +120,36 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
   if (errorMessage) throw new Error(errorMessage);
 }
 
+type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
+
+function resolveAccount(
+  raw: string | { id?: string; num?: string; name?: string } | undefined,
+  maps: AccountMaps
+): { num: string | null; name: string | null } {
+  if (!raw) return { num: null, name: null };
+
+  if (typeof raw === "object") {
+    const num = raw.num ?? null;
+    const name = raw.name ?? (num ? (maps.byNum.get(num) ?? null) : null);
+    return { num, name };
+  }
+
+  // raw is a string — could be a Holded internal ID or a numeric code
+  const fromId = maps.byId.get(raw);
+  if (fromId) return fromId;
+
+  const nameFromNum = maps.byNum.get(raw);
+  if (nameFromNum) return { num: raw, name: nameFromNum };
+
+  // Unknown string — discard rather than store a meaningless ID
+  return { num: null, name: null };
+}
+
 async function upsertInvoice(
   inv: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>[number],
   companyId: string,
   type: InvoiceType,
-  accountNameMap: Map<string, string> = new Map()
+  accountMaps: AccountMaps = { byNum: new Map(), byId: new Map() }
 ): Promise<void> {
   const date = new Date(inv.date * 1000);
   const currency = (inv.currency ?? "EUR").toUpperCase();
@@ -219,17 +246,8 @@ async function upsertInvoice(
           tax: lineTaxAmount,
           total: lineTotal,
           totalEur: lineTotalEur,
-          accountingAccount:
-            typeof product.account === "object"
-              ? (product.account?.num ?? null)
-              : (product.account ?? null),
-          accountingAccountName: (() => {
-            if (typeof product.account === "object") {
-              return product.account?.name ?? null;
-            }
-            const num = product.account ?? null;
-            return num ? (accountNameMap.get(num) ?? null) : null;
-          })(),
+          accountingAccount: resolveAccount(product.account, accountMaps).num,
+          accountingAccountName: resolveAccount(product.account, accountMaps).name,
           sortOrder: i,
         },
       });

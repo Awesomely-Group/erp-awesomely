@@ -128,26 +128,39 @@ export class HoldedClient {
   }
 
   /**
-   * Fetches the chart of accounts from Holded.
-   * Returns a map of account code → account name for fast lookup during sync.
+   * Fetches the chart of accounts and returns two lookup maps:
+   * - byNum:  numeric code → name  (e.g. "62300000" → "Servicios subcontrata")
+   * - byId:   Holded internal id → { num, name }  (e.g. "6846bc…" → { num, name })
+   *
+   * Non-fatal: returns empty maps if the accounting API is unavailable.
    */
-  async getAccountNameMap(): Promise<Map<string, string>> {
+  async getAccountMaps(): Promise<{
+    byNum: Map<string, string>;
+    byId: Map<string, { num: string; name: string }>;
+  }> {
     try {
       const accounts = await this.fetchFromBase<HoldedAccountingAccount[]>(
         HOLDED_ACCOUNTING_BASE_URL,
         "/account"
       );
-      const map = new Map<string, string>();
+      const byNum = new Map<string, string>();
+      const byId = new Map<string, { num: string; name: string }>();
       for (const acc of accounts) {
         if (acc.account && acc.name) {
-          map.set(acc.account, acc.name);
+          byNum.set(acc.account, acc.name);
+          if (acc.id) byId.set(acc.id, { num: acc.account, name: acc.name });
         }
       }
-      return map;
+      return { byNum, byId };
     } catch {
-      // Non-fatal: if accounting API fails, sync continues without names
-      return new Map();
+      return { byNum: new Map(), byId: new Map() };
     }
+  }
+
+  /** @deprecated Use getAccountMaps() */
+  async getAccountNameMap(): Promise<Map<string, string>> {
+    const { byNum } = await this.getAccountMaps();
+    return byNum;
   }
 
   /**
