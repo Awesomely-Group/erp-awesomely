@@ -8,7 +8,7 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
   const logs = await prisma.syncLog.findMany({
     include: { company: true, workspace: true },
     orderBy: { startedAt: "desc" },
-    take: 100,
+    take: 1000,
   });
 
   const lastSync = logs[0]?.startedAt;

@@ -2,7 +2,6 @@ import { prisma } from "./prisma";
 import { HoldedClient } from "./holded";
 import { JiraClient } from "./jira";
 import { convertToEur } from "./exchange-rates";
-import { tagToBrand } from "./utils";
 import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
@@ -53,6 +52,9 @@ export async function syncJiraWorkspace(workspaceId: string): Promise<void> {
   if (errorMessage) throw new Error(errorMessage);
 }
 
+const HOLDED_STATUS_CANCELLED = -1;
+const HOLDED_STATUS_DRAFT = 0;
+
 // ─── Holded Sync ───────────────────────────────────────────────────────────────
 
 export async function syncHoldedCompany(companyId: string): Promise<void> {
@@ -97,9 +99,27 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
       client.getAllInvoicesPaginated("purchase"),
     ]);
 
+    const isSkippable = (i: { status: number }) =>
+      i.status === HOLDED_STATUS_CANCELLED || i.status === HOLDED_STATUS_DRAFT;
+
+    const activeSales = salesInvoices.filter((i) => !isSkippable(i));
+    const skippedSales = salesInvoices.filter(isSkippable);
+    const activePurchases = purchaseInvoices.filter((i) => !isSkippable(i));
+    const skippedPurchases = purchaseInvoices.filter(isSkippable);
+
+    const skippedIds = [
+      ...skippedSales.map((i) => i.id),
+      ...skippedPurchases.map((i) => i.id),
+    ];
+    if (skippedIds.length > 0) {
+      await prisma.invoice.deleteMany({
+        where: { holdedId: { in: skippedIds }, companyId },
+      });
+    }
+
     await Promise.all([
-      upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
-      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
+      upsertBatch(activeSales, InvoiceType.SALE, accountMaps),
+      upsertBatch(activePurchases, InvoiceType.PURCHASE, accountMaps),
     ]);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
@@ -163,7 +183,6 @@ async function upsertInvoice(
   }
 
   const totalEur = (inv.total ?? 0) * resolvedFxRate;
-  const marca = tagToBrand(inv.tags);
 
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
@@ -178,7 +197,6 @@ async function upsertInvoice(
       tax: inv.tax ?? 0,
       total: inv.total ?? 0,
       totalEur,
-      marca,
       paymentsTotal: inv.paymentsTotal ?? 0,
       paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
     },
@@ -196,7 +214,6 @@ async function upsertInvoice(
       tax: inv.tax ?? 0,
       total: inv.total ?? 0,
       totalEur,
-      marca,
       paymentsTotal: inv.paymentsTotal ?? 0,
       paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
     },
@@ -273,8 +290,25 @@ async function upsertInvoice(
     }
   }
 
-  // Update invoice status based on classification coverage
+  // Update invoice status and derived marca from existing classifications
   await updateInvoiceStatus(invoice.id);
+  await deriveMarcaFromLines(invoice.id);
+}
+
+export async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
+  const classifications = await prisma.classification.findMany({
+    where: { invoiceLine: { invoiceId } },
+    include: { project: { include: { workspace: true } } },
+  });
+
+  const marcas = [
+    ...new Set(classifications.map((c) => c.project.workspace.name)),
+  ].sort();
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { marca: marcas.length > 0 ? marcas.join(",") : null },
+  });
 }
 
 export async function updateInvoiceStatus(invoiceId: string): Promise<void> {

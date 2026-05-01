@@ -75,7 +75,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             <td className="px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className={`font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`}>
-                  {inv.number ?? inv.holdedId.slice(0, 8)}
+                  {inv.number ?? <span className="italic text-gray-400 font-normal">Borrador</span>}
                 </span>
                 <a
                   href={holdedInvoiceUrl(inv.holdedId, inv.type)}

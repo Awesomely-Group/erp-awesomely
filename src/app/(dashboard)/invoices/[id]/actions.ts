@@ -16,11 +16,9 @@ async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
     ...new Set(classifications.map((c) => c.project.workspace.name)),
   ].sort();
 
-  if (marcas.length === 0) return;
-
   await prisma.invoice.update({
     where: { id: invoiceId },
-    data: { marca: marcas.join(",") },
+    data: { marca: marcas.length > 0 ? marcas.join(",") : null },
   });
 }
 
