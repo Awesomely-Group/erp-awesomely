@@ -124,6 +124,8 @@ export default async function InvoiceDetailPage({
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,
+            accountingAccount: l.accountingAccount,
+            accountingAccountName: l.accountingAccountName,
             description: l.description,
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),

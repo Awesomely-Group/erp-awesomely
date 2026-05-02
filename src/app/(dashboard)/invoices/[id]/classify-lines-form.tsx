@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { classifyLine, updateClassificationStatus } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { lineAccountingLabel } from "@/lib/invoice-accounts";
 
 interface Suggestion {
   projectId: string;
@@ -26,6 +27,8 @@ interface LineClassification {
 interface Line {
   id: string;
   name: string;
+  accountingAccount: string | null;
+  accountingAccountName: string | null;
   description: string | null;
   quantity: number;
   unitPrice: number;
@@ -54,13 +57,11 @@ interface Props {
 
 const STATUS_LABELS: Record<string, string> = {
   CLASSIFIED: "Clasificado",
-  REVIEWED: "Revisado",
   APPROVED: "Aprobado",
 };
 
 const STATUS_COLORS: Record<string, string> = {
   CLASSIFIED: "text-blue-600 bg-blue-50 border-blue-200",
-  REVIEWED: "text-purple-600 bg-purple-50 border-purple-200",
   APPROVED: "text-green-600 bg-green-50 border-green-200",
 };
 
@@ -172,6 +173,7 @@ function LineRow({
   });
 
   const isEur = line.currency === "EUR";
+  const accLabel = lineAccountingLabel(line);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -191,6 +193,11 @@ function LineRow({
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-medium text-gray-900 truncate">{line.name}</p>
+            {accLabel ? (
+              <p className="text-xs text-gray-500 truncate mt-0.5 font-mono" title={accLabel}>
+                {accLabel}
+              </p>
+            ) : null}
             {line.description && (
               <p className="text-xs text-gray-400 truncate mt-0.5">{line.description}</p>
             )}
@@ -395,15 +402,6 @@ function LineRow({
                 <span className="text-xs text-gray-500">Estado:</span>
                 {line.classification.status === "CLASSIFIED" && (
                   <button
-                    onClick={() => onStatusChange(line.classification!.id, "REVIEWED")}
-                    disabled={isPending}
-                    className="rounded-lg border border-purple-300 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 transition-colors"
-                  >
-                    Marcar revisado
-                  </button>
-                )}
-                {line.classification.status === "REVIEWED" && (
-                  <button
                     onClick={() => onStatusChange(line.classification!.id, "APPROVED")}
                     disabled={isPending}
                     className="rounded-lg border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 transition-colors"
@@ -411,7 +409,7 @@ function LineRow({
                     Aprobar
                   </button>
                 )}
-                {line.classification.status !== "CLASSIFIED" && (
+                {line.classification.status === "APPROVED" && (
                   <span
                     className={cn(
                       "text-xs font-medium px-2 py-1 rounded-full border",

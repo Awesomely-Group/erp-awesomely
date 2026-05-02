@@ -7,7 +7,6 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
   PARTIAL: "Parcial",
   CLASSIFIED: "Clasificado",
-  REVIEWED: "Revisado",
   APPROVED: "Aprobado",
 };
 
@@ -15,7 +14,6 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-red-100 text-red-700",
   PARTIAL: "bg-amber-100 text-amber-700",
   CLASSIFIED: "bg-blue-100 text-blue-700",
-  REVIEWED: "bg-purple-100 text-purple-700",
   APPROVED: "bg-green-100 text-green-700",
 };
 
@@ -30,6 +28,8 @@ interface InvoiceRow {
   status: string;
   companyName: string;
   brand: string | null;
+  /** Distinct accounting labels from lines (code · name), truncated if several */
+  accountsSummary: string;
 }
 
 interface Props {
@@ -44,7 +44,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
   if (invoices.length === 0) {
     return (
       <tr>
-        <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+        <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
           No hay facturas con estos filtros
         </td>
       </tr>
@@ -105,6 +105,9 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             </td>
             <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
               {inv.counterparty ?? "—"}
+            </td>
+            <td className="px-4 py-3 text-gray-600 max-w-[220px]" title={inv.accountsSummary}>
+              <span className="line-clamp-2 text-xs leading-snug">{inv.accountsSummary}</span>
             </td>
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
             <td className="px-4 py-3 text-right font-medium">

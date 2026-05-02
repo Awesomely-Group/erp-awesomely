@@ -171,7 +171,6 @@ export function InvoicesFilters(): React.JSX.Element {
           <option value="PENDING">Sin clasificar</option>
           <option value="PARTIAL">Parcial</option>
           <option value="CLASSIFIED">Clasificado</option>
-          <option value="REVIEWED">Revisado</option>
           <option value="APPROVED">Aprobado</option>
         </select>
       </div>

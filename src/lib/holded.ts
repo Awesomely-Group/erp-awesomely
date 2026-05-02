@@ -56,6 +56,20 @@ export interface HoldedAccountingAccount {
   balance?: number;
 }
 
+/** Row from GET /accounting/v1/chartofaccounts (preferred over legacy /account). */
+interface HoldedChartAccountRow {
+  id?: string;
+  /** Numeric account code */
+  num?: string | number;
+  /** Some responses use `account` instead of `num` */
+  account?: string | number;
+  name?: string;
+  group?: string;
+  debit?: number;
+  credit?: number;
+  balance?: number;
+}
+
 export interface AccountEntry {
   cuenta: string;
   num: string;
@@ -95,6 +109,84 @@ export class HoldedClient {
 
   private async fetch<T>(path: string, params?: Record<string, string>): Promise<T> {
     return this.fetchFromBase<T>(HOLDED_BASE_URL, path, params);
+  }
+
+  private normalizeChartList(data: unknown): HoldedChartAccountRow[] {
+    if (Array.isArray(data)) return data as HoldedChartAccountRow[];
+    if (data && typeof data === "object") {
+      const d = data as Record<string, unknown>;
+      for (const key of ["accounts", "items", "data"]) {
+        const inner = d[key];
+        if (Array.isArray(inner)) return inner as HoldedChartAccountRow[];
+      }
+    }
+    return [];
+  }
+
+  private chartRowNum(row: HoldedChartAccountRow): string {
+    const n = row.num ?? row.account;
+    return n != null ? String(n).trim() : "";
+  }
+
+  /**
+   * Full chart via chartofaccounts + pagination. Falls back to a single request without page/limit if the API rejects paging.
+   */
+  private async fetchAllChartOfAccounts(): Promise<HoldedChartAccountRow[]> {
+    const PAGE_SIZE = 100;
+    const MAX_PAGES = 100;
+    const merged: HoldedChartAccountRow[] = [];
+    let prevFirstId: string | undefined;
+
+    const fetchNoPagination = async (): Promise<HoldedChartAccountRow[]> => {
+      const url = new URL(`${HOLDED_ACCOUNTING_BASE_URL}/chartofaccounts`);
+      url.searchParams.set("includeEmpty", "1");
+      const res = await fetch(url.toString(), {
+        headers: {
+          key: this.apiKey,
+          "Content-Type": "application/json",
+        },
+        next: { revalidate: 0 },
+      });
+      if (!res.ok) {
+        throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+      }
+      return this.normalizeChartList(await res.json());
+    };
+
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = new URL(`${HOLDED_ACCOUNTING_BASE_URL}/chartofaccounts`);
+      url.searchParams.set("includeEmpty", "1");
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("limit", String(PAGE_SIZE));
+
+      const res = await fetch(url.toString(), {
+        headers: {
+          key: this.apiKey,
+          "Content-Type": "application/json",
+        },
+        next: { revalidate: 0 },
+      });
+
+      if (!res.ok) {
+        if (page === 1 && res.status === 400) {
+          return fetchNoPagination();
+        }
+        break;
+      }
+
+      const batch = this.normalizeChartList(await res.json());
+      if (batch.length === 0) break;
+
+      const firstId = batch[0]?.id != null ? String(batch[0].id) : undefined;
+      if (page > 1 && firstId !== undefined && firstId === prevFirstId) break;
+
+      merged.push(...batch);
+      prevFirstId = firstId;
+
+      if (batch.length < PAGE_SIZE) break;
+    }
+
+    return merged;
   }
 
   async getInvoices(params?: {
@@ -139,17 +231,16 @@ export class HoldedClient {
     byId: Map<string, { num: string; name: string }>;
   }> {
     try {
-      const accounts = await this.fetchFromBase<HoldedAccountingAccount[]>(
-        HOLDED_ACCOUNTING_BASE_URL,
-        "/account"
-      );
+      const rows = await this.fetchAllChartOfAccounts();
       const byNum = new Map<string, string>();
       const byId = new Map<string, { num: string; name: string }>();
-      for (const acc of accounts) {
-        if (acc.account && acc.name) {
-          byNum.set(acc.account, acc.name);
-          if (acc.id) byId.set(acc.id, { num: acc.account, name: acc.name });
-        }
+      for (const acc of rows) {
+        const num = this.chartRowNum(acc);
+        const name = (acc.name ?? "").trim();
+        const id = acc.id != null ? String(acc.id).trim() : "";
+        if (!name) continue;
+        if (num) byNum.set(num, name);
+        if (id && num) byId.set(id, { num, name });
       }
       return { byNum, byId };
     } catch {
@@ -169,29 +260,37 @@ export class HoldedClient {
    * duplicate names disambiguated as "<num> - <name>").
    */
   async getAccounts(): Promise<AccountEntry[]> {
-    const raw = await this.fetchFromBase<HoldedAccountingAccount[]>(
-      HOLDED_ACCOUNTING_BASE_URL,
-      "/account"
-    );
+    try {
+      const raw = await this.fetchAllChartOfAccounts();
 
-    const nameCounts = new Map<string, number>();
-    for (const a of raw) {
-      if (a.name) nameCounts.set(a.name, (nameCounts.get(a.name) ?? 0) + 1);
+      const nameCounts = new Map<string, number>();
+      for (const a of raw) {
+        const nm = (a.name ?? "").trim();
+        if (nm) nameCounts.set(nm, (nameCounts.get(nm) ?? 0) + 1);
+      }
+
+      const entries: AccountEntry[] = raw
+        .map((a) => {
+          const num = this.chartRowNum(a);
+          const name = (a.name ?? "").trim();
+          if (!num || !name) return null;
+          const cuenta = (nameCounts.get(name) ?? 0) > 1 ? `${num} - ${name}` : name;
+          return {
+            cuenta,
+            num,
+            ...(a.group !== undefined && typeof a.group === "string" && { group: a.group }),
+            ...(typeof a.debit === "number" && { debit: a.debit }),
+            ...(typeof a.credit === "number" && { credit: a.credit }),
+            ...(typeof a.balance === "number" && { balance: a.balance }),
+          };
+        })
+        .filter((e): e is AccountEntry => e !== null);
+
+      entries.sort((a, b) => a.num.localeCompare(b.num));
+      return entries;
+    } catch {
+      return [];
     }
-
-    const entries: AccountEntry[] = raw
-      .filter((a) => a.account)
-      .map((a) => ({
-        cuenta: (nameCounts.get(a.name) ?? 0) > 1 ? `${a.account} - ${a.name}` : a.name,
-        num: a.account,
-        ...(a.group !== undefined && { group: a.group }),
-        ...(a.debit !== undefined && { debit: a.debit }),
-        ...(a.credit !== undefined && { credit: a.credit }),
-        ...(a.balance !== undefined && { balance: a.balance }),
-      }));
-
-    entries.sort((a, b) => a.num.localeCompare(b.num));
-    return entries;
   }
 
   /**

@@ -10,7 +10,7 @@ export default async function ProjectsPage(): Promise<React.JSX.Element> {
         include: {
           _count: { select: { classifications: true } },
           classifications: {
-            where: { status: { in: ["CLASSIFIED", "REVIEWED", "APPROVED"] } },
+            where: { status: { in: ["CLASSIFIED", "APPROVED"] } },
             include: { invoiceLine: { include: { invoice: true } } },
           },
         },

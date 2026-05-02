@@ -252,6 +252,7 @@ async function upsertInvoice(
       const lineTaxAmount = lineTotal - lineSubtotal;
       const lineTotalEur = lineTotal * resolvedFxRate;
 
+      const acc = resolveAccount(product.account, accountMaps);
       const newLine = await prisma.invoiceLine.create({
         data: {
           invoiceId: invoice.id,
@@ -263,8 +264,8 @@ async function upsertInvoice(
           tax: lineTaxAmount,
           total: lineTotal,
           totalEur: lineTotalEur,
-          accountingAccount: resolveAccount(product.account, accountMaps).num,
-          accountingAccountName: resolveAccount(product.account, accountMaps).name,
+          accountingAccount: acc.num,
+          accountingAccountName: acc.name,
           sortOrder: i,
         },
       });

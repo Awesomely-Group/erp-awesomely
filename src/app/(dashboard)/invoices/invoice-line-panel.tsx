@@ -8,7 +8,6 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
   PARTIAL: "Parcial",
   CLASSIFIED: "Clasificado",
-  REVIEWED: "Revisado",
   APPROVED: "Aprobado",
 };
 
@@ -16,7 +15,6 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-red-100 text-red-700",
   PARTIAL: "bg-amber-100 text-amber-700",
   CLASSIFIED: "bg-blue-100 text-blue-700",
-  REVIEWED: "bg-purple-100 text-purple-700",
   APPROVED: "bg-green-100 text-green-700",
 };
 
@@ -119,6 +117,8 @@ export async function InvoiceLinePanel({
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,
+            accountingAccount: l.accountingAccount,
+            accountingAccountName: l.accountingAccountName,
             description: l.description,
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),
