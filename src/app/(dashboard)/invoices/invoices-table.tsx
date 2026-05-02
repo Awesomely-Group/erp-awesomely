@@ -30,6 +30,8 @@ interface InvoiceRow {
   brand: string | null;
   /** Distinct accounting labels from lines (code · name), truncated if several */
   accountsSummary: string;
+  /** Si hay ids Holded sin nombre resuelto, detalle para title/hover */
+  accountsTooltip?: string;
 }
 
 interface Props {
@@ -106,7 +108,13 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
               {inv.counterparty ?? "—"}
             </td>
-            <td className="px-4 py-3 text-gray-600 max-w-[220px]" title={inv.accountsSummary}>
+            <td
+              className="px-4 py-3 text-gray-600 max-w-[220px]"
+              title={
+                [inv.accountsSummary, inv.accountsTooltip].filter(Boolean).join("\n\n") ||
+                undefined
+              }
+            >
               <span className="line-clamp-2 text-xs leading-snug">{inv.accountsSummary}</span>
             </td>
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>

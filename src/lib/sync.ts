@@ -322,8 +322,7 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
 
   const classified = lines.filter((l) => l.classification !== null).length;
 
-  let status: "PENDING" | "PARTIAL" | "CLASSIFIED" | "REVIEWED" | "APPROVED" =
-    "PENDING";
+  let status: "PENDING" | "PARTIAL" | "CLASSIFIED" | "APPROVED" = "PENDING";
 
   if (classified === 0) {
     status = "PENDING";
@@ -337,8 +336,6 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
 
     if (statuses.every((s) => s === "APPROVED")) {
       status = "APPROVED";
-    } else if (statuses.every((s) => s === "REVIEWED" || s === "APPROVED")) {
-      status = "REVIEWED";
     } else {
       status = "CLASSIFIED";
     }

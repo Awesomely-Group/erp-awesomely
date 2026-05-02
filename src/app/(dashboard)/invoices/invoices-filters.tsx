@@ -24,7 +24,17 @@ const MARCA_ALL_OPTIONS = [
   ...MARCA_OPTIONS,
 ];
 
-export function InvoicesFilters(): React.JSX.Element {
+export interface AccountFilterOption {
+  value: string;
+  label: string;
+}
+
+interface InvoicesFiltersProps {
+  /** Opciones derivadas de líneas sincronizadas; si falta, el multiselect sigue visible y vacío */
+  accountOptions?: AccountFilterOption[];
+}
+
+export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -34,29 +44,39 @@ export function InvoicesFilters(): React.JSX.Element {
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [type, setType] = useState(sp.get("type") ?? "");
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>(
+    sp.get("account")?.split(",").map((s) => s.trim()).filter(Boolean) ?? []
+  );
   const [selectedMarcas, setSelectedMarcas] = useState<string[]>(
     sp.get("marca")?.split(",").filter(Boolean) ?? []
   );
+  const [accountOpen, setAccountOpen] = useState(false);
   const [marcaOpen, setMarcaOpen] = useState(false);
+  const accountContainerRef = useRef<HTMLDivElement>(null);
   const marcaContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!marcaOpen) return;
+    if (!marcaOpen && !accountOpen) return;
     function handlePointerDown(e: PointerEvent): void {
-      if (marcaContainerRef.current && !marcaContainerRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (marcaOpen && marcaContainerRef.current && !marcaContainerRef.current.contains(t)) {
         setMarcaOpen(false);
+      }
+      if (accountOpen && accountContainerRef.current && !accountContainerRef.current.contains(t)) {
+        setAccountOpen(false);
       }
     }
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [marcaOpen]);
+  }, [marcaOpen, accountOpen]);
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
-    status: string; type: string; marca: string;
+    status: string; type: string; marca: string; account: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status, type,
+      account: selectedAccounts.join(","),
       marca: selectedMarcas.join(","),
       ...overrides,
     };
@@ -64,6 +84,7 @@ export function InvoicesFilters(): React.JSX.Element {
     if (m.search) params.set("search", m.search);
     if (m.status) params.set("status", m.status);
     if (m.type) params.set("type", m.type);
+    if (m.account) params.set("account", m.account);
     if (m.marca) params.set("marca", m.marca);
     if (m.period) {
       params.set("period", m.period);
@@ -83,6 +104,14 @@ export function InvoicesFilters(): React.JSX.Element {
     applyWith({ marca: next.join(",") });
   }
 
+  function toggleAccount(value: string): void {
+    const next = selectedAccounts.includes(value)
+      ? selectedAccounts.filter((a) => a !== value)
+      : [...selectedAccounts, value];
+    setSelectedAccounts(next);
+    applyWith({ account: next.join(",") });
+  }
+
   function reset(): void {
     setSearch("");
     setPeriod("");
@@ -90,7 +119,9 @@ export function InvoicesFilters(): React.JSX.Element {
     setDateTo("");
     setStatus("");
     setType("");
+    setSelectedAccounts([]);
     setSelectedMarcas([]);
+    setAccountOpen(false);
     setMarcaOpen(false);
     router.push("/invoices");
   }
@@ -102,8 +133,15 @@ export function InvoicesFilters(): React.JSX.Element {
         ? (MARCA_ALL_OPTIONS.find((o) => o.value === selectedMarcas[0])?.label ?? selectedMarcas[0])
         : `${selectedMarcas.length} marcas`;
 
+  const accountLabel =
+    selectedAccounts.length === 0
+      ? "Todas"
+      : selectedAccounts.length === 1
+        ? (accountOptions.find((o) => o.value === selectedAccounts[0])?.label ?? selectedAccounts[0])
+        : `${selectedAccounts.length} cuentas`;
+
   return (
-    <div className="flex flex-wrap gap-3 items-end">
+    <div className="flex flex-wrap gap-3 items-end min-w-max">
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Buscar</label>
         <input
@@ -158,6 +196,56 @@ export function InvoicesFilters(): React.JSX.Element {
           </div>
         </>
       )}
+
+      {/* Cuenta contable multiselect — detrás del periodo para que suele verse en la primera fila */}
+      <div className="flex flex-col gap-1 shrink-0 min-w-[12rem]" ref={accountContainerRef}>
+        <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setAccountOpen((o) => !o)}
+            className={`rounded-lg border px-3 py-2 text-sm bg-white text-left w-full min-w-[12rem] max-w-[min(22rem,100vw-2rem)] flex items-center justify-between gap-2 transition-colors ${
+              selectedAccounts.length > 0
+                ? "border-indigo-500 text-indigo-700"
+                : "border-gray-300 text-gray-700"
+            }`}
+          >
+            <span className="truncate">{accountLabel}</span>
+            <svg
+              className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${accountOpen ? "rotate-180" : ""}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+
+          {accountOpen && (
+            <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[12rem] max-w-[min(28rem,92vw)] max-h-60 overflow-y-auto overflow-x-hidden">
+              {accountOptions.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-gray-400">Sin cuentas en datos sincronizados</p>
+              ) : (
+                accountOptions.map((o) => (
+                  <label
+                    key={o.value}
+                    className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedAccounts.includes(o.value)}
+                      onChange={() => toggleAccount(o.value)}
+                      className="rounded border-gray-300 text-indigo-600 flex-shrink-0 mt-0.5"
+                    />
+                    <span className="text-sm text-gray-800 break-words" title={o.label}>
+                      {o.label}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Estado</label>

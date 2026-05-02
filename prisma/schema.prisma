@@ -85,6 +85,16 @@ model Company {
 
 // ─── Jira Workspaces & Projects ────────────────────────────────────────────────
 
+enum ProjectStatus {
+  NOT_STARTED
+  ONGOING
+  PAUSED
+  DONE
+  ARCHIVED
+
+  @@map("project_status")
+}
+
 model JiraWorkspace {
   id       String  @id @default(cuid())
   name     String
@@ -110,6 +120,7 @@ model JiraProject {
   workspaceId String
   workspace   JiraWorkspace @relation(fields: [workspaceId], references: [id])
   active      Boolean       @default(true)
+  status      ProjectStatus @default(NOT_STARTED)
 
   classifications Classification[]
 

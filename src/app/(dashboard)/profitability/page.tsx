@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { InvoiceType } from "@prisma/client";
+import { format } from "date-fns";
+import { ProfitabilityFilters } from "./profitability-filters";
 
 interface ProfitabilityRow {
   projectId: string;
@@ -20,7 +22,7 @@ async function getProfitabilityData(
   const invoices = await prisma.invoice.findMany({
     where: {
       date: { gte: from, lte: to },
-      status: { in: ["CLASSIFIED", "REVIEWED", "APPROVED"] },
+      status: { in: ["CLASSIFIED", "APPROVED"] },
     },
     include: {
       lines: {
@@ -112,17 +114,14 @@ export default async function ProfitabilityPage({
   if (params.from && params.to) {
     from = new Date(params.from);
     to = new Date(params.to);
-  } else if (params.period === "quarter") {
-    const q = Math.floor(currentMonth / 3);
-    from = new Date(currentYear, q * 3, 1);
-    to = new Date(currentYear, q * 3 + 3, 0);
   } else if (params.period === "year") {
     from = new Date(currentYear, 0, 1);
     to = new Date(currentYear, 11, 31);
   } else {
-    // Default: current month
-    from = new Date(currentYear, currentMonth, 1);
-    to = new Date(currentYear, currentMonth + 1, 0);
+    // Default: current quarter
+    const q = Math.floor(currentMonth / 3);
+    from = new Date(currentYear, q * 3, 1);
+    to = new Date(currentYear, q * 3 + 3, 0);
   }
 
   const rows = await getProfitabilityData(from, to);
@@ -138,11 +137,12 @@ export default async function ProfitabilityPage({
 
   const periodLabel = params.period === "year"
     ? `Año ${currentYear}`
-    : params.period === "quarter"
-      ? `Q${Math.floor(currentMonth / 3) + 1} ${currentYear}`
-      : params.from
-        ? `${params.from} — ${params.to}`
-        : `${new Date(from).toLocaleDateString("es-ES", { month: "long", year: "numeric" })}`;
+    : params.from
+      ? `${params.from} — ${params.to}`
+      : `Q${Math.floor(currentMonth / 3) + 1} ${currentYear}`;
+
+  const fromStr = format(from, "yyyy-MM-dd");
+  const toStr = format(to, "yyyy-MM-dd");
 
   return (
     <div className="space-y-6">
@@ -152,48 +152,7 @@ export default async function ProfitabilityPage({
           <p className="text-sm text-gray-500 mt-1">{periodLabel}</p>
         </div>
 
-        {/* Period selector */}
-        <form className="flex flex-wrap gap-2">
-          <a
-            href="/profitability?period=month"
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            Este mes
-          </a>
-          <a
-            href="/profitability?period=quarter"
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            Este trimestre
-          </a>
-          <a
-            href="/profitability?period=year"
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            Este año
-          </a>
-          <div className="flex gap-2 items-center">
-            <input
-              type="date"
-              name="from"
-              defaultValue={params.from}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm bg-white"
-            />
-            <span className="text-gray-400">—</span>
-            <input
-              type="date"
-              name="to"
-              defaultValue={params.to}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm bg-white"
-            />
-            <button
-              type="submit"
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-            >
-              Aplicar
-            </button>
-          </div>
-        </form>
+        <ProfitabilityFilters from={fromStr} to={toStr} />
       </div>
 
       {/* Summary cards */}
