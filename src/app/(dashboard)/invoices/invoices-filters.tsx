@@ -197,14 +197,14 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
         </>
       )}
 
-      {/* Cuenta contable multiselect — detrás del periodo para que suele verse en la primera fila */}
-      <div className="flex flex-col gap-1 shrink-0 min-w-[12rem]" ref={accountContainerRef}>
+      {/* Cuenta contable multiselect — mismo aspecto que «Marca» */}
+      <div className="flex flex-col gap-1 shrink-0" ref={accountContainerRef}>
         <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
         <div className="relative">
           <button
             type="button"
             onClick={() => setAccountOpen((o) => !o)}
-            className={`rounded-lg border px-3 py-2 text-sm bg-white text-left w-full min-w-[12rem] max-w-[min(22rem,100vw-2rem)] flex items-center justify-between gap-2 transition-colors ${
+            className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] max-w-[min(22rem,85vw)] flex items-center justify-between gap-2 transition-colors ${
               selectedAccounts.length > 0
                 ? "border-indigo-500 text-indigo-700"
                 : "border-gray-300 text-gray-700"
@@ -221,26 +221,28 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
           </button>
 
           {accountOpen && (
-            <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[12rem] max-w-[min(28rem,92vw)] max-h-60 overflow-y-auto overflow-x-hidden">
+            <div className="absolute top-full mt-1 z-20 min-w-[11rem] max-w-[min(28rem,92vw)] rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
               {accountOptions.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-gray-400">Sin cuentas en datos sincronizados</p>
               ) : (
-                accountOptions.map((o) => (
-                  <label
-                    key={o.value}
-                    className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAccounts.includes(o.value)}
-                      onChange={() => toggleAccount(o.value)}
-                      className="rounded border-gray-300 text-indigo-600 flex-shrink-0 mt-0.5"
-                    />
-                    <span className="text-sm text-gray-800 break-words" title={o.label}>
-                      {o.label}
-                    </span>
-                  </label>
-                ))
+                <div className="max-h-60 overflow-y-auto overflow-x-hidden">
+                  {accountOptions.map((o) => (
+                    <label
+                      key={o.value}
+                      className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAccounts.includes(o.value)}
+                        onChange={() => toggleAccount(o.value)}
+                        className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                      />
+                      <span className="text-sm text-gray-800 text-left break-words" title={o.label}>
+                        {o.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           )}

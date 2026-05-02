@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { registerPayment } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,23 +25,8 @@ interface Props {
 
 export function PaymentRow({ invoice }: Props): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [amount, setAmount] = useState(invoice.effectivePending.toFixed(2));
-  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10));
-  const [notes, setNotes] = useState("");
-  const [isPending, startTransition] = useTransition();
 
   const isPaid = invoice.effectivePending <= 0.005;
-
-  function handleSubmit(): void {
-    const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount <= 0) return;
-    startTransition(async () => {
-      await registerPayment({ invoiceId: invoice.id, amount: parsedAmount, paidAt, notes });
-      setShowForm(false);
-      setNotes("");
-    });
-  }
 
   return (
     <div className={cn("border-b border-gray-100 last:border-0", isPaid && "opacity-60")}>
@@ -73,71 +57,7 @@ export function PaymentRow({ invoice }: Props): React.JSX.Element {
             {isPaid ? "Pagado" : formatCurrency(invoice.effectivePending)}
           </p>
         </div>
-
-        {!isPaid && (
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="shrink-0 rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors"
-          >
-            Registrar pago
-          </button>
-        )}
-        {isPaid && <div className="w-[110px] shrink-0" />}
       </div>
-
-      {/* Payment form */}
-      {showForm && (
-        <div className="px-12 pb-3 flex flex-wrap gap-3 items-end bg-indigo-50 border-t border-indigo-100">
-          <div className="flex flex-col gap-1 pt-3">
-            <label className="text-xs text-gray-500">Importe (€)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white w-32"
-              disabled={isPending}
-            />
-          </div>
-          <div className="flex flex-col gap-1 pt-3">
-            <label className="text-xs text-gray-500">Fecha pago</label>
-            <input
-              type="date"
-              value={paidAt}
-              onChange={(e) => setPaidAt(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              disabled={isPending}
-            />
-          </div>
-          <div className="flex flex-col gap-1 pt-3 flex-1 min-w-[180px]">
-            <label className="text-xs text-gray-500">Notas</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Opcional…"
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              disabled={isPending}
-            />
-          </div>
-          <div className="flex gap-2 pb-0.5 pt-3">
-            <button
-              onClick={handleSubmit}
-              disabled={isPending}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {isPending ? "Guardando…" : "Guardar"}
-            </button>
-            <button
-              onClick={() => setShowForm(false)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Expanded: payment history */}
       {expanded && invoice.erpPayments.length > 0 && (
