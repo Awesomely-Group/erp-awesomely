@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
 import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED } from "@/lib/org";
+import { formatInvoiceAccountsSummary } from "@/lib/invoice-accounts";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -122,6 +123,13 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       where,
       include: {
         company: true,
+        lines: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            accountingAccount: true,
+            accountingAccountName: true,
+          },
+        },
       },
       orderBy,
       skip: (page - 1) * pageSize,
@@ -220,6 +228,9 @@ export default async function InvoicesPage({
             <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
             <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
             <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
+            <th className="px-4 py-3 text-left font-medium text-gray-600 max-w-[220px]">
+              Cuenta contable
+            </th>
             <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
             <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
             <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
@@ -239,6 +250,7 @@ export default async function InvoicesPage({
               status: inv.status,
               companyName: inv.company.name,
               brand: inv.marca,
+              accountsSummary: formatInvoiceAccountsSummary(inv.lines),
             }))}
           />
         </tbody>
@@ -266,6 +278,7 @@ export default async function InvoicesPage({
         panel={
           params.invoiceId ? (
             <Suspense
+              key={params.invoiceId}
               fallback={
                 <div className="bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-400 animate-pulse">
                   Cargando líneas…
