@@ -162,7 +162,7 @@ function LineRow({
   const [workspaceFilter, setWorkspaceFilter] = useState(defaultWorkspace);
   const [projectSearch, setProjectSearch] = useState("");
 
-  const workspaces = Array.from(new Set(projects.map((p) => p.workspaceName))).sort();
+  const MARCAS = ["Gigson", "Gigson Solutions", "LaTroupe", "Awesomely"] as const;
   const filteredProjects = projects.filter((p) => {
     if (workspaceFilter && p.workspaceName !== workspaceFilter) return false;
     if (projectSearch) {
@@ -295,11 +295,11 @@ function LineRow({
             </div>
           )}
 
-          {/* Entity filter + project selector */}
+          {/* Marca filter + project selector */}
           <div className="space-y-2">
-            <label className="block text-xs font-medium text-gray-600">Proyecto Jira</label>
+            <label className="block text-xs font-medium text-gray-600">Marca</label>
 
-            {/* Workspace filter chips */}
+            {/* Marca filter chips */}
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
@@ -313,19 +313,19 @@ function LineRow({
               >
                 Todas
               </button>
-              {workspaces.map((ws) => (
+              {MARCAS.map((marca) => (
                 <button
-                  key={ws}
+                  key={marca}
                   type="button"
-                  onClick={() => setWorkspaceFilter(ws)}
+                  onClick={() => setWorkspaceFilter(marca)}
                   className={cn(
                     "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-                    workspaceFilter === ws
+                    workspaceFilter === marca
                       ? "bg-indigo-600 text-white border-indigo-600"
                       : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
                   )}
                 >
-                  {ws}
+                  {marca}
                 </button>
               ))}
             </div>
