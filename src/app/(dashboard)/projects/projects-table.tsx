@@ -235,11 +235,13 @@ function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): 
 
     fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}`)
       .then(async (res) => {
+        const text = await res.text();
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
         if (!res.ok) {
-          const body = (await res.json()) as { error?: string };
-          throw new Error(body.error ?? `Error ${res.status}`);
+          throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
         }
-        return res.json() as Promise<TempoWorklogsResponse>;
+        return parsed as TempoWorklogsResponse;
       })
       .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
       .catch((e: unknown) => {
