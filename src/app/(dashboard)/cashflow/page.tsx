@@ -1,10 +1,11 @@
 import { Suspense } from "react";
-import { Prisma } from "@prisma/client";
+import { Prisma, InvoiceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
 import { MARCA_FILTER_UNASSIGNED } from "@/lib/org";
 import { HoldedClient } from "@/lib/holded";
+import Link from "next/link";
 import { CashflowFilters } from "./cashflow-filters";
 import { CashflowChart, type CashflowMonthlyPoint } from "./cashflow-chart";
 
@@ -16,6 +17,7 @@ type CashflowParams = {
   company?: string;
   type?: string;
   account?: string;
+  selectedMonth?: string;
 };
 
 type CashflowKpis = {
@@ -61,7 +63,6 @@ async function getCashflowData(params: CashflowParams): Promise<{
   const accounts = params.account?.split(",").filter(Boolean) ?? [];
 
   if (accounts.length > 0) {
-    // Line-level query when filtering by accounting account(s)
     const conditions: Prisma.Sql[] = [
       Prisma.sql`il."accountingAccount" IN (${Prisma.join(accounts.map((a) => Prisma.sql`${a}`))})`,
     ];
@@ -90,7 +91,6 @@ async function getCashflowData(params: CashflowParams): Promise<{
       ORDER BY month ASC
     `;
   } else {
-    // Invoice-level query (no account filter)
     const conditions: Prisma.Sql[] = [];
     if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
     if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
@@ -156,6 +156,61 @@ async function getCashflowData(params: CashflowParams): Promise<{
   return { monthly, kpis };
 }
 
+type MonthInvoice = {
+  id: string;
+  holdedId: string;
+  number: string | null;
+  type: InvoiceType;
+  counterparty: string | null;
+  date: Date;
+  totalEur: unknown;
+  status: string;
+  company: { name: string };
+};
+
+async function getMonthInvoices(
+  params: CashflowParams,
+  monthKey: string
+): Promise<MonthInvoice[]> {
+  const [yearStr, monthStr] = monthKey.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const from = new Date(year, month - 1, 1);
+  const to = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const accounts = params.account?.split(",").filter(Boolean) ?? [];
+
+  const where = {
+    date: { gte: from, lte: to },
+    ...(params.type ? { type: params.type as InvoiceType } : {}),
+    ...(params.marca === MARCA_FILTER_UNASSIGNED
+      ? { marca: null }
+      : params.marca
+        ? { marca: params.marca }
+        : {}),
+    ...(params.company ? { companyId: params.company } : {}),
+    ...(accounts.length > 0
+      ? { lines: { some: { accountingAccount: { in: accounts } } } }
+      : {}),
+  };
+
+  return prisma.invoice.findMany({
+    where,
+    select: {
+      id: true,
+      holdedId: true,
+      number: true,
+      type: true,
+      counterparty: true,
+      date: true,
+      totalEur: true,
+      status: true,
+      company: { select: { name: true } },
+    },
+    orderBy: [{ type: "asc" }, { date: "asc" }],
+  });
+}
+
 async function getCompanies(): Promise<{ id: string; name: string }[]> {
   return prisma.company.findMany({
     where: { active: true },
@@ -175,7 +230,6 @@ async function getAccounts(): Promise<{ num: string; name: string }[]> {
     prisma.company.findMany({ where: { active: true }, select: { holdedApiKey: true } }),
   ]);
 
-  // Build name lookup maps from Holded's chart of accounts (non-fatal)
   const holdedById = new Map<string, string>();
   const holdedByNum = new Map<string, string>();
 
@@ -203,13 +257,37 @@ export default async function CashflowPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
 
-  const [{ monthly, kpis }, companies, accounts] = await Promise.all([
+  const [{ monthly, kpis }, companies, accounts, monthInvoices] = await Promise.all([
     getCashflowData(params),
     getCompanies(),
     getAccounts(),
+    params.selectedMonth ? getMonthInvoices(params, params.selectedMonth) : Promise.resolve(null),
   ]);
 
   const netIsPositive = kpis.netCashflow >= 0;
+
+  const selectedMonthPoint = params.selectedMonth
+    ? monthly.find((p) => p.monthKey === params.selectedMonth)
+    : null;
+
+  function buildUrl(overrides: Record<string, string | undefined>): string {
+    const sp = new URLSearchParams();
+    const merged: Record<string, string | undefined> = {
+      period: params.period,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      marca: params.marca,
+      company: params.company,
+      type: params.type,
+      account: params.account,
+      selectedMonth: params.selectedMonth,
+      ...overrides,
+    };
+    for (const [k, v] of Object.entries(merged)) {
+      if (v) sp.set(k, v);
+    }
+    return `/cashflow?${sp.toString()}`;
+  }
 
   return (
     <div className="space-y-6">
@@ -245,8 +323,106 @@ export default async function CashflowPage({
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Entradas vs. Salidas por mes</h2>
-        <CashflowChart data={monthly} />
+        <Suspense>
+          <CashflowChart data={monthly} />
+        </Suspense>
       </div>
+
+      {/* Month detail table */}
+      {params.selectedMonth && monthInvoices && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">
+                Facturas de {selectedMonthPoint?.monthLabel ?? params.selectedMonth}
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {monthInvoices.length} factura{monthInvoices.length !== 1 ? "s" : ""}
+                {selectedMonthPoint && (
+                  <>
+                    {" · "}
+                    <span className="text-green-600">Entradas {formatCurrency(selectedMonthPoint.inflows)}</span>
+                    {" · "}
+                    <span className="text-red-500">Salidas {formatCurrency(selectedMonthPoint.outflows)}</span>
+                    {" · "}
+                    <span className={selectedMonthPoint.net >= 0 ? "text-indigo-600" : "text-red-600"}>
+                      Neto {formatCurrency(selectedMonthPoint.net)}
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+            <Link
+              href={buildUrl({ selectedMonth: undefined })}
+              className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors text-sm leading-none"
+              title="Cerrar"
+            >
+              ✕
+            </Link>
+          </div>
+
+          {monthInvoices.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-gray-400">
+              No hay facturas con los filtros actuales para este mes.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Número</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Tipo</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Contraparte</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Empresa</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Fecha</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Total (EUR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthInvoices.map((inv) => (
+                  <tr
+                    key={inv.id}
+                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">
+                          {inv.number ?? (
+                            <span className="italic text-gray-400 font-normal">Borrador</span>
+                          )}
+                        </span>
+                        <a
+                          href={holdedInvoiceUrl(inv.holdedId, inv.type)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                          title="Ver en Holded"
+                        >
+                          ↗
+                        </a>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600">
+                      {inv.type === InvoiceType.SALE ? "Venta" : "Compra"}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">
+                      {inv.counterparty ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-500">{inv.company.name}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{formatDate(inv.date.toISOString())}</td>
+                    <td
+                      className={`px-4 py-2.5 text-right font-medium ${
+                        inv.type === InvoiceType.SALE ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {formatCurrency(Number(inv.totalEur))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   );
 }

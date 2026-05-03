@@ -270,11 +270,13 @@ export function DateRangePicker({
 
   const rightMonth = addMonths(leftMonth, 1);
 
-  // Sync external values when they change
+  // Sync controlled external values back into draft state when they change
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setPendingFrom(from ?? null);
     setPendingTo(to ?? null);
   }, [from, to]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Close on outside click
   useEffect(() => {
