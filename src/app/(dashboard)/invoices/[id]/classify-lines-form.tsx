@@ -294,10 +294,7 @@ function LineRow({
                 <button
                   key={marca}
                   type="button"
-                  onClick={() => {
-                    setWorkspaceFilter(marca);
-                    if (marca === "Awesomely") setSelectedProject("");
-                  }}
+                  onClick={() => setWorkspaceFilter(marca)}
                   className={cn(
                     "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
                     workspaceFilter === marca
