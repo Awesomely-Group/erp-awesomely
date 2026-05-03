@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { classifyLine } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
@@ -61,6 +62,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: Props): React.JSX.Element {
+  const router = useRouter();
   const [localLines, setLocalLines] = useState(lines);
   const [expandedLine, setExpandedLine] = useState<string | null>(
     lines.find((l) => !l.classification)?.id ?? null
@@ -89,6 +91,7 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
       );
       const nextUnclassified = localLines.find((l) => l.id !== lineId && !l.classification);
       setExpandedLine(nextUnclassified?.id ?? null);
+      router.refresh();
     });
   }
 
