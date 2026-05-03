@@ -47,9 +47,10 @@ export async function createWorkspace(data: FormData): Promise<void> {
   const domain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const email = data.get("email") as string;
   const apiToken = data.get("apiToken") as string;
+  const tempoApiToken = (data.get("tempoApiToken") as string) || undefined;
 
   const workspace = await prisma.jiraWorkspace.create({
-    data: { name, domain, email, apiToken },
+    data: { name, domain, email, apiToken, tempoApiToken },
   });
 
   await prisma.auditLog.create({
@@ -73,9 +74,11 @@ export async function updateWorkspace(id: string, data: FormData): Promise<void>
   const domain = rawDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const email = data.get("email") as string;
   const apiToken = data.get("apiToken") as string;
+  const tempoApiToken = data.get("tempoApiToken") as string;
 
-  const update: { domain: string; email: string; apiToken?: string } = { domain, email };
+  const update: { domain: string; email: string; apiToken?: string; tempoApiToken?: string } = { domain, email };
   if (apiToken) update.apiToken = apiToken;
+  if (tempoApiToken) update.tempoApiToken = tempoApiToken;
 
   await prisma.jiraWorkspace.update({ where: { id }, data: update });
 

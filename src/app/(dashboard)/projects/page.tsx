@@ -21,6 +21,7 @@ export default async function ProjectsPage(): Promise<React.JSX.Element> {
       name: project.name,
       workspaceName: ws.name,
       status: project.status as ProjectStatus,
+      hasTempoToken: !!ws.tempoApiToken,
     }))
   );
 

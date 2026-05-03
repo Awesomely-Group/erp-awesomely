@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useTransition } from "react";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
+import type { TempoWorklogsResponse } from "@/app/api/tempo/worklogs/route";
 
 export interface ProjectRow {
   id: string;
@@ -10,6 +11,7 @@ export interface ProjectRow {
   name: string;
   workspaceName: string;
   status: ProjectStatus;
+  hasTempoToken: boolean;
 }
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -30,6 +32,47 @@ const STATUS_CLASSES: Record<ProjectStatus, string> = {
 
 const ALL_STATUSES = Object.values(ProjectStatus) as ProjectStatus[];
 
+type PeriodType = "month" | "quarter" | "year";
+
+function getPeriodRange(
+  type: PeriodType,
+  offset: number
+): { from: string; to: string; label: string } {
+  const now = new Date();
+
+  if (type === "month") {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const to = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
+    const label = d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+    return { from, to, label: label.charAt(0).toUpperCase() + label.slice(1) };
+  }
+
+  if (type === "quarter") {
+    const currentQ = Math.floor(now.getMonth() / 3);
+    const totalQ = currentQ + offset;
+    const year = now.getFullYear() + Math.floor(totalQ / 4);
+    const q = ((totalQ % 4) + 4) % 4;
+    const startMonth = q * 3;
+    const endMonth = startMonth + 2;
+    const from = `${year}-${String(startMonth + 1).padStart(2, "0")}-01`;
+    const last = new Date(year, endMonth + 1, 0);
+    const to = `${year}-${String(endMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
+    return { from, to, label: `Q${q + 1} ${year}` };
+  }
+
+  // year
+  const year = now.getFullYear() + offset;
+  return {
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
+    label: String(year),
+  };
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
 interface StatusBadgeProps {
   projectId: string;
   status: ProjectStatus;
@@ -41,12 +84,10 @@ function StatusBadge({ projectId, status }: StatusBadgeProps): React.JSX.Element
   const [isPending, startTransition] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
 
-  // Sync when parent status changes (e.g. after revalidation)
   useEffect(() => {
     setOptimisticStatus(status);
   }, [status]);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent): void {
@@ -105,6 +146,172 @@ function StatusBadge({ projectId, status }: StatusBadgeProps): React.JSX.Element
   );
 }
 
+// ─── Period selector ──────────────────────────────────────────────────────────
+
+interface PeriodSelectorProps {
+  periodType: PeriodType;
+  periodOffset: number;
+  onTypeChange: (t: PeriodType) => void;
+  onOffsetChange: (o: number) => void;
+}
+
+const PERIOD_LABELS: Record<PeriodType, string> = {
+  month: "Mes",
+  quarter: "Trimestre",
+  year: "Año",
+};
+
+function PeriodSelector({ periodType, periodOffset, onTypeChange, onOffsetChange }: PeriodSelectorProps): React.JSX.Element {
+  const { label } = getPeriodRange(periodType, periodOffset);
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs">
+        {(["month", "quarter", "year"] as PeriodType[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => { onTypeChange(t); onOffsetChange(0); }}
+            className={`px-3 py-1.5 font-medium transition-colors ${
+              periodType === t
+                ? "bg-indigo-600 text-white"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            {PERIOD_LABELS[t]}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onOffsetChange(periodOffset - 1)}
+          className="p-1 rounded hover:bg-gray-100 text-gray-500 transition-colors"
+          aria-label="Período anterior"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <span className="text-sm font-medium text-gray-700 min-w-[110px] text-center">{label}</span>
+        <button
+          type="button"
+          onClick={() => onOffsetChange(periodOffset + 1)}
+          disabled={periodOffset >= 0}
+          className="p-1 rounded hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30"
+          aria-label="Período siguiente"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Expanded row with Tempo hours ────────────────────────────────────────────
+
+interface ExpandedRowProps {
+  projectId: string;
+  hasTempoToken: boolean;
+  from: string;
+  to: string;
+}
+
+function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): React.JSX.Element {
+  const [data, setData] = useState<TempoWorklogsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasTempoToken) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setData(null);
+
+    fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = (await res.json()) as { error?: string };
+          throw new Error(body.error ?? `Error ${res.status}`);
+        }
+        return res.json() as Promise<TempoWorklogsResponse>;
+      })
+      .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Error desconocido");
+          setLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [projectId, hasTempoToken, from, to]);
+
+  return (
+    <tr className="bg-indigo-50/40 border-b border-gray-100">
+      <td colSpan={5} className="px-6 py-3">
+        {!hasTempoToken && (
+          <p className="text-xs text-gray-400">
+            Token de Tempo no configurado.{" "}
+            <a href="/settings" className="text-indigo-600 hover:underline">
+              Configúralo en Configuración
+            </a>
+            .
+          </p>
+        )}
+
+        {hasTempoToken && loading && (
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            Cargando horas...
+          </div>
+        )}
+
+        {hasTempoToken && error && (
+          <p className="text-xs text-red-500">Error al cargar horas: {error}</p>
+        )}
+
+        {hasTempoToken && data && data.users.length === 0 && (
+          <p className="text-xs text-gray-400">Sin horas registradas en este período.</p>
+        )}
+
+        {hasTempoToken && data && data.users.length > 0 && (
+          <table className="text-xs w-auto min-w-[280px]">
+            <thead>
+              <tr className="text-gray-500">
+                <th className="text-left font-medium pb-1 pr-8">Persona</th>
+                <th className="text-right font-medium pb-1">Horas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.users.map((u) => (
+                <tr key={u.accountId} className="border-t border-gray-100">
+                  <td className="py-1 pr-8 text-gray-700">{u.displayName}</td>
+                  <td className="py-1 text-right tabular-nums text-gray-700">{u.hours}h</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-300 font-semibold">
+                <td className="pt-1.5 pr-8 text-gray-900">Total</td>
+                <td className="pt-1.5 text-right tabular-nums text-gray-900">{data.totalHours}h</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ─── Main table ───────────────────────────────────────────────────────────────
+
 interface Props {
   allProjects: ProjectRow[];
 }
@@ -113,6 +320,11 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
   const [search, setSearch] = useState("");
   const [filterBrand, setFilterBrand] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [periodType, setPeriodType] = useState<PeriodType>("month");
+  const [periodOffset, setPeriodOffset] = useState(0);
+
+  const { from, to } = getPeriodRange(periodType, periodOffset);
 
   const brandOptions = useMemo(() => {
     const names = Array.from(new Set(allProjects.map((p) => p.workspaceName)));
@@ -131,9 +343,13 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
     });
   }, [allProjects, search, filterBrand, filterStatus]);
 
+  function toggleExpand(id: string): void {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Filters + period selector */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -180,6 +396,14 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
         </span>
       </div>
 
+      {/* Period selector */}
+      <PeriodSelector
+        periodType={periodType}
+        periodOffset={periodOffset}
+        onTypeChange={setPeriodType}
+        onOffsetChange={setPeriodOffset}
+      />
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
@@ -189,29 +413,56 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
               <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Estado</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Horas</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((project) => (
-              <tr
-                key={project.id}
-                className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-              >
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
-                    {project.jiraKey}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
-                <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge projectId={project.id} status={project.status} />
-                </td>
-              </tr>
+              <>
+                <tr
+                  key={project.id}
+                  className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => toggleExpand(project.id)}
+                >
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                      {project.jiraKey}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
+                  <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
+                  <td
+                    className="px-4 py-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <StatusBadge projectId={project.id} status={project.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <svg
+                      className={`w-4 h-4 text-gray-400 transition-transform ${expandedId === project.id ? "rotate-90" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </td>
+                </tr>
+                {expandedId === project.id && (
+                  <ExpandedRow
+                    key={`${project.id}-expanded`}
+                    projectId={project.id}
+                    hasTempoToken={project.hasTempoToken}
+                    from={from}
+                    to={to}
+                  />
+                )}
+              </>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
                   {allProjects.length === 0
                     ? "Sin proyectos sincronizados"
                     : "Sin resultados para los filtros aplicados"}

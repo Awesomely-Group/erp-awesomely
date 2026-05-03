@@ -51,12 +51,23 @@ export function WorkspaceEdit({ id, domain, email, onClose }: WorkspaceEditProps
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div className="sm:col-span-2">
+        <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            API Token <span className="text-gray-400">(dejar vacío para no cambiar)</span>
+            API Token Jira <span className="text-gray-400">(dejar vacío para no cambiar)</span>
           </label>
           <input
             name="apiToken"
+            type="password"
+            placeholder="••••••••••••"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            API Token Tempo <span className="text-gray-400">(dejar vacío para no cambiar)</span>
+          </label>
+          <input
+            name="tempoApiToken"
             type="password"
             placeholder="••••••••••••"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -195,6 +206,17 @@ export function WorkspaceForm(): React.JSX.Element {
           <input
             name="apiToken"
             required
+            type="password"
+            placeholder="••••••••••••"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            API Token de Tempo <span className="text-gray-400">(opcional)</span>
+          </label>
+          <input
+            name="tempoApiToken"
             type="password"
             placeholder="••••••••••••"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"

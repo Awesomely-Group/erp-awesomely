@@ -48,7 +48,22 @@ export class JiraClient {
     return res.json() as Promise<T>;
   }
 
-  async getAllProjects(): Promise<JiraProjectData[]> {
+  async getUsersByAccountIds(accountIds: string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(accountIds)];
+    const entries = await Promise.all(
+      unique.map(async (accountId) => {
+        try {
+          const user = await this.fetch<{ displayName: string }>("/user", { accountId });
+          return [accountId, user.displayName] as [string, string];
+        } catch {
+          return [accountId, accountId] as [string, string];
+        }
+      })
+    );
+    return new Map(entries);
+  }
+
+    async getAllProjects(): Promise<JiraProjectData[]> {
     const all: JiraProjectData[] = [];
     let startAt = 0;
     const maxResults = 50;
