@@ -272,13 +272,13 @@ export default async function InvoicesPage({
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
             <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
             <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
             <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
             <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
             <th className="px-4 py-3 text-left font-medium text-gray-600 max-w-[220px]">
               Cuenta contable
             </th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Mes Referencia</th>
             <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
             <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
             <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
@@ -294,6 +294,7 @@ export default async function InvoicesPage({
               number: inv.number,
               counterparty: inv.counterparty,
               date: inv.date.toISOString(),
+              accountingMonth: (inv.accountingMonth ?? inv.date).toISOString(),
               totalEur: Number(inv.totalEur),
               status: inv.status,
               companyName: inv.company.name,

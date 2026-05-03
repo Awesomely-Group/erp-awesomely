@@ -3,6 +3,14 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 
+function formatMonth(isoDate: string): string {
+  return new Date(isoDate).toLocaleDateString("es-ES", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
   PARTIAL: "Parcial",
@@ -24,6 +32,7 @@ interface InvoiceRow {
   number: string | null;
   counterparty: string | null;
   date: string;
+  accountingMonth: string;
   totalEur: number;
   status: string;
   companyName: string;
@@ -52,6 +61,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
       </tr>
     );
   }
+
 
   return (
     <>
@@ -90,9 +100,6 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
                 </a>
               </div>
             </td>
-            <td className="px-4 py-3 text-gray-600">
-              {inv.type === "SALE" ? "Venta" : "Compra"}
-            </td>
             <td className="px-4 py-3 text-gray-600">{inv.companyName}</td>
             <td className="px-4 py-3">
               {inv.brand ? (
@@ -117,6 +124,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             >
               <span className="line-clamp-2 text-xs leading-snug">{inv.accountsSummary}</span>
             </td>
+            <td className="px-4 py-3 text-gray-600 capitalize">{formatMonth(inv.accountingMonth)}</td>
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
             <td className="px-4 py-3 text-right font-medium">
               {formatCurrency(inv.totalEur)}
