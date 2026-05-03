@@ -317,7 +317,7 @@ function LineRow({
 
             {workspaceFilter === "Awesomely" && (
               <p className="text-xs text-gray-400 italic">
-                Awesomely no tiene workspace de Jira — selecciona un proyecto de otra marca.
+                Awesomely no tiene workspace de Jira.
               </p>
             )}
             <input
