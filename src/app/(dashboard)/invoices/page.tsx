@@ -122,7 +122,10 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
         ? { status: params.status as InvoiceStatus }
         : {};
 
-  const where = {
+  const activeType: InvoiceType =
+    params.type === "PURCHASE" ? InvoiceType.PURCHASE : InvoiceType.SALE;
+
+  const baseWhere = {
     ...(params.search
       ? {
           OR: [
@@ -132,13 +135,14 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
         }
       : {}),
     ...statusWhere,
-    ...(params.type ? { type: params.type as InvoiceType } : {}),
     ...(marcaFilter ?? {}),
     ...(accountKeys.length > 0
       ? { lines: { some: { accountingAccount: { in: accountKeys } } } }
       : {}),
     ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
+
+  const where = { ...baseWhere, type: activeType };
 
   const orderBy =
     sortBy === "totalEur"
@@ -149,7 +153,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
           ? { counterparty: sortDir }
           : { date: sortDir };
 
-  const [invoices, total] = await Promise.all([
+  const [invoices, total, saleCount, purchaseCount] = await Promise.all([
     prisma.invoice.findMany({
       where,
       include: {
@@ -167,6 +171,8 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       take: pageSize,
     }),
     prisma.invoice.count({ where }),
+    prisma.invoice.count({ where: { ...baseWhere, type: InvoiceType.SALE } }),
+    prisma.invoice.count({ where: { ...baseWhere, type: InvoiceType.PURCHASE } }),
   ]);
 
   const totalPages = Math.ceil(total / pageSize);
@@ -177,9 +183,12 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     pageSize,
     sortBy,
     sortDir,
+    activeType,
     invoices,
     total,
     totalPages,
+    saleCount,
+    purchaseCount,
   };
 }
 
@@ -216,9 +225,12 @@ export default async function InvoicesPage({
     page,
     sortBy,
     sortDir,
+    activeType,
     invoices,
     total,
     totalPages,
+    saleCount,
+    purchaseCount,
   } = data;
 
   function buildUrl(overrides: Record<string, string | undefined>): string {
@@ -305,6 +317,38 @@ export default async function InvoicesPage({
             {totalPages > 1 && ` · página ${page} de ${totalPages}`}
           </p>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          <Link
+            href={buildUrl({ type: "SALE", page: "1" })}
+            className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
+              activeType === "SALE"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Ventas
+            <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+              {saleCount.toLocaleString("es-ES")}
+            </span>
+          </Link>
+          <Link
+            href={buildUrl({ type: "PURCHASE", page: "1" })}
+            className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
+              activeType === "PURCHASE"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Compras
+            <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
+              {purchaseCount.toLocaleString("es-ES")}
+            </span>
+          </Link>
+        </nav>
       </div>
 
       <div className="w-full overflow-x-auto pb-1 -mx-1 px-1">

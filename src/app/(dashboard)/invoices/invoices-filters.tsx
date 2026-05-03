@@ -43,7 +43,6 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
-  const [type, setType] = useState(sp.get("type") ?? "");
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>(
     sp.get("account")?.split(",").map((s) => s.trim()).filter(Boolean) ?? []
   );
@@ -72,10 +71,11 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
-    status: string; type: string; marca: string; account: string;
+    status: string; marca: string; account: string;
   }>): void {
     const m = {
-      search, period, dateFrom, dateTo, status, type,
+      search, period, dateFrom, dateTo, status,
+      type: sp.get("type") ?? "",
       account: selectedAccounts.join(","),
       marca: selectedMarcas.join(","),
       ...overrides,
@@ -118,12 +118,14 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
     setDateFrom("");
     setDateTo("");
     setStatus("");
-    setType("");
     setSelectedAccounts([]);
     setSelectedMarcas([]);
     setAccountOpen(false);
     setMarcaOpen(false);
-    router.push("/invoices");
+    const currentType = sp.get("type") ?? "";
+    const params = new URLSearchParams();
+    if (currentType) params.set("type", currentType);
+    router.push(`/invoices?${params.toString()}`);
   }
 
   const marcaLabel =
@@ -262,19 +264,6 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
           <option value="PARTIAL">Parcial</option>
           <option value="CLASSIFIED">Clasificado</option>
           <option value="APPROVED">Aprobado</option>
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Tipo</label>
-        <select
-          value={type}
-          onChange={(e) => { const v = e.target.value; setType(v); applyWith({ type: v }); }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">Compra y venta</option>
-          <option value="SALE">Venta</option>
-          <option value="PURCHASE">Compra</option>
         </select>
       </div>
 
