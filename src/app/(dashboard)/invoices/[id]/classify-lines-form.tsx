@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { formatCurrency } from "@/lib/utils";
-import { classifyLine, updateClassificationStatus } from "./actions";
+import { classifyLine } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { accountingAccountTooltip, lineAccountingLabel } from "@/lib/invoice-accounts";
@@ -55,11 +55,6 @@ interface Props {
   projects: Project[];
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  CLASSIFIED: "Clasificado",
-  APPROVED: "Aprobado",
-};
-
 const STATUS_COLORS: Record<string, string> = {
   CLASSIFIED: "text-blue-600 bg-blue-50 border-blue-200",
   APPROVED: "text-green-600 bg-green-50 border-green-200",
@@ -97,19 +92,6 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
     });
   }
 
-  function handleStatusChange(classificationId: string, lineId: string, status: string): void {
-    startTransition(async () => {
-      await updateClassificationStatus({ classificationId, status, invoiceId });
-      setLocalLines((prev) =>
-        prev.map((l) =>
-          l.id === lineId && l.classification
-            ? { ...l, classification: { ...l.classification, status } }
-            : l
-        )
-      );
-    });
-  }
-
   return (
     <div className="space-y-2">
       {localLines.map((line) => (
@@ -122,9 +104,6 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
           onClassify={(projectId, notes) => handleClassify(line.id, projectId, notes)}
-          onStatusChange={(classificationId, status) =>
-            handleStatusChange(classificationId, line.id, status)
-          }
         />
       ))}
     </div>
@@ -139,7 +118,6 @@ function LineRow({
   isPending,
   onToggle,
   onClassify,
-  onStatusChange,
 }: {
   line: Line;
   projects: Project[];
@@ -148,7 +126,6 @@ function LineRow({
   isPending: boolean;
   onToggle: () => void;
   onClassify: (projectId: string, notes: string) => void;
-  onStatusChange: (classificationId: string, status: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
   const [notes, setNotes] = useState(line.classification?.notes ?? "");
@@ -317,7 +294,10 @@ function LineRow({
                 <button
                   key={marca}
                   type="button"
-                  onClick={() => setWorkspaceFilter(marca)}
+                  onClick={() => {
+                    setWorkspaceFilter(marca);
+                    if (marca === "Awesomely") setSelectedProject("");
+                  }}
                   className={cn(
                     "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
                     workspaceFilter === marca
@@ -330,28 +310,36 @@ function LineRow({
               ))}
             </div>
 
-            <input
-              type="text"
-              value={projectSearch}
-              onChange={(e) => setProjectSearch(e.target.value)}
-              placeholder="Buscar proyecto…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              disabled={isPending}
-            />
-            <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              disabled={isPending}
-              size={Math.min(filteredProjects.length + 1, 7)}
-            >
-              <option value="">Selecciona un proyecto</option>
-              {filteredProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  [{p.key}] {p.name}
-                </option>
-              ))}
-            </select>
+            {workspaceFilter === "Awesomely" ? (
+              <p className="text-xs text-gray-400 italic py-1">
+                Awesomely no tiene workspace de Jira asociado.
+              </p>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  placeholder="Buscar proyecto…"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  disabled={isPending}
+                />
+                <select
+                  value={selectedProject}
+                  onChange={(e) => setSelectedProject(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  disabled={isPending}
+                  size={Math.min(filteredProjects.length + 1, 7)}
+                >
+                  <option value="">Selecciona un proyecto</option>
+                  {filteredProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      [{p.key}] {p.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
 
           {/* Notes — hidden by default */}
@@ -398,30 +386,6 @@ function LineRow({
               {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
             </button>
 
-            {line.classification && (
-              <div className="flex items-center gap-2 ml-auto">
-                <span className="text-xs text-gray-500">Estado:</span>
-                {line.classification.status === "CLASSIFIED" && (
-                  <button
-                    onClick={() => onStatusChange(line.classification!.id, "APPROVED")}
-                    disabled={isPending}
-                    className="rounded-lg border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 transition-colors"
-                  >
-                    Aprobar
-                  </button>
-                )}
-                {line.classification.status === "APPROVED" && (
-                  <span
-                    className={cn(
-                      "text-xs font-medium px-2 py-1 rounded-full border",
-                      STATUS_COLORS[line.classification.status]
-                    )}
-                  >
-                    {STATUS_LABELS[line.classification.status]}
-                  </span>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}
