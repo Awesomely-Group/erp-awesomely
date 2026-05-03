@@ -229,28 +229,27 @@ function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): 
     if (!hasTempoToken) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setData(null);
 
-    fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}`)
-      .then(async (res) => {
+    async function load(): Promise<void> {
+      setLoading(true);
+      setError(null);
+      setData(null);
+      try {
+        const res = await fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}`);
         const text = await res.text();
         let parsed: unknown;
         try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
-        if (!res.ok) {
-          throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
-        }
-        return parsed as TempoWorklogsResponse;
-      })
-      .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
-      .catch((e: unknown) => {
+        if (!res.ok) throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
+        if (!cancelled) { setData(parsed as TempoWorklogsResponse); setLoading(false); }
+      } catch (e: unknown) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Error desconocido");
           setLoading(false);
         }
-      });
+      }
+    }
 
+    void load();
     return () => { cancelled = true; };
   }, [projectId, hasTempoToken, from, to]);
 
