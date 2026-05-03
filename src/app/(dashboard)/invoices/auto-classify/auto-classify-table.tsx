@@ -53,7 +53,9 @@ export function AutoClassifyTable({
   projects: Project[];
 }): React.JSX.Element {
   const router = useRouter();
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(proposals.filter((p) => p.topSuggestion).map((p) => p.lineId))
+  );
   const [overrides, setOverrides] = useState<Map<string, string | null>>(new Map());
   const [editingLine, setEditingLine] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
@@ -134,8 +136,40 @@ export function AutoClassifyTable({
   const errorCount = results?.filter((r) => !r.success).length ?? 0;
   const selectedInFiltered = filtered.filter((p) => selectedIds.has(p.lineId)).length;
 
+  const withSuggestion = proposals.filter((p) => p.topSuggestion).length;
+  const withoutSuggestion = proposals.length - withSuggestion;
+
   return (
     <div className="space-y-4">
+      {/* Summary banner */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="text-sm text-indigo-900">
+          <span className="font-semibold">{withSuggestion} propuestas listas</span>
+          {" "}para aplicar
+          {withoutSuggestion > 0 && (
+            <span className="ml-2 text-indigo-500">· {withoutSuggestion} sin sugerencia</span>
+          )}
+          <span className="ml-3 text-indigo-600">→ Revisa, deselecciona lo que no aceptes y aplica.</span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() =>
+              setSelectedIds(new Set(filtered.filter((p) => p.topSuggestion).map((p) => p.lineId)))
+            }
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+          >
+            Seleccionar todas
+          </button>
+          <span className="text-indigo-300">|</span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors"
+          >
+            Deseleccionar todas
+          </button>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4 bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex items-center gap-2">
