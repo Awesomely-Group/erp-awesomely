@@ -11,7 +11,7 @@ import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
 import { InvoicesTable } from "./invoices-table";
 import { InvoiceLinePanel } from "./invoice-line-panel";
-import { InvoicesSplitLayout } from "./invoices-split-layout";
+import { InvoiceDrawer } from "./invoice-drawer";
 import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
@@ -355,24 +355,22 @@ export default async function InvoicesPage({
         <InvoicesFilters accountOptions={accountOptions} />
       </div>
 
-      <InvoicesSplitLayout
-        panel={
-          params.invoiceId ? (
-            <Suspense
-              key={params.invoiceId}
-              fallback={
-                <div className="bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-400 animate-pulse">
-                  Cargando líneas…
-                </div>
-              }
-            >
-              <InvoiceLinePanel invoiceId={params.invoiceId} />
-            </Suspense>
-          ) : null
-        }
-      >
-        {tableSection}
-      </InvoicesSplitLayout>
+      {tableSection}
+
+      <InvoiceDrawer open={!!params.invoiceId}>
+        {params.invoiceId && (
+          <Suspense
+            key={params.invoiceId}
+            fallback={
+              <div className="p-6 text-sm text-gray-400 animate-pulse">
+                Cargando líneas…
+              </div>
+            }
+          >
+            <InvoiceLinePanel invoiceId={params.invoiceId} />
+          </Suspense>
+        )}
+      </InvoiceDrawer>
 
       {/* Pagination */}
       {totalPages > 1 && (

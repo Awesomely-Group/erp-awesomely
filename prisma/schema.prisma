@@ -100,7 +100,8 @@ model JiraWorkspace {
   name     String
   domain   String
   email    String
-  apiToken String
+  apiToken       String
+  tempoApiToken  String?
   active   Boolean @default(true)
 
   projects JiraProject[]
@@ -168,6 +169,9 @@ model Invoice {
 
   // Brand from Holded tags (mapped to readable name)
   marca           String?
+
+  // Mes contable al que pertenece la factura (primer día del mes; por defecto el mes de date)
+  accountingMonth DateTime?
 
   // Payment tracking (synced from Holded)
   paymentsTotal   Decimal @default(0)

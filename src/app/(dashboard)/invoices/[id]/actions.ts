@@ -154,6 +154,28 @@ export async function updateClassificationStatus({
   revalidatePath("/invoices");
 }
 
+export async function updateInvoiceAccountingMonth({
+  invoiceId,
+  month,
+}: {
+  invoiceId: string;
+  month: string; // "YYYY-MM"
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const [year, mon] = month.split("-").map(Number);
+  const accountingMonth = new Date(Date.UTC(year, mon - 1, 1));
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { accountingMonth },
+  });
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+}
+
 export async function updateInvoiceMarca({
   invoiceId,
   marca,

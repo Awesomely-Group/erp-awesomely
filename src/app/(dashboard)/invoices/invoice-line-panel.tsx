@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { getSuggestionsForLine } from "@/lib/suggestions";
 import { ClassifyLinesForm } from "./[id]/classify-lines-form";
+import { AccountingMonthEditor } from "./[id]/accounting-month-editor";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
@@ -70,9 +71,9 @@ export async function InvoiceLinePanel({
   const classifiedCount = invoice.lines.filter((l) => l.classification).length;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 flex flex-col max-h-[calc(100vh-8rem)] overflow-hidden">
+    <div className="flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-gray-100 flex-shrink-0">
+      <div className="pb-4 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-gray-900 truncate">
@@ -106,11 +107,19 @@ export async function InvoiceLinePanel({
             <span>{formatDate(invoice.date)} · {classifiedCount}/{invoice.lines.length} líneas</span>
             <span className="font-semibold text-gray-700">{formatCurrency(Number(invoice.totalEur))}</span>
           </p>
+          <p className="flex items-center gap-1">
+            <span className="text-gray-400">Mes de referencia:</span>
+            <AccountingMonthEditor
+              invoiceId={invoice.id}
+              accountingMonth={invoice.accountingMonth}
+              invoiceDate={invoice.date}
+            />
+          </p>
         </div>
       </div>
 
       {/* Classification form */}
-      <div className="overflow-y-auto flex-1 p-3">
+      <div className="pt-3">
         <ClassifyLinesForm
           invoiceId={invoice.id}
           invoiceMarca={invoice.marca}
