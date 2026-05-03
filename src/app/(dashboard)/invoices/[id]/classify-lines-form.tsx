@@ -149,7 +149,7 @@ function LineRow({
 
   const MARCAS = ["Gigson", "Gigson Solutions", "LaTroupe", "Awesomely"] as const;
   const filteredProjects = projects.filter((p) => {
-    if (workspaceFilter && p.workspaceName !== workspaceFilter) return false;
+    if (workspaceFilter && workspaceFilter !== "Awesomely" && p.workspaceName !== workspaceFilter) return false;
     if (projectSearch) {
       const q = projectSearch.toLowerCase();
       return p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q);
@@ -315,36 +315,33 @@ function LineRow({
               ))}
             </div>
 
-            {workspaceFilter === "Awesomely" ? (
-              <p className="text-xs text-gray-400 italic py-1">
-                Awesomely no tiene workspace de Jira asociado.
+            {workspaceFilter === "Awesomely" && (
+              <p className="text-xs text-gray-400 italic">
+                Awesomely no tiene workspace de Jira — selecciona un proyecto de otra marca.
               </p>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={projectSearch}
-                  onChange={(e) => setProjectSearch(e.target.value)}
-                  placeholder="Buscar proyecto…"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                  disabled={isPending}
-                />
-                <select
-                  value={selectedProject}
-                  onChange={(e) => setSelectedProject(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                  disabled={isPending}
-                  size={Math.min(filteredProjects.length + 1, 7)}
-                >
-                  <option value="">Selecciona un proyecto</option>
-                  {filteredProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.key}] {p.name}
-                    </option>
-                  ))}
-                </select>
-              </>
             )}
+            <input
+              type="text"
+              value={projectSearch}
+              onChange={(e) => setProjectSearch(e.target.value)}
+              placeholder="Buscar proyecto…"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              disabled={isPending}
+            />
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              disabled={isPending}
+              size={Math.min(filteredProjects.length + 1, 7)}
+            >
+              <option value="">Selecciona un proyecto</option>
+              {filteredProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  [{p.key}] {p.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Notes — hidden by default */}
