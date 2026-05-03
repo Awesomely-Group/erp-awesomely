@@ -141,9 +141,9 @@ export async function InvoiceLinePanel({
               ? {
                   id: l.classification.id,
                   status: l.classification.status,
-                  projectId: l.classification.projectId,
-                  projectName: l.classification.project.name,
-                  workspaceName: l.classification.project.workspace.name,
+                  projectId: l.classification.projectId ?? null,
+                  projectName: l.classification.project?.name ?? null,
+                  workspaceName: l.classification.project?.workspace.name ?? null,
                   notes: l.classification.notes,
                 }
               : null,

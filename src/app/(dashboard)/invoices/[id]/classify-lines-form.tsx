@@ -19,9 +19,9 @@ interface Suggestion {
 interface LineClassification {
   id: string;
   status: string;
-  projectId: string;
-  projectName: string;
-  workspaceName: string;
+  projectId: string | null;
+  projectName: string | null;
+  workspaceName: string | null;
   notes: string | null;
 }
 
@@ -70,21 +70,21 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
   );
   const [isPending, startTransition] = useTransition();
 
-  function handleClassify(lineId: string, projectId: string, notes: string): void {
+  function handleClassify(lineId: string, projectId: string | null, notes: string): void {
     startTransition(async () => {
       const { classificationId } = await classifyLine({ lineId, projectId, notes, invoiceId });
       setLocalLines((prev) =>
         prev.map((l) => {
           if (l.id !== lineId) return l;
-          const project = projects.find((p) => p.id === projectId);
+          const project = projectId ? projects.find((p) => p.id === projectId) : null;
           return {
             ...l,
             classification: {
               id: classificationId,
               status: "CLASSIFIED",
               projectId,
-              projectName: project?.name ?? "",
-              workspaceName: project?.workspaceName ?? "",
+              projectName: project?.name ?? null,
+              workspaceName: project?.workspaceName ?? (projectId ? null : "Awesomely"),
               notes,
             },
           };
@@ -107,7 +107,7 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
           isExpanded={expandedLine === line.id}
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
-          onClassify={(projectId, notes) => handleClassify(line.id, projectId, notes)}
+          onClassify={(projectId, notes) => handleClassify(line.id, projectId ?? null, notes)}
           onSaveDraftNote={(notes) => saveDraftLineNote({ lineId: line.id, notes })}
         />
       ))}
@@ -131,7 +131,7 @@ function LineRow({
   isExpanded: boolean;
   isPending: boolean;
   onToggle: () => void;
-  onClassify: (projectId: string, notes: string) => void;
+  onClassify: (projectId: string | null, notes: string) => void;
   onSaveDraftNote: (notes: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
@@ -195,7 +195,7 @@ function LineRow({
                 STATUS_COLORS[line.classification.status]
               )}
             >
-              {line.classification.projectName}
+              {line.classification.projectName ?? "Awesomely"}
             </div>
           )}
           <ChevronDown
@@ -384,8 +384,8 @@ function LineRow({
           {/* Actions */}
           <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={() => onClassify(selectedProject, notes)}
-              disabled={!selectedProject || isPending}
+              onClick={() => onClassify(selectedProject || null, notes)}
+              disabled={(!selectedProject && workspaceFilter !== "Awesomely") || isPending}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {line.classification ? "Actualizar clasificación" : "Clasificar línea"}

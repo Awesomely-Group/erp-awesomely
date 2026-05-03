@@ -13,7 +13,10 @@ async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   });
 
   const marcas = [
-    ...new Set(classifications.map((c) => c.project.workspace.name)),
+    ...new Set([
+      ...classifications.filter((c) => c.project).map((c) => c.project!.workspace.name),
+      ...classifications.filter((c) => !c.project).map(() => "Awesomely"),
+    ]),
   ].sort();
 
   await prisma.invoice.update({
@@ -45,7 +48,7 @@ export async function classifyLine({
   invoiceId,
 }: {
   lineId: string;
-  projectId: string;
+  projectId: string | null;
   notes: string;
   invoiceId: string;
 }): Promise<{ classificationId: string }> {

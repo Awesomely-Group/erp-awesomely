@@ -53,7 +53,9 @@ async function getProfitabilityData(
 
     for (const line of classifiedLines) {
       const classification = line.classification!;
-      const projectId = classification.projectId;
+      if (!classification.project && !classification.projectId) continue;
+
+      const projectId = classification.projectId ?? "awesomely";
 
       // Line's share of the invoice total, proportional to its subtotal
       const lineShare =
@@ -63,8 +65,8 @@ async function getProfitabilityData(
 
       const existing = projectMap.get(projectId) ?? {
         project: {
-          name: classification.project.name,
-          workspaceName: classification.project.workspace.name,
+          name: classification.project?.name ?? "Awesomely",
+          workspaceName: classification.project?.workspace.name ?? "Awesomely",
         },
         revenue: 0,
         costs: 0,

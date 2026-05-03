@@ -37,6 +37,7 @@ export async function getSuggestionsForLine(params: {
     });
 
     for (const c of sameCounterparty) {
+      if (!c.projectId || !c.project) continue;
       const existing = scored.get(c.projectId);
       scored.set(c.projectId, {
         score: (existing?.score ?? 0) + 3,
@@ -63,6 +64,7 @@ export async function getSuggestionsForLine(params: {
       });
 
       for (const c of similar) {
+        if (!c.projectId || !c.project) continue;
         const existing = scored.get(c.projectId);
         scored.set(c.projectId, {
           score: (existing?.score ?? 0) + 1,
@@ -82,6 +84,7 @@ export async function getSuggestionsForLine(params: {
     });
 
     for (const row of topProjects) {
+      if (!row.projectId) continue;
       const project = await prisma.jiraProject.findUnique({
         where: { id: row.projectId },
         select: { id: true, name: true, workspace: { select: { name: true } } },

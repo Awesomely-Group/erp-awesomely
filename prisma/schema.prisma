@@ -243,8 +243,8 @@ model Classification {
   id            String               @id @default(cuid())
   invoiceLineId String               @unique
   invoiceLine   InvoiceLine          @relation(fields: [invoiceLineId], references: [id], onDelete: Cascade)
-  projectId     String
-  project       JiraProject          @relation(fields: [projectId], references: [id])
+  projectId     String?
+  project       JiraProject?         @relation(fields: [projectId], references: [id])
   status        ClassificationStatus @default(CLASSIFIED)
   notes         String?
 
