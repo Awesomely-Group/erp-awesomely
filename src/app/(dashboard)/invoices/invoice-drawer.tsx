@@ -41,7 +41,7 @@ export function InvoiceDrawer({ open, children }: Props): React.JSX.Element {
 
       {/* Drawer panel */}
       <div
-        className={`fixed right-0 top-0 h-screen w-[500px] max-w-full z-50 bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ${
+        className={`fixed right-0 top-0 h-screen w-1/3 z-50 bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         role="dialog"
