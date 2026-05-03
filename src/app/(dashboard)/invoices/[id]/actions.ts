@@ -22,6 +22,22 @@ async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   });
 }
 
+export async function saveDraftLineNote({
+  lineId,
+  notes,
+}: {
+  lineId: string;
+  notes: string;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.invoiceLine.update({
+    where: { id: lineId },
+    data: { notes: notes || null },
+  });
+}
+
 export async function classifyLine({
   lineId,
   projectId,
@@ -91,6 +107,11 @@ export async function classifyLine({
       },
     });
   }
+
+  await prisma.invoiceLine.update({
+    where: { id: lineId },
+    data: { notes: null },
+  });
 
   await updateInvoiceStatus(invoiceId);
   await deriveMarcaFromLines(invoiceId);

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
-import { classifyLine } from "./actions";
+import { classifyLine, saveDraftLineNote } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { accountingAccountTooltip, lineAccountingLabel } from "@/lib/invoice-accounts";
@@ -31,6 +31,7 @@ interface Line {
   accountingAccount: string | null;
   accountingAccountName: string | null;
   description: string | null;
+  notes: string | null;
   quantity: number;
   unitPrice: number;
   subtotal: number;
@@ -107,6 +108,7 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
           onClassify={(projectId, notes) => handleClassify(line.id, projectId, notes)}
+          onSaveDraftNote={(notes) => saveDraftLineNote({ lineId: line.id, notes })}
         />
       ))}
     </div>
@@ -121,6 +123,7 @@ function LineRow({
   isPending,
   onToggle,
   onClassify,
+  onSaveDraftNote,
 }: {
   line: Line;
   projects: Project[];
@@ -129,10 +132,12 @@ function LineRow({
   isPending: boolean;
   onToggle: () => void;
   onClassify: (projectId: string, notes: string) => void;
+  onSaveDraftNote: (notes: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
-  const [notes, setNotes] = useState(line.classification?.notes ?? "");
-  const [notesOpen, setNotesOpen] = useState(!!(line.classification?.notes));
+  const initialNotes = line.classification?.notes ?? line.notes ?? "";
+  const [notes, setNotes] = useState(initialNotes);
+  const [notesOpen, setNotesOpen] = useState(!!initialNotes);
 
   // Pre-select the workspace chip that matches the invoice marca (if any)
   const defaultWorkspace =
@@ -351,6 +356,9 @@ function LineRow({
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
+                  onBlur={(e) => {
+                    if (!line.classification) onSaveDraftNote(e.target.value);
+                  }}
                   placeholder="Añade una nota..."
                   className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
                   disabled={isPending}

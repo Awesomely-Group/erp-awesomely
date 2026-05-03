@@ -129,6 +129,7 @@ export async function InvoiceLinePanel({
             accountingAccount: l.accountingAccount,
             accountingAccountName: l.accountingAccountName,
             description: l.description,
+            notes: l.notes,
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),
             subtotal: Number(l.subtotal),

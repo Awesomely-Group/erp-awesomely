@@ -219,6 +219,7 @@ model InvoiceLine {
 
   accountingAccount     String?
   accountingAccountName String?
+  notes                 String?
 
   sortOrder Int @default(0)
 
