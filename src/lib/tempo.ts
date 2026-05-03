@@ -25,14 +25,14 @@ export class TempoClient {
     this.authHeader = `Bearer ${apiToken}`;
   }
 
-  async getWorklogs(projectKey: string, from: string, to: string): Promise<TempoWorklog[]> {
+  async getWorklogs(jiraProjectId: string, from: string, to: string): Promise<TempoWorklog[]> {
     const all: TempoWorklog[] = [];
     let offset = 0;
     const limit = 1000;
 
     while (true) {
       const url = new URL(`${this.baseUrl}/worklogs`);
-      url.searchParams.set("project", projectKey);
+      url.searchParams.set("projectId", jiraProjectId);
       url.searchParams.set("from", from);
       url.searchParams.set("to", to);
       url.searchParams.set("limit", limit.toString());

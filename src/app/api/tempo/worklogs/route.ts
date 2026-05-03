@@ -45,7 +45,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const tempo = new TempoClient(project.workspace.tempoApiToken);
-    const worklogs = await tempo.getWorklogs(project.jiraKey, from, to);
+    const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
 
     const secondsByAccount = new Map<string, number>();
     for (const w of worklogs) {
