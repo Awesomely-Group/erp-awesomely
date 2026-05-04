@@ -8,93 +8,48 @@ interface SuggestedProject {
   reason: string;
 }
 
-// Simple heuristic recommender:
-// 1. Same counterparty → same project (highest weight)
-// 2. Similar line name (keyword match)
-// 3. Most frequently used project overall (fallback)
+// Matches keywords extracted from the invoice line against active Jira project names.
+// A line scores 1 point per keyword that appears in a project name (or vice versa).
 export async function getSuggestionsForLine(params: {
   counterparty?: string | null;
   lineName: string;
   lineDescription?: string | null;
 }): Promise<SuggestedProject[]> {
-  const { counterparty, lineName, lineDescription } = params;
+  const { lineName, lineDescription } = params;
 
-  const scored = new Map<string, { score: number; project: { id: string; name: string; workspace: { name: string } } }>();
+  const projects = await prisma.jiraProject.findMany({
+    where: { active: true },
+    select: {
+      id: true,
+      name: true,
+      jiraKey: true,
+      workspace: { select: { name: true } },
+    },
+  });
 
-  // 1. Find classifications for same counterparty
-  if (counterparty) {
-    const sameCounterparty = await prisma.classification.findMany({
-      where: {
-        invoiceLine: {
-          invoice: { counterparty: { contains: counterparty, mode: "insensitive" } },
-        },
-      },
-      select: {
-        projectId: true,
-        project: { select: { id: true, name: true, workspace: { select: { name: true } } } },
-      },
-      take: 100,
-    });
+  const lineKeywords = extractKeywords(lineName + " " + (lineDescription ?? ""));
+  if (lineKeywords.length === 0) return [];
 
-    for (const c of sameCounterparty) {
-      if (!c.projectId || !c.project) continue;
-      const existing = scored.get(c.projectId);
-      scored.set(c.projectId, {
-        score: (existing?.score ?? 0) + 3,
-        project: c.project,
-      });
-    }
-  }
+  const scored = new Map<
+    string,
+    { score: number; project: { id: string; name: string; workspace: { name: string } } }
+  >();
 
-  // 2. Find classifications with similar line name keywords
-  const keywords = extractKeywords(lineName + " " + (lineDescription ?? ""));
-  if (keywords.length > 0) {
-    for (const keyword of keywords.slice(0, 3)) {
-      const similar = await prisma.classification.findMany({
-        where: {
-          invoiceLine: {
-            name: { contains: keyword, mode: "insensitive" },
-          },
-        },
-        select: {
-          projectId: true,
-          project: { select: { id: true, name: true, workspace: { select: { name: true } } } },
-        },
-        take: 50,
-      });
+  for (const project of projects) {
+    const projectTerms = [
+      ...extractKeywords(project.name),
+      project.jiraKey.toLowerCase(),
+    ].filter((t) => t.length > 2);
 
-      for (const c of similar) {
-        if (!c.projectId || !c.project) continue;
-        const existing = scored.get(c.projectId);
-        scored.set(c.projectId, {
-          score: (existing?.score ?? 0) + 1,
-          project: c.project,
-        });
+    let score = 0;
+    for (const kw of lineKeywords) {
+      if (projectTerms.some((t) => t.includes(kw) || kw.includes(t))) {
+        score += 1;
       }
     }
-  }
 
-  // 3. Fallback: most used projects globally
-  if (scored.size === 0) {
-    const topProjects = await prisma.classification.groupBy({
-      by: ["projectId"],
-      _count: { projectId: true },
-      orderBy: { _count: { projectId: "desc" } },
-      take: 3,
-    });
-
-    for (const row of topProjects) {
-      if (!row.projectId) continue;
-      const project = await prisma.jiraProject.findUnique({
-        where: { id: row.projectId },
-        select: { id: true, name: true, workspace: { select: { name: true } } },
-      });
-      if (project) {
-        scored.set(row.projectId, {
-          score: row._count.projectId * 0.5,
-          project,
-        });
-      }
+    if (score > 0) {
+      scored.set(project.id, { score, project });
     }
   }
 
@@ -107,8 +62,8 @@ export async function getSuggestionsForLine(params: {
       projectId: v.project.id,
       projectName: v.project.name,
       workspaceName: v.project.workspace.name,
-      confidence: Math.min(v.score / maxScore, 1),
-      reason: v.score >= 3 ? "Mismo proveedor" : "Descripción similar",
+      confidence: v.score / maxScore,
+      reason: "Coincidencia con proyecto Jira",
     }))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 3);
