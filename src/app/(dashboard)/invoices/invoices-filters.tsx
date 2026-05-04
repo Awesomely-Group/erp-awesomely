@@ -150,7 +150,7 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
         <select
           value={selectedAccount}
           onChange={(e) => { const v = e.target.value; setSelectedAccount(v); applyWith({ account: v }); }}
-          className={selectClass}
+          className={`${selectClass} w-52`}
         >
           <option value="">Todas</option>
           {accountOptions.map((o) => (
@@ -180,7 +180,7 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
         <select
           value={selectedMarca}
           onChange={(e) => { const v = e.target.value; setSelectedMarca(v); applyWith({ marca: v }); }}
-          className={selectClass}
+          className={`${selectClass} w-44`}
         >
           <option value="">Todas</option>
           {MARCA_ALL_OPTIONS.map((o) => (
