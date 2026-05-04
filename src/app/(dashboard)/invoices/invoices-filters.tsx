@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useState } from "react";
 import {
   MARCA_FILTER_UNASSIGNED,
   MARCA_OPTIONS,
@@ -30,7 +30,6 @@ export interface AccountFilterOption {
 }
 
 interface InvoicesFiltersProps {
-  /** Opciones derivadas de líneas sincronizadas; si falta, el multiselect sigue visible y vacío */
   accountOptions?: AccountFilterOption[];
 }
 
@@ -43,57 +42,8 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
-  const [selectedAccounts, setSelectedAccounts] = useState<string[]>(
-    sp.get("account")?.split(",").map((s) => s.trim()).filter(Boolean) ?? []
-  );
-  const [selectedMarcas, setSelectedMarcas] = useState<string[]>(
-    sp.get("marca")?.split(",").filter(Boolean) ?? []
-  );
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [marcaOpen, setMarcaOpen] = useState(false);
-  const [accountPos, setAccountPos] = useState({ top: 0, left: 0, width: 0 });
-  const [marcaPos, setMarcaPos] = useState({ top: 0, left: 0, width: 0 });
-  const accountContainerRef = useRef<HTMLDivElement>(null);
-  const marcaContainerRef = useRef<HTMLDivElement>(null);
-
-  const openAccount = useCallback((): void => {
-    if (accountContainerRef.current) {
-      const r = accountContainerRef.current.getBoundingClientRect();
-      setAccountPos({ top: r.bottom + 4, left: r.left, width: r.width });
-    }
-    setAccountOpen((o) => !o);
-  }, []);
-
-  const openMarca = useCallback((): void => {
-    if (marcaContainerRef.current) {
-      const r = marcaContainerRef.current.getBoundingClientRect();
-      setMarcaPos({ top: r.bottom + 4, left: r.left, width: r.width });
-    }
-    setMarcaOpen((o) => !o);
-  }, []);
-
-  useEffect(() => {
-    if (!marcaOpen && !accountOpen) return;
-    function handlePointerDown(e: PointerEvent): void {
-      const t = e.target as Node;
-      if (marcaOpen && marcaContainerRef.current && !marcaContainerRef.current.contains(t)) {
-        setMarcaOpen(false);
-      }
-      if (accountOpen && accountContainerRef.current && !accountContainerRef.current.contains(t)) {
-        setAccountOpen(false);
-      }
-    }
-    function handleScroll(): void {
-      setMarcaOpen(false);
-      setAccountOpen(false);
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [marcaOpen, accountOpen]);
+  const [selectedAccount, setSelectedAccount] = useState(sp.get("account") ?? "");
+  const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
@@ -102,8 +52,8 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
     const m = {
       search, period, dateFrom, dateTo, status,
       type: sp.get("type") ?? "",
-      account: selectedAccounts.join(","),
-      marca: selectedMarcas.join(","),
+      account: selectedAccount,
+      marca: selectedMarca,
       ...overrides,
     };
     const params = new URLSearchParams();
@@ -122,51 +72,21 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
     router.push(`/invoices?${params.toString()}`);
   }
 
-  function toggleMarca(value: string): void {
-    const next = selectedMarcas.includes(value)
-      ? selectedMarcas.filter((m) => m !== value)
-      : [...selectedMarcas, value];
-    setSelectedMarcas(next);
-    applyWith({ marca: next.join(",") });
-  }
-
-  function toggleAccount(value: string): void {
-    const next = selectedAccounts.includes(value)
-      ? selectedAccounts.filter((a) => a !== value)
-      : [...selectedAccounts, value];
-    setSelectedAccounts(next);
-    applyWith({ account: next.join(",") });
-  }
-
   function reset(): void {
     setSearch("");
     setPeriod("");
     setDateFrom("");
     setDateTo("");
     setStatus("");
-    setSelectedAccounts([]);
-    setSelectedMarcas([]);
-    setAccountOpen(false);
-    setMarcaOpen(false);
+    setSelectedAccount("");
+    setSelectedMarca("");
     const currentType = sp.get("type") ?? "";
     const params = new URLSearchParams();
     if (currentType) params.set("type", currentType);
     router.push(`/invoices?${params.toString()}`);
   }
 
-  const marcaLabel =
-    selectedMarcas.length === 0
-      ? "Todas"
-      : selectedMarcas.length === 1
-        ? (MARCA_ALL_OPTIONS.find((o) => o.value === selectedMarcas[0])?.label ?? selectedMarcas[0])
-        : `${selectedMarcas.length} marcas`;
-
-  const accountLabel =
-    selectedAccounts.length === 0
-      ? "Todas"
-      : selectedAccounts.length === 1
-        ? (accountOptions.find((o) => o.value === selectedAccounts[0])?.label ?? selectedAccounts[0])
-        : `${selectedAccounts.length} cuentas`;
+  const selectClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white";
 
   return (
     <div className="flex flex-wrap gap-3 items-end min-w-max">
@@ -192,7 +112,7 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
             setPeriod(v);
             if (v !== "custom") applyWith({ period: v, dateFrom: "", dateTo: "" });
           }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          className={selectClass}
         >
           {PERIODS.map((p) => (
             <option key={p.value} value={p.value}>{p.label}</option>
@@ -209,7 +129,7 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               onBlur={(e) => applyWith({ dateFrom: e.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              className={selectClass}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -219,63 +139,24 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               onBlur={(e) => applyWith({ dateTo: e.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              className={selectClass}
             />
           </div>
         </>
       )}
 
-      {/* Cuenta contable multiselect — mismo aspecto que «Marca» */}
-      <div className="flex flex-col gap-1 shrink-0" ref={accountContainerRef}>
+      <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
-        <button
-          type="button"
-          onClick={openAccount}
-          className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] max-w-[min(22rem,85vw)] flex items-center justify-between gap-2 transition-colors ${
-            selectedAccounts.length > 0
-              ? "border-indigo-500 text-indigo-700"
-              : "border-gray-300 text-gray-700"
-          }`}
+        <select
+          value={selectedAccount}
+          onChange={(e) => { const v = e.target.value; setSelectedAccount(v); applyWith({ account: v }); }}
+          className={selectClass}
         >
-          <span className="truncate">{accountLabel}</span>
-          <svg
-            className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${accountOpen ? "rotate-180" : ""}`}
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </button>
-
-        {accountOpen && (
-          <div
-            style={{ position: "fixed", top: accountPos.top, left: accountPos.left, minWidth: Math.max(accountPos.width, 176) }}
-            className="z-[9999] max-w-[min(28rem,92vw)] rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden"
-          >
-            {accountOptions.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-gray-400">Sin cuentas en datos sincronizados</p>
-            ) : (
-              <div className="max-h-60 overflow-y-auto overflow-x-hidden">
-                {accountOptions.map((o) => (
-                  <label
-                    key={o.value}
-                    className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAccounts.includes(o.value)}
-                      onChange={() => toggleAccount(o.value)}
-                      className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                    />
-                    <span className="text-sm text-gray-800 text-left break-words" title={o.label}>
-                      {o.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          <option value="">Todas</option>
+          {accountOptions.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col gap-1">
@@ -283,7 +164,7 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
         <select
           value={status}
           onChange={(e) => { const v = e.target.value; setStatus(v); applyWith({ status: v }); }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          className={selectClass}
         >
           <option value="">Todos</option>
           <option value={STATUS_FILTER_UNASSIGNED}>Sin asignar</option>
@@ -294,48 +175,18 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
         </select>
       </div>
 
-      {/* Marca multiselect */}
-      <div className="flex flex-col gap-1" ref={marcaContainerRef}>
+      <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Marca</label>
-        <button
-          type="button"
-          onClick={openMarca}
-          className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] flex items-center justify-between gap-2 transition-colors ${
-            selectedMarcas.length > 0
-              ? "border-indigo-500 text-indigo-700"
-              : "border-gray-300 text-gray-700"
-          }`}
+        <select
+          value={selectedMarca}
+          onChange={(e) => { const v = e.target.value; setSelectedMarca(v); applyWith({ marca: v }); }}
+          className={selectClass}
         >
-          <span className="truncate">{marcaLabel}</span>
-          <svg
-            className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${marcaOpen ? "rotate-180" : ""}`}
-            viewBox="0 0 20 20" fill="currentColor"
-          >
-            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </button>
-
-        {marcaOpen && (
-          <div
-            style={{ position: "fixed", top: marcaPos.top, left: marcaPos.left, minWidth: Math.max(marcaPos.width, 176) }}
-            className="z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
-          >
-            {MARCA_ALL_OPTIONS.map((o) => (
-              <label
-                key={o.value}
-                className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedMarcas.includes(o.value)}
-                  onChange={() => toggleMarca(o.value)}
-                  className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                />
-                <span className="text-sm text-gray-800">{o.label}</span>
-              </label>
-            ))}
-          </div>
-        )}
+          <option value="">Todas</option>
+          {MARCA_ALL_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </div>
 
       <button
