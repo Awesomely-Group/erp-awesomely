@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
-import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED } from "@/lib/org";
+import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
 import {
   formatInvoiceAccountsSummary,
   formatInvoiceAccountsUnresolvedTooltip,
@@ -153,7 +153,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
           ? { counterparty: sortDir }
           : { date: sortDir };
 
-  const [invoices, total, saleCount, purchaseCount] = await Promise.all([
+  const [invoices, total, saleCount, purchaseCount, saleUnassigned, purchaseUnassigned] = await Promise.all([
     prisma.invoice.findMany({
       where,
       include: {
@@ -173,6 +173,8 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     prisma.invoice.count({ where }),
     prisma.invoice.count({ where: { ...baseWhere, type: InvoiceType.SALE } }),
     prisma.invoice.count({ where: { ...baseWhere, type: InvoiceType.PURCHASE } }),
+    prisma.invoice.count({ where: { type: InvoiceType.SALE, marca: null } }),
+    prisma.invoice.count({ where: { type: InvoiceType.PURCHASE, marca: null } }),
   ]);
 
   const totalPages = Math.ceil(total / pageSize);
@@ -189,6 +191,8 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     totalPages,
     saleCount,
     purchaseCount,
+    saleUnassigned,
+    purchaseUnassigned,
   };
 }
 
@@ -231,6 +235,8 @@ export default async function InvoicesPage({
     totalPages,
     saleCount,
     purchaseCount,
+    saleUnassigned,
+    purchaseUnassigned,
   } = data;
 
   function buildUrl(overrides: Record<string, string | undefined>): string {
@@ -359,6 +365,28 @@ export default async function InvoicesPage({
           </Link>
         </nav>
       </div>
+
+      {(saleUnassigned > 0 || purchaseUnassigned > 0) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-gray-400">Sin marca:</span>
+          {saleUnassigned > 0 && (
+            <Link
+              href={buildUrl({ type: "SALE", marca: MARCA_FILTER_UNASSIGNED, page: "1" })}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors font-medium"
+            >
+              {saleUnassigned.toLocaleString("es-ES")} ventas
+            </Link>
+          )}
+          {purchaseUnassigned > 0 && (
+            <Link
+              href={buildUrl({ type: "PURCHASE", marca: MARCA_FILTER_UNASSIGNED, page: "1" })}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors font-medium"
+            >
+              {purchaseUnassigned.toLocaleString("es-ES")} compras
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="w-full overflow-x-auto pb-1 -mx-1 px-1">
         <InvoicesFilters accountOptions={accountOptions} />
