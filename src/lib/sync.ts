@@ -173,16 +173,46 @@ async function upsertInvoice(
 ): Promise<void> {
   const date = new Date(inv.date * 1000);
   const currency = (inv.currency ?? "EUR").toUpperCase();
-  const fxRate = inv.currencyChange && inv.currencyChange !== 0 ? inv.currencyChange : 1;
 
-  // Use Holded's own fx rate if available, else fetch from Frankfurter
-  let resolvedFxRate = fxRate;
-  if (currency !== "EUR" && fxRate === 1) {
+  // Holded's currencyChange = EUR→FOREIGN rate (e.g. 67.89 PHP per 1 EUR).
+  // When provided, inv.total and product prices come from Holded already in EUR
+  // (Holded's base currency). The Frankfurter fallback is used when Holded omits
+  // the rate, in which case inv.total is in the foreign currency.
+  const holdedRate =
+    inv.currencyChange && inv.currencyChange !== 0 ? inv.currencyChange : null;
+
+  let fxRateToEur: number; // FOREIGN→EUR multiplier stored in fxRateToEur field
+  let invTotalEur: number;
+  let invTotalForeign: number;
+  let invSubtotalForeign: number;
+  let invTaxForeign: number;
+  let toForeign: number; // factor to convert EUR amounts → foreign for storage
+
+  if (currency === "EUR") {
+    fxRateToEur = 1;
+    toForeign = 1;
+    invTotalEur = inv.total ?? 0;
+    invTotalForeign = inv.total ?? 0;
+    invSubtotalForeign = inv.subtotal ?? 0;
+    invTaxForeign = inv.tax ?? 0;
+  } else if (holdedRate !== null) {
+    // Holded gives EUR→FOREIGN rate; amounts from Holded are in EUR
+    fxRateToEur = 1 / holdedRate;
+    toForeign = holdedRate;
+    invTotalEur = inv.total ?? 0;
+    invTotalForeign = invTotalEur * holdedRate;
+    invSubtotalForeign = (inv.subtotal ?? 0) * holdedRate;
+    invTaxForeign = (inv.tax ?? 0) * holdedRate;
+  } else {
+    // Holded omits rate; inv.total is in foreign → fetch FOREIGN→EUR from Frankfurter
     const { rate } = await convertToEur(1, currency, date);
-    resolvedFxRate = rate;
+    fxRateToEur = rate;
+    toForeign = 1;
+    invTotalForeign = inv.total ?? 0;
+    invTotalEur = invTotalForeign * rate;
+    invSubtotalForeign = inv.subtotal ?? 0;
+    invTaxForeign = inv.tax ?? 0;
   }
-
-  const totalEur = (inv.total ?? 0) * resolvedFxRate;
 
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
@@ -192,13 +222,13 @@ async function upsertInvoice(
       date,
       dueDate: inv.dueDate ? new Date(inv.dueDate * 1000) : null,
       currency,
-      fxRateToEur: resolvedFxRate,
-      subtotal: inv.subtotal ?? 0,
-      tax: inv.tax ?? 0,
-      total: inv.total ?? 0,
-      totalEur,
-      paymentsTotal: inv.paymentsTotal ?? 0,
-      paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
+      fxRateToEur,
+      subtotal: invSubtotalForeign,
+      tax: invTaxForeign,
+      total: invTotalForeign,
+      totalEur: invTotalEur,
+      paymentsTotal: (inv.paymentsTotal ?? 0) * toForeign,
+      paymentsPending: (inv.paymentsPending ?? (inv.total ?? 0)) * toForeign,
     },
     create: {
       holdedId: inv.id,
@@ -209,13 +239,13 @@ async function upsertInvoice(
       date,
       dueDate: inv.dueDate ? new Date(inv.dueDate * 1000) : null,
       currency,
-      fxRateToEur: resolvedFxRate,
-      subtotal: inv.subtotal ?? 0,
-      tax: inv.tax ?? 0,
-      total: inv.total ?? 0,
-      totalEur,
-      paymentsTotal: inv.paymentsTotal ?? 0,
-      paymentsPending: inv.paymentsPending ?? (inv.total ?? 0),
+      fxRateToEur,
+      subtotal: invSubtotalForeign,
+      tax: invTaxForeign,
+      total: invTotalForeign,
+      totalEur: invTotalEur,
+      paymentsTotal: (inv.paymentsTotal ?? 0) * toForeign,
+      paymentsPending: (inv.paymentsPending ?? (inv.total ?? 0)) * toForeign,
     },
   });
 
@@ -235,22 +265,44 @@ async function upsertInvoice(
 
     await prisma.invoiceLine.deleteMany({ where: { invoiceId: invoice.id } });
 
-    // Holded returns the correct invoice total (including retentions, multiple taxes, etc.)
-    // We distribute it proportionally across lines by subtotal weight
-    const invSubtotal = inv.subtotal ?? 0;
-    const invTotal = inv.total ?? 0;
-
     for (let i = 0; i < inv.products.length; i++) {
       const product = inv.products[i];
       const qty = product.units ?? 0;
       const price = product.price ?? 0;
       const discountPct = product.discount ?? 0;
-      const lineSubtotal = qty * price * (1 - discountPct / 100);
-      // Use invoice-level total proportionally so retentions and extra taxes are accounted for
-      const lineTotal =
-        invSubtotal !== 0 ? (lineSubtotal / invSubtotal) * invTotal : lineSubtotal;
-      const lineTaxAmount = lineTotal - lineSubtotal;
-      const lineTotalEur = lineTotal * resolvedFxRate;
+
+      let lineTotalEur: number;
+      let unitPriceStored: number;
+      let lineSubtotalStored: number;
+      let lineTotalStored: number;
+      let lineTaxStored: number;
+
+      if (holdedRate !== null && currency !== "EUR") {
+        // Amounts from Holded are in EUR; compute proportions in EUR then convert to foreign
+        const lineSubtotalEur = qty * price * (1 - discountPct / 100);
+        // Distribute EUR total proportionally so retentions/extra taxes are accounted for
+        lineTotalEur =
+          (inv.subtotal ?? 0) !== 0
+            ? (lineSubtotalEur / (inv.subtotal ?? 0)) * invTotalEur
+            : lineSubtotalEur;
+        unitPriceStored = price * holdedRate;
+        lineSubtotalStored = lineSubtotalEur * holdedRate;
+        lineTotalStored = lineTotalEur * holdedRate;
+        lineTaxStored = lineTotalStored - lineSubtotalStored;
+      } else {
+        // EUR invoice or Frankfurter fallback: amounts are already in the storage currency
+        const lineSubtotal = qty * price * (1 - discountPct / 100);
+        // Distribute total proportionally so retentions/extra taxes are accounted for
+        const lineTotal =
+          (inv.subtotal ?? 0) !== 0
+            ? (lineSubtotal / (inv.subtotal ?? 0)) * invTotalForeign
+            : lineSubtotal;
+        lineTotalEur = lineTotal * fxRateToEur;
+        unitPriceStored = price;
+        lineSubtotalStored = lineSubtotal;
+        lineTotalStored = lineTotal;
+        lineTaxStored = lineTotal - lineSubtotal;
+      }
 
       const acc = resolveAccount(product.account, accountMaps);
       const newLine = await prisma.invoiceLine.create({
@@ -259,10 +311,10 @@ async function upsertInvoice(
           name: product.name,
           description: product.desc ?? null,
           quantity: qty,
-          unitPrice: price,
-          subtotal: lineSubtotal,
-          tax: lineTaxAmount,
-          total: lineTotal,
+          unitPrice: unitPriceStored,
+          subtotal: lineSubtotalStored,
+          tax: lineTaxStored,
+          total: lineTotalStored,
           totalEur: lineTotalEur,
           accountingAccount: acc.num,
           accountingAccountName: acc.name,
