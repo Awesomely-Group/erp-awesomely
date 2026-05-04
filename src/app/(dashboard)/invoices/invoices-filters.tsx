@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   MARCA_FILTER_UNASSIGNED,
   MARCA_OPTIONS,
@@ -51,8 +51,26 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
   );
   const [accountOpen, setAccountOpen] = useState(false);
   const [marcaOpen, setMarcaOpen] = useState(false);
+  const [accountPos, setAccountPos] = useState({ top: 0, left: 0, width: 0 });
+  const [marcaPos, setMarcaPos] = useState({ top: 0, left: 0, width: 0 });
   const accountContainerRef = useRef<HTMLDivElement>(null);
   const marcaContainerRef = useRef<HTMLDivElement>(null);
+
+  const openAccount = useCallback((): void => {
+    if (accountContainerRef.current) {
+      const r = accountContainerRef.current.getBoundingClientRect();
+      setAccountPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setAccountOpen((o) => !o);
+  }, []);
+
+  const openMarca = useCallback((): void => {
+    if (marcaContainerRef.current) {
+      const r = marcaContainerRef.current.getBoundingClientRect();
+      setMarcaPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setMarcaOpen((o) => !o);
+  }, []);
 
   useEffect(() => {
     if (!marcaOpen && !accountOpen) return;
@@ -65,8 +83,16 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
         setAccountOpen(false);
       }
     }
+    function handleScroll(): void {
+      setMarcaOpen(false);
+      setAccountOpen(false);
+    }
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
   }, [marcaOpen, accountOpen]);
 
   function applyWith(overrides: Partial<{
@@ -202,53 +228,54 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
       {/* Cuenta contable multiselect — mismo aspecto que «Marca» */}
       <div className="flex flex-col gap-1 shrink-0" ref={accountContainerRef}>
         <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setAccountOpen((o) => !o)}
-            className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] max-w-[min(22rem,85vw)] flex items-center justify-between gap-2 transition-colors ${
-              selectedAccounts.length > 0
-                ? "border-indigo-500 text-indigo-700"
-                : "border-gray-300 text-gray-700"
-            }`}
+        <button
+          type="button"
+          onClick={openAccount}
+          className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] max-w-[min(22rem,85vw)] flex items-center justify-between gap-2 transition-colors ${
+            selectedAccounts.length > 0
+              ? "border-indigo-500 text-indigo-700"
+              : "border-gray-300 text-gray-700"
+          }`}
+        >
+          <span className="truncate">{accountLabel}</span>
+          <svg
+            className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${accountOpen ? "rotate-180" : ""}`}
+            viewBox="0 0 20 20"
+            fill="currentColor"
           >
-            <span className="truncate">{accountLabel}</span>
-            <svg
-              className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${accountOpen ? "rotate-180" : ""}`}
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
+            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
 
-          {accountOpen && (
-            <div className="absolute top-full mt-1 z-20 min-w-[11rem] max-w-[min(28rem,92vw)] rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
-              {accountOptions.length === 0 ? (
-                <p className="px-3 py-2 text-sm text-gray-400">Sin cuentas en datos sincronizados</p>
-              ) : (
-                <div className="max-h-60 overflow-y-auto overflow-x-hidden">
-                  {accountOptions.map((o) => (
-                    <label
-                      key={o.value}
-                      className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAccounts.includes(o.value)}
-                        onChange={() => toggleAccount(o.value)}
-                        className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                      />
-                      <span className="text-sm text-gray-800 text-left break-words" title={o.label}>
-                        {o.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {accountOpen && (
+          <div
+            style={{ position: "fixed", top: accountPos.top, left: accountPos.left, minWidth: Math.max(accountPos.width, 176) }}
+            className="z-[9999] max-w-[min(28rem,92vw)] rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden"
+          >
+            {accountOptions.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-gray-400">Sin cuentas en datos sincronizados</p>
+            ) : (
+              <div className="max-h-60 overflow-y-auto overflow-x-hidden">
+                {accountOptions.map((o) => (
+                  <label
+                    key={o.value}
+                    className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedAccounts.includes(o.value)}
+                      onChange={() => toggleAccount(o.value)}
+                      className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                    />
+                    <span className="text-sm text-gray-800 text-left break-words" title={o.label}>
+                      {o.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-1">
@@ -270,44 +297,45 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
       {/* Marca multiselect */}
       <div className="flex flex-col gap-1" ref={marcaContainerRef}>
         <label className="text-xs text-gray-500 font-medium">Marca</label>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMarcaOpen((o) => !o)}
-            className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] flex items-center justify-between gap-2 transition-colors ${
-              selectedMarcas.length > 0
-                ? "border-indigo-500 text-indigo-700"
-                : "border-gray-300 text-gray-700"
-            }`}
+        <button
+          type="button"
+          onClick={openMarca}
+          className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] flex items-center justify-between gap-2 transition-colors ${
+            selectedMarcas.length > 0
+              ? "border-indigo-500 text-indigo-700"
+              : "border-gray-300 text-gray-700"
+          }`}
+        >
+          <span className="truncate">{marcaLabel}</span>
+          <svg
+            className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${marcaOpen ? "rotate-180" : ""}`}
+            viewBox="0 0 20 20" fill="currentColor"
           >
-            <span className="truncate">{marcaLabel}</span>
-            <svg
-              className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${marcaOpen ? "rotate-180" : ""}`}
-              viewBox="0 0 20 20" fill="currentColor"
-            >
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
+            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
 
-          {marcaOpen && (
-            <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[11rem] overflow-hidden">
-              {MARCA_ALL_OPTIONS.map((o) => (
-                <label
-                  key={o.value}
-                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedMarcas.includes(o.value)}
-                    onChange={() => toggleMarca(o.value)}
-                    className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                  />
-                  <span className="text-sm text-gray-800">{o.label}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        {marcaOpen && (
+          <div
+            style={{ position: "fixed", top: marcaPos.top, left: marcaPos.left, minWidth: Math.max(marcaPos.width, 176) }}
+            className="z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
+          >
+            {MARCA_ALL_OPTIONS.map((o) => (
+              <label
+                key={o.value}
+                className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedMarcas.includes(o.value)}
+                  onChange={() => toggleMarca(o.value)}
+                  className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                />
+                <span className="text-sm text-gray-800">{o.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <button
