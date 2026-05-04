@@ -12,6 +12,7 @@ import {
   RefreshCw,
   LogOut,
   CreditCard,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
@@ -20,6 +21,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Facturas", href: "/invoices", icon: FileText },
   { name: "Proyectos", href: "/projects", icon: FolderKanban },
+  { name: "Proveedores", href: "/suppliers", icon: Users },
   { name: "Rentabilidad", href: "/profitability", icon: BarChart3 },
   { name: "Flujo de Caja", href: "/cashflow", icon: TrendingUp },
   { name: "Pagos y Cobros", href: "/payments", icon: CreditCard },

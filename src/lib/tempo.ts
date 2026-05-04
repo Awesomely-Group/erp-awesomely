@@ -7,6 +7,11 @@ export interface TempoWorklog {
   startDate: string;
 }
 
+export interface TempoApprovedHoursResult {
+  approvedHours: number;
+  usedFallback: boolean;
+}
+
 interface TempoResponse {
   metadata: {
     count: number;
@@ -17,6 +22,13 @@ interface TempoResponse {
   results: TempoWorklog[];
 }
 
+interface TempoApprovalsResponse {
+  results: Array<{
+    status: { key: string };
+    worklogs: Array<{ timeSpentSeconds: number }>;
+  }>;
+}
+
 export class TempoClient {
   private readonly baseUrl = "https://api.tempo.io/4";
   private readonly authHeader: string;
@@ -25,14 +37,14 @@ export class TempoClient {
     this.authHeader = `Bearer ${apiToken}`;
   }
 
-  async getWorklogs(jiraProjectId: string, from: string, to: string): Promise<TempoWorklog[]> {
+  async getWorklogs(jiraProjectId: string | undefined, from: string, to: string): Promise<TempoWorklog[]> {
     const all: TempoWorklog[] = [];
     let offset = 0;
     const limit = 1000;
 
     while (true) {
       const url = new URL(`${this.baseUrl}/worklogs`);
-      url.searchParams.set("projectId", jiraProjectId);
+      if (jiraProjectId !== undefined) url.searchParams.set("projectId", jiraProjectId);
       url.searchParams.set("from", from);
       url.searchParams.set("to", to);
       url.searchParams.set("limit", limit.toString());
@@ -58,5 +70,32 @@ export class TempoClient {
     }
 
     return all;
+  }
+
+  async getApprovedHours(
+    jiraAccountId: string,
+    from: string,
+    to: string,
+  ): Promise<TempoApprovedHoursResult> {
+    const approvalsUrl = `${this.baseUrl}/approvals?accountId=${jiraAccountId}&from=${from}&to=${to}`;
+    const approvalsRes = await fetch(approvalsUrl, {
+      headers: { Authorization: this.authHeader, Accept: "application/json" },
+      next: { revalidate: 0 },
+    });
+
+    if (approvalsRes.ok) {
+      const data = (await approvalsRes.json()) as TempoApprovalsResponse;
+      const approvedSeconds = data.results
+        .filter((r) => r.status.key === "APPROVED")
+        .flatMap((r) => r.worklogs)
+        .reduce((sum, w) => sum + w.timeSpentSeconds, 0);
+      return { approvedHours: Math.round((approvedSeconds / 3600) * 100) / 100, usedFallback: false };
+    }
+
+    const worklogs = await this.getWorklogs(undefined, from, to);
+    const userSeconds = worklogs
+      .filter((w) => w.author.accountId === jiraAccountId)
+      .reduce((sum, w) => sum + w.timeSpentSeconds, 0);
+    return { approvedHours: Math.round((userSeconds / 3600) * 100) / 100, usedFallback: true };
   }
 }

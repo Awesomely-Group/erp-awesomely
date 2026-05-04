@@ -177,9 +177,10 @@ model Invoice {
   paymentsTotal   Decimal @default(0)
   paymentsPending Decimal @default(0)
 
-  lines        InvoiceLine[]
-  auditLogs    AuditLog[]
-  erpPayments  InvoicePayment[]
+  lines         InvoiceLine[]
+  auditLogs     AuditLog[]
+  erpPayments   InvoicePayment[]
+  verifications SupplierVerification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -304,6 +305,70 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+// ─── Supplier Verification ────────────────────────────────────────────────────
+
+/// Proveedor sincronizado desde contactos Holded tipo "supplier", enriquecido con datos ERP.
+model Supplier {
+  id              String  @id @default(cuid())
+  holdedContactId String  @unique
+  name            String
+
+  jiraAccountId String? @unique
+  hourlyRate    Float?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  verifications SupplierVerification[]
+
+  @@map("suppliers")
+}
+
+enum VerificationStatus {
+  PENDING
+  HOURS_CAPTURED
+  INVOICE_RECEIVED
+  PERIOD_MISMATCH
+  VERIFIED_MISMATCH
+  VERIFIED_OK
+  APPROVED
+
+  @@map("verification_status")
+}
+
+model SupplierVerification {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  tempoHours     Float?
+  expectedAmount Float?
+  capturedAt     DateTime?
+
+  invoiceId      String?
+  invoice        Invoice? @relation(fields: [invoiceId], references: [id])
+  invoicedAmount Float?
+
+  invoiceServicePeriodStart DateTime?
+  invoiceServicePeriodEnd   DateTime?
+  periodMismatch            Boolean?
+
+  status     VerificationStatus @default(PENDING)
+  verifiedBy String?
+  verifiedAt DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([supplierId, periodStart, periodEnd])
+  @@map("supplier_verifications")
 }
 
 // ─── Sync Logs ─────────────────────────────────────────────────────────────────

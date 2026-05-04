@@ -16,6 +16,7 @@ export interface PaymentInvoice {
   erpPaid: number;         // sum of local ERP payments
   effectivePending: number;
   companyName: string;
+  verificationStatus?: string | null;
   erpPayments: { id: string; amount: number; paidAt: string; paidBy: string; notes: string | null }[];
 }
 
@@ -37,9 +38,26 @@ export function PaymentRow({ invoice }: Props): React.JSX.Element {
         </button>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">
-            {invoice.counterparty ?? "—"}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {invoice.counterparty ?? "—"}
+            </p>
+            {invoice.verificationStatus === "APPROVED" && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 shrink-0">Verificado ✓</span>
+            )}
+            {invoice.verificationStatus === "PERIOD_MISMATCH" && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 shrink-0">Período incorrecto</span>
+            )}
+            {invoice.verificationStatus === "VERIFIED_MISMATCH" && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 shrink-0">Importe incorrecto</span>
+            )}
+            {invoice.verificationStatus != null &&
+              invoice.verificationStatus !== "APPROVED" &&
+              invoice.verificationStatus !== "PERIOD_MISMATCH" &&
+              invoice.verificationStatus !== "VERIFIED_MISMATCH" && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 shrink-0">Pendiente verificar</span>
+            )}
+          </div>
           <p className="text-xs text-gray-400">
             {invoice.number ?? invoice.holdedId.slice(0, 8)} · {invoice.companyName}
             {invoice.dueDate && ` · Vence ${formatDate(invoice.dueDate)}`}

@@ -9,6 +9,11 @@ export interface HoldedContact {
   name: string;
 }
 
+export interface HoldedSupplierContact {
+  id: string;
+  name: string;
+}
+
 export interface HoldedInvoiceProduct {
   name: string;
   desc?: string;
@@ -304,6 +309,15 @@ export class HoldedClient {
    * Windows start from HOLDED_SYNC_FROM_YEAR (default 2024) up to today.
    * Each window is one quarter (≤ ~100 invoices in practice).
    */
+  async getSupplierContacts(): Promise<HoldedSupplierContact[]> {
+    const data = await this.fetchFromBase<Array<{ id: string; name: string }>>(
+      "https://api.holded.com/api/contacts/v2",
+      "/contacts",
+      { type: "supplier" }
+    );
+    return data.map((c) => ({ id: c.id, name: c.name }));
+  }
+
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];

@@ -55,6 +55,22 @@ export async function syncJiraWorkspace(workspaceId: string): Promise<void> {
 const HOLDED_STATUS_CANCELLED = -1;
 const HOLDED_STATUS_DRAFT = 0;
 
+// ─── Supplier Sync ─────────────────────────────────────────────────────────────
+
+export async function syncSuppliers(companyId: string): Promise<void> {
+  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const client = new HoldedClient(company.holdedApiKey);
+  const contacts = await client.getSupplierContacts();
+
+  for (const contact of contacts) {
+    await prisma.supplier.upsert({
+      where: { holdedContactId: contact.id },
+      create: { holdedContactId: contact.id, name: contact.name },
+      update: { name: contact.name },
+    });
+  }
+}
+
 // ─── Holded Sync ───────────────────────────────────────────────────────────────
 
 export async function syncHoldedCompany(companyId: string): Promise<void> {
@@ -135,6 +151,10 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
       startedAt,
       finishedAt: new Date(),
     },
+  });
+
+  await syncSuppliers(companyId).catch((err: unknown) => {
+    console.error("[sync] Error syncing suppliers:", err);
   });
 
   if (errorMessage) throw new Error(errorMessage);

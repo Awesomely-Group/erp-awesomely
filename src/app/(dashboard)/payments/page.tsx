@@ -9,6 +9,11 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     include: {
       company: true,
       erpPayments: true,
+      verifications: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true, periodMismatch: true },
+      },
     },
     orderBy: { dueDate: "asc" },
   });
@@ -41,6 +46,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         erpPaid,
         effectivePending,
         companyName: inv.company.name,
+        verificationStatus: inv.verifications[0]?.status ?? null,
         erpPayments: inv.erpPayments.map((p) => ({
           id: p.id,
           amount: Number(p.amount),
