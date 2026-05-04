@@ -310,8 +310,7 @@ export class HoldedClient {
    * Each window is one quarter (≤ ~100 invoices in practice).
    */
   async getSupplierContacts(): Promise<HoldedSupplierContact[]> {
-    const data = await this.fetchFromBase<Array<{ id: string; name: string }>>(
-      "https://api.holded.com/api/contacts/v2",
+    const data = await this.fetch<Array<{ id: string; name: string }>>(
       "/contacts",
       { type: "supplier" }
     );
