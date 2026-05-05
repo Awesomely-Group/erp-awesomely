@@ -25,6 +25,19 @@ export interface TempoWorklogsMonthlyResponse {
   totalHours: number;
 }
 
+export interface TempoWorklogEntry {
+  accountId: string;
+  displayName: string;
+  issueKey: string;
+  startDate: string;
+  hours: number;
+}
+
+export interface TempoWorklogsDetailResponse {
+  worklogs: TempoWorklogEntry[];
+  totalHours: number;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -58,6 +71,27 @@ export async function GET(request: Request): Promise<NextResponse> {
     const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
 
     const groupBy = searchParams.get("groupBy");
+
+    if (groupBy === "worklog") {
+      const accountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
+      const jira = new JiraClient(
+        project.workspace.domain,
+        project.workspace.email,
+        project.workspace.apiToken
+      );
+      const nameMap = await jira.getUsersByAccountIds(accountIds);
+      const entries: TempoWorklogEntry[] = worklogs
+        .map((w) => ({
+          accountId: w.author.accountId,
+          displayName: nameMap.get(w.author.accountId) ?? w.author.accountId,
+          issueKey: w.issue.key,
+          startDate: w.startDate,
+          hours: Math.round((w.timeSpentSeconds / 3600) * 100) / 100,
+        }))
+        .sort((a, b) => b.startDate.localeCompare(a.startDate));
+      const totalHours = Math.round(entries.reduce((sum, e) => sum + e.hours, 0) * 100) / 100;
+      return NextResponse.json({ worklogs: entries, totalHours } satisfies TempoWorklogsDetailResponse);
+    }
 
     if (groupBy === "month") {
       const secondsByMonth = new Map<string, number>();
