@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useTransition } from "react";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
-import type { TempoWorklogsResponse } from "@/app/api/tempo/worklogs/route";
+import type { TempoWorklogsResponse, TempoWorklogsMonthlyResponse } from "@/app/api/tempo/worklogs/route";
 
 export interface ProjectRow {
   id: string;
@@ -34,6 +34,13 @@ const ALL_STATUSES = Object.values(ProjectStatus) as ProjectStatus[];
 
 type PeriodType = "month" | "quarter" | "year";
 
+interface MonthCol {
+  key: string; // "2025-01"
+  label: string;
+  from: string;
+  to: string;
+}
+
 function getPeriodRange(
   type: PeriodType,
   offset: number
@@ -62,13 +69,63 @@ function getPeriodRange(
     return { from, to, label: `Q${q + 1} ${year}` };
   }
 
-  // year
   const year = now.getFullYear() + offset;
   return {
     from: `${year}-01-01`,
     to: `${year}-12-31`,
     label: String(year),
   };
+}
+
+function getMonthsForPeriod(type: PeriodType, offset: number): MonthCol[] {
+  const now = new Date();
+
+  if (type === "month") {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const year = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const key = `${year}-${String(m).padStart(2, "0")}`;
+    return [{
+      key,
+      label: d.toLocaleDateString("es-ES", { month: "short", year: "numeric" }),
+      from: `${year}-${String(m).padStart(2, "0")}-01`,
+      to: `${year}-${String(m).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`,
+    }];
+  }
+
+  if (type === "quarter") {
+    const currentQ = Math.floor(now.getMonth() / 3);
+    const totalQ = currentQ + offset;
+    const year = now.getFullYear() + Math.floor(totalQ / 4);
+    const q = ((totalQ % 4) + 4) % 4;
+    const startMonth = q * 3;
+    return [0, 1, 2].map((i) => {
+      const month = startMonth + i;
+      const d = new Date(year, month, 1);
+      const last = new Date(year, month + 1, 0);
+      const m = month + 1;
+      return {
+        key: `${year}-${String(m).padStart(2, "0")}`,
+        label: d.toLocaleDateString("es-ES", { month: "short" }),
+        from: `${year}-${String(m).padStart(2, "0")}-01`,
+        to: `${year}-${String(m).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`,
+      };
+    });
+  }
+
+  const year = now.getFullYear() + offset;
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(year, i, 1);
+    const last = new Date(year, i + 1, 0);
+    const m = i + 1;
+    return {
+      key: `${year}-${String(m).padStart(2, "0")}`,
+      label: d.toLocaleDateString("es-ES", { month: "short" }),
+      from: `${year}-${String(m).padStart(2, "0")}-01`,
+      to: `${year}-${String(m).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`,
+    };
+  });
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -211,23 +268,80 @@ function PeriodSelector({ periodType, periodOffset, onTypeChange, onOffsetChange
   );
 }
 
-// ─── Expanded row with Tempo hours ────────────────────────────────────────────
+// ─── Monthly hours hook ───────────────────────────────────────────────────────
+
+interface MonthlyHoursData {
+  byMonth: Record<string, number>;
+  totalHours: number;
+}
+
+function useMonthlyHours(
+  projectId: string,
+  hasTempoToken: boolean,
+  from: string,
+  to: string,
+): { data: MonthlyHoursData | null; loading: boolean; error: string | null } {
+  const [data, setData] = useState<MonthlyHoursData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasTempoToken) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setData(null);
+
+    async function load(): Promise<void> {
+      try {
+        const res = await fetch(
+          `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month`
+        );
+        const text = await res.text();
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
+        if (!res.ok) throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
+        const monthly = parsed as TempoWorklogsMonthlyResponse;
+        const byMonth: Record<string, number> = {};
+        for (const m of monthly.months) {
+          byMonth[m.month] = m.totalHours;
+        }
+        if (!cancelled) {
+          setData({ byMonth, totalHours: monthly.totalHours });
+          setLoading(false);
+        }
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Error desconocido");
+          setLoading(false);
+        }
+      }
+    }
+
+    void load();
+    return () => { cancelled = true; };
+  }, [projectId, hasTempoToken, from, to]);
+
+  return { data, loading, error };
+}
+
+// ─── Expanded row with per-user hours ────────────────────────────────────────
 
 interface ExpandedRowProps {
   projectId: string;
   hasTempoToken: boolean;
   from: string;
   to: string;
+  totalCols: number;
 }
 
-function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): React.JSX.Element {
+function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: ExpandedRowProps): React.JSX.Element {
   const [data, setData] = useState<TempoWorklogsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasTempoToken) return;
-
     let cancelled = false;
 
     async function load(): Promise<void> {
@@ -255,7 +369,7 @@ function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): 
 
   return (
     <tr className="bg-indigo-50/40 border-b border-gray-100">
-      <td colSpan={5} className="px-6 py-3">
+      <td colSpan={totalCols} className="px-6 py-3">
         {!hasTempoToken && (
           <p className="text-xs text-gray-400">
             Token de Tempo no configurado.{" "}
@@ -272,7 +386,7 @@ function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): 
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
-            Cargando horas...
+            Cargando horas por persona...
           </div>
         )}
 
@@ -311,6 +425,114 @@ function ExpandedRow({ projectId, hasTempoToken, from, to }: ExpandedRowProps): 
   );
 }
 
+// ─── Project row ──────────────────────────────────────────────────────────────
+
+interface ProjectRowProps {
+  project: ProjectRow;
+  months: MonthCol[];
+  periodFrom: string;
+  periodTo: string;
+  showTotal: boolean;
+  isExpanded: boolean;
+  totalCols: number;
+  onToggleExpand: (id: string) => void;
+}
+
+function ProjectTableRow({
+  project,
+  months,
+  periodFrom,
+  periodTo,
+  showTotal,
+  isExpanded,
+  totalCols,
+  onToggleExpand,
+}: ProjectRowProps): React.JSX.Element {
+  const { data, loading } = useMonthlyHours(project.id, project.hasTempoToken, periodFrom, periodTo);
+
+  function renderHoursCell(monthKey: string): React.JSX.Element {
+    if (!project.hasTempoToken) {
+      return <span className="text-gray-300">—</span>;
+    }
+    if (loading) {
+      return <span className="text-gray-300 animate-pulse text-xs">…</span>;
+    }
+    if (data) {
+      const h = data.byMonth[monthKey];
+      return h != null && h > 0
+        ? <span className="text-gray-900">{h}h</span>
+        : <span className="text-gray-300">—</span>;
+    }
+    return <span className="text-gray-300">—</span>;
+  }
+
+  function renderTotalCell(): React.JSX.Element {
+    if (!project.hasTempoToken) return <span className="text-gray-300">—</span>;
+    if (loading) return <span className="text-gray-300 animate-pulse text-xs">…</span>;
+    if (data) {
+      return data.totalHours > 0
+        ? <span className="text-gray-900 font-semibold">{data.totalHours}h</span>
+        : <span className="text-gray-300">—</span>;
+    }
+    return <span className="text-gray-300">—</span>;
+  }
+
+  return (
+    <>
+      <tr
+        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
+        onClick={() => onToggleExpand(project.id)}
+      >
+        <td className="px-4 py-3">
+          <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+            {project.jiraKey}
+          </span>
+        </td>
+        <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
+        <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
+        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+          <StatusBadge projectId={project.id} status={project.status} />
+        </td>
+
+        {months.map((m) => (
+          <td key={m.key} className="px-3 py-3 text-right tabular-nums text-sm">
+            {renderHoursCell(m.key)}
+          </td>
+        ))}
+
+        {showTotal && (
+          <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">
+            {renderTotalCell()}
+          </td>
+        )}
+
+        <td className="px-4 py-3">
+          <svg
+            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </td>
+      </tr>
+
+      {isExpanded && (
+        <ExpandedRow
+          key={`${project.id}-expanded`}
+          projectId={project.id}
+          hasTempoToken={project.hasTempoToken}
+          from={periodFrom}
+          to={periodTo}
+          totalCols={totalCols}
+        />
+      )}
+    </>
+  );
+}
+
 // ─── Main table ───────────────────────────────────────────────────────────────
 
 interface Props {
@@ -325,7 +547,14 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
-  const { from, to } = getPeriodRange(periodType, periodOffset);
+  const { from: periodFrom, to: periodTo } = getPeriodRange(periodType, periodOffset);
+  const months = useMemo(
+    () => getMonthsForPeriod(periodType, periodOffset),
+    [periodType, periodOffset],
+  );
+  const showTotal = months.length > 1;
+  // 4 fixed (Clave, Proyecto, Marca, Estado) + month cols + optional Total + expand arrow
+  const totalCols = 4 + months.length + (showTotal ? 1 : 0) + 1;
 
   const brandOptions = useMemo(() => {
     const names = Array.from(new Set(allProjects.map((p) => p.workspaceName)));
@@ -350,7 +579,7 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
 
   return (
     <div className="space-y-4">
-      {/* Filters + period selector */}
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -406,64 +635,44 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
       />
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Clave</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Estado</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Horas</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Clave</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Proyecto</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Marca</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
+              {months.map((m) => (
+                <th key={m.key} className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap capitalize">
+                  {m.label}
+                </th>
+              ))}
+              {showTotal && (
+                <th className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap border-l border-gray-100">
+                  Total
+                </th>
+              )}
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {filtered.map((project) => (
-              <>
-                <tr
-                  key={project.id}
-                  className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => toggleExpand(project.id)}
-                >
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
-                      {project.jiraKey}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
-                  <td
-                    className="px-4 py-3"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <StatusBadge projectId={project.id} status={project.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <svg
-                      className={`w-4 h-4 text-gray-400 transition-transform ${expandedId === project.id ? "rotate-90" : ""}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </td>
-                </tr>
-                {expandedId === project.id && (
-                  <ExpandedRow
-                    key={`${project.id}-expanded`}
-                    projectId={project.id}
-                    hasTempoToken={project.hasTempoToken}
-                    from={from}
-                    to={to}
-                  />
-                )}
-              </>
+              <ProjectTableRow
+                key={project.id}
+                project={project}
+                months={months}
+                periodFrom={periodFrom}
+                periodTo={periodTo}
+                showTotal={showTotal}
+                isExpanded={expandedId === project.id}
+                totalCols={totalCols}
+                onToggleExpand={toggleExpand}
+              />
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={totalCols} className="px-4 py-8 text-center text-gray-400">
                   {allProjects.length === 0
                     ? "Sin proyectos sincronizados"
                     : "Sin resultados para los filtros aplicados"}

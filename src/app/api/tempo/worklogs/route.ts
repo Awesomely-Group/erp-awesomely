@@ -15,6 +15,16 @@ export interface TempoWorklogsResponse {
   totalHours: number;
 }
 
+export interface TempoMonthlyHours {
+  month: string; // "2025-01"
+  totalHours: number;
+}
+
+export interface TempoWorklogsMonthlyResponse {
+  months: TempoMonthlyHours[];
+  totalHours: number;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -46,6 +56,24 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const tempo = new TempoClient(project.workspace.tempoApiToken);
     const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
+
+    const groupBy = searchParams.get("groupBy");
+
+    if (groupBy === "month") {
+      const secondsByMonth = new Map<string, number>();
+      for (const w of worklogs) {
+        const month = w.startDate.slice(0, 7);
+        secondsByMonth.set(month, (secondsByMonth.get(month) ?? 0) + w.timeSpentSeconds);
+      }
+      const months: TempoMonthlyHours[] = [...secondsByMonth.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, seconds]) => ({
+          month,
+          totalHours: Math.round((seconds / 3600) * 100) / 100,
+        }));
+      const totalHours = Math.round(months.reduce((sum, m) => sum + m.totalHours, 0) * 100) / 100;
+      return NextResponse.json({ months, totalHours } satisfies TempoWorklogsMonthlyResponse);
+    }
 
     const secondsByAccount = new Map<string, number>();
     for (const w of worklogs) {
