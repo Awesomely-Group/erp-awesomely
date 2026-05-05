@@ -24,7 +24,7 @@ export async function InvoiceLinePanel({
 }: {
   invoiceId: string;
 }): Promise<React.JSX.Element> {
-  const [invoice, projects] = await Promise.all([
+  const [invoice, projects, cogsMappings] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: {
@@ -44,7 +44,12 @@ export async function InvoiceLinePanel({
       include: { workspace: true },
       orderBy: { name: "asc" },
     }),
+    prisma.accountMapping.findMany({ where: { l1: "COGS" } }),
   ]);
+
+  const cogAccounts = new Set(
+    cogsMappings.flatMap((m) => [m.accountNumSL, m.accountNumOU].filter(Boolean) as string[])
+  );
 
   if (!invoice) {
     return (
@@ -123,6 +128,7 @@ export async function InvoiceLinePanel({
         <ClassifyLinesForm
           invoiceId={invoice.id}
           invoiceMarca={invoice.marca}
+          cogAccounts={[...cogAccounts]}
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,
@@ -144,6 +150,7 @@ export async function InvoiceLinePanel({
                   projectId: l.classification.projectId ?? null,
                   projectName: l.classification.project?.name ?? null,
                   workspaceName: l.classification.project?.workspace.name ?? null,
+                  marca: l.classification.marca ?? null,
                   notes: l.classification.notes,
                 }
               : null,

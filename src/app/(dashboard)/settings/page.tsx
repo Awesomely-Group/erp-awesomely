@@ -3,9 +3,10 @@ import { CompanyForm } from "./company-form";
 import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
 import { SsoAllowlistSection } from "./sso-allowlist";
+import { AccountMappingTable } from "./account-mapping-table";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
-  const [companies, workspaces, auditLogs] = await Promise.all([
+  const [companies, workspaces, auditLogs, accountMappings] = await Promise.all([
     prisma.company.findMany({ orderBy: { name: "asc" } }),
     prisma.jiraWorkspace.findMany({ orderBy: { name: "asc" } }),
     prisma.auditLog.findMany({
@@ -13,6 +14,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
+    prisma.accountMapping.findMany({ orderBy: [{ l1: "asc" }, { tag: "asc" }] }),
   ]);
 
   return (
@@ -80,6 +82,29 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
       </section>
 
       <SsoAllowlistSection />
+
+      {/* Plan de Cuentas */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Plan de Cuentas</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Tabla de equivalencias entre tags internos y cuentas contables (SL / OÜ).
+            Las cuentas con L1 = COGS habilitan el selector de proyecto Jira al clasificar facturas.
+          </p>
+        </div>
+        <AccountMappingTable
+          mappings={accountMappings.map((m) => ({
+            id: m.id,
+            tag: m.tag,
+            description: m.description,
+            l1: m.l1,
+            accountNumSL: m.accountNumSL,
+            accountNameSL: m.accountNameSL,
+            accountNumOU: m.accountNumOU,
+            accountNameOU: m.accountNameOU,
+          }))}
+        />
+      </section>
 
       {/* Audit log */}
       <section className="space-y-4">

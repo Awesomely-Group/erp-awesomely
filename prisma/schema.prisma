@@ -247,6 +247,7 @@ model Classification {
   invoiceLine   InvoiceLine          @relation(fields: [invoiceLineId], references: [id], onDelete: Cascade)
   projectId     String?
   project       JiraProject?         @relation(fields: [projectId], references: [id])
+  marca         String?
   status        ClassificationStatus @default(CLASSIFIED)
   notes         String?
 
@@ -409,4 +410,22 @@ model SyncLog {
   finishedAt     DateTime?
 
   @@map("sync_logs")
+}
+
+// ─── Account Mappings ──────────────────────────────────────────────────────────
+
+model AccountMapping {
+  id            String  @id @default(cuid())
+  tag           String  @unique
+  description   String
+  l1            String
+  accountNumSL  String?
+  accountNameSL String?
+  accountNumOU  String?
+  accountNameOU String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("account_mappings")
 }

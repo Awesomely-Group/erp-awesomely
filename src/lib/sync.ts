@@ -360,7 +360,8 @@ export async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   const marcas = [
     ...new Set([
       ...classifications.filter((c) => c.project).map((c) => c.project!.workspace.name),
-      ...classifications.filter((c) => !c.project).map(() => "Awesomely"),
+      ...classifications.filter((c) => !c.project && c.marca).map((c) => c.marca!),
+      ...classifications.filter((c) => !c.project && !c.marca).map(() => "Awesomely"),
     ]),
   ].sort();
 

@@ -22,6 +22,7 @@ interface LineClassification {
   projectId: string | null;
   projectName: string | null;
   workspaceName: string | null;
+  marca: string | null;
   notes: string | null;
 }
 
@@ -53,6 +54,7 @@ interface Project {
 interface Props {
   invoiceId: string;
   invoiceMarca?: string | null;
+  cogAccounts: string[];
   lines: Line[];
   projects: Project[];
 }
@@ -62,7 +64,9 @@ const STATUS_COLORS: Record<string, string> = {
   APPROVED: "text-green-600 bg-green-50 border-green-200",
 };
 
-export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: Props): React.JSX.Element {
+const MARCAS = ["Gigson", "Gigson Solutions", "LaTroupe", "Awesomely"] as const;
+
+export function ClassifyLinesForm({ invoiceId, invoiceMarca, cogAccounts, lines, projects }: Props): React.JSX.Element {
   const router = useRouter();
   const [localLines, setLocalLines] = useState(lines);
   const [expandedLine, setExpandedLine] = useState<string | null>(
@@ -70,9 +74,11 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
   );
   const [isPending, startTransition] = useTransition();
 
-  function handleClassify(lineId: string, projectId: string | null, notes: string): void {
+  const cogAccountsSet = new Set(cogAccounts);
+
+  function handleClassify(lineId: string, projectId: string | null, marca: string | null, notes: string): void {
     startTransition(async () => {
-      const { classificationId } = await classifyLine({ lineId, projectId, notes, invoiceId });
+      const { classificationId } = await classifyLine({ lineId, projectId, marca, notes, invoiceId });
       setLocalLines((prev) =>
         prev.map((l) => {
           if (l.id !== lineId) return l;
@@ -84,7 +90,8 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
               status: "CLASSIFIED",
               projectId,
               projectName: project?.name ?? null,
-              workspaceName: project?.workspaceName ?? (projectId ? null : "Awesomely"),
+              workspaceName: project?.workspaceName ?? null,
+              marca: marca,
               notes,
             },
           };
@@ -104,10 +111,11 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
           line={line}
           projects={projects}
           invoiceMarca={invoiceMarca}
+          isCogs={cogAccountsSet.has(line.accountingAccount ?? "")}
           isExpanded={expandedLine === line.id}
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
-          onClassify={(projectId, notes) => handleClassify(line.id, projectId ?? null, notes)}
+          onClassify={(projectId, marca, notes) => handleClassify(line.id, projectId, marca, notes)}
           onSaveDraftNote={(notes) => saveDraftLineNote({ lineId: line.id, notes })}
         />
       ))}
@@ -119,6 +127,7 @@ function LineRow({
   line,
   projects,
   invoiceMarca,
+  isCogs,
   isExpanded,
   isPending,
   onToggle,
@@ -128,10 +137,11 @@ function LineRow({
   line: Line;
   projects: Project[];
   invoiceMarca?: string | null;
+  isCogs: boolean;
   isExpanded: boolean;
   isPending: boolean;
   onToggle: () => void;
-  onClassify: (projectId: string | null, notes: string) => void;
+  onClassify: (projectId: string | null, marca: string | null, notes: string) => void;
   onSaveDraftNote: (notes: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
@@ -139,7 +149,7 @@ function LineRow({
   const [notes, setNotes] = useState(initialNotes);
   const [notesOpen, setNotesOpen] = useState(!!initialNotes);
 
-  // Pre-select the workspace chip that matches the invoice marca (if any)
+  // For COGS: workspace filter chips
   const defaultWorkspace =
     invoiceMarca && projects.some((p) => p.workspaceName === invoiceMarca)
       ? invoiceMarca
@@ -147,7 +157,13 @@ function LineRow({
   const [workspaceFilter, setWorkspaceFilter] = useState(defaultWorkspace);
   const [projectSearch, setProjectSearch] = useState("");
 
-  const MARCAS = ["Gigson", "Gigson Solutions", "LaTroupe", "Awesomely"] as const;
+  // For non-COGS: direct marca selection
+  const [selectedMarca, setSelectedMarca] = useState<string>(
+    line.classification?.marca ??
+    line.classification?.workspaceName ??
+    (invoiceMarca && MARCAS.includes(invoiceMarca as (typeof MARCAS)[number]) ? invoiceMarca : "")
+  );
+
   const filteredProjects = projects.filter((p) => {
     if (workspaceFilter && workspaceFilter !== "Awesomely" && p.workspaceName !== workspaceFilter) return false;
     if (projectSearch) {
@@ -160,6 +176,10 @@ function LineRow({
   const isEur = line.currency === "EUR";
   const accLabel = lineAccountingLabel(line);
   const accTitle = accountingAccountTooltip(line) ?? (accLabel || undefined);
+
+  const classifiedLabel = isCogs
+    ? (line.classification?.projectName ?? null)
+    : (line.classification?.marca ?? line.classification?.workspaceName ?? null);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -182,20 +202,23 @@ function LineRow({
             {accLabel ? (
               <p className="text-xs text-gray-500 truncate mt-0.5 font-mono" title={accTitle}>
                 {accLabel}
+                {!isCogs && line.accountingAccount && (
+                  <span className="ml-1.5 text-gray-400 font-sans">(OPEX/no-COGS)</span>
+                )}
               </p>
             ) : null}
             {line.description && (
               <p className="text-xs text-gray-400 truncate mt-0.5">{line.description}</p>
             )}
           </div>
-          {line.classification && (
+          {line.classification && classifiedLabel && (
             <div
               className={cn(
                 "shrink-0 text-xs font-medium px-2 py-1 rounded-full border",
                 STATUS_COLORS[line.classification.status]
               )}
             >
-              {line.classification.projectName ?? "Awesomely"}
+              {classifiedLabel}
             </div>
           )}
           <ChevronDown
@@ -244,105 +267,26 @@ function LineRow({
       {/* ── Expanded: classification form ── */}
       {isExpanded && (
         <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-4">
-          {/* Suggestions */}
-          {line.suggestions.length > 0 && !line.classification && (
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 mb-2">
-                <Sparkles className="h-3.5 w-3.5" />
-                Sugerencias basadas en histórico
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {line.suggestions.map((s) => (
-                  <button
-                    key={s.projectId}
-                    onClick={() => {
-                      setSelectedProject(s.projectId);
-                      const ws = projects.find((p) => p.id === s.projectId)?.workspaceName ?? "";
-                      setWorkspaceFilter(ws);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors",
-                      selectedProject === s.projectId
-                        ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                        : "border-gray-200 bg-white text-gray-700 hover:border-indigo-300"
-                    )}
-                  >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: `hsl(${s.confidence * 120}, 70%, 45%)` }}
-                    />
-                    {s.projectName}
-                    <span className="text-xs text-gray-400">{s.workspaceName}</span>
-                    <span className="text-xs text-gray-400">{Math.round(s.confidence * 100)}%</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Marca filter + project selector */}
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-gray-600">Marca</label>
-
-            {/* Marca filter chips */}
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setWorkspaceFilter("")}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-                  workspaceFilter === ""
-                    ? "bg-indigo-600 text-white border-indigo-600"
-                    : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
-                )}
-              >
-                Todas
-              </button>
-              {MARCAS.map((marca) => (
-                <button
-                  key={marca}
-                  type="button"
-                  onClick={() => setWorkspaceFilter(marca)}
-                  className={cn(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-                    workspaceFilter === marca
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
-                  )}
-                >
-                  {marca}
-                </button>
-              ))}
-            </div>
-
-            {workspaceFilter === "Awesomely" && (
-              <p className="text-xs text-gray-400 italic">
-                Awesomely no tiene workspace de Jira.
-              </p>
-            )}
-            <input
-              type="text"
-              value={projectSearch}
-              onChange={(e) => setProjectSearch(e.target.value)}
-              placeholder="Buscar proyecto…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              disabled={isPending}
+          {isCogs ? (
+            <CogsClassifier
+              line={line}
+              projects={projects}
+              filteredProjects={filteredProjects}
+              selectedProject={selectedProject}
+              setSelectedProject={setSelectedProject}
+              workspaceFilter={workspaceFilter}
+              setWorkspaceFilter={setWorkspaceFilter}
+              projectSearch={projectSearch}
+              setProjectSearch={setProjectSearch}
+              isPending={isPending}
             />
-            <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              disabled={isPending}
-              size={Math.min(filteredProjects.length + 1, 7)}
-            >
-              <option value="">Selecciona un proyecto</option>
-              {filteredProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  [{p.key}] {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          ) : (
+            <NonCogsClassifier
+              selectedMarca={selectedMarca}
+              setSelectedMarca={setSelectedMarca}
+              isPending={isPending}
+            />
+          )}
 
           {/* Notes — hidden by default */}
           {notesOpen ? (
@@ -384,16 +328,186 @@ function LineRow({
           {/* Actions */}
           <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={() => onClassify(selectedProject || null, notes)}
-              disabled={(!selectedProject && workspaceFilter !== "Awesomely") || isPending}
+              onClick={() => {
+                if (isCogs) {
+                  onClassify(selectedProject || null, null, notes);
+                } else {
+                  onClassify(null, selectedMarca || null, notes);
+                }
+              }}
+              disabled={
+                isPending ||
+                (isCogs && !selectedProject && workspaceFilter !== "Awesomely") ||
+                (!isCogs && !selectedMarca)
+              }
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
             </button>
-
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CogsClassifier({
+  line,
+  projects,
+  filteredProjects,
+  selectedProject,
+  setSelectedProject,
+  workspaceFilter,
+  setWorkspaceFilter,
+  projectSearch,
+  setProjectSearch,
+  isPending,
+}: {
+  line: Line;
+  projects: Project[];
+  filteredProjects: Project[];
+  selectedProject: string;
+  setSelectedProject: (v: string) => void;
+  workspaceFilter: string;
+  setWorkspaceFilter: (v: string) => void;
+  projectSearch: string;
+  setProjectSearch: (v: string) => void;
+  isPending: boolean;
+}): React.JSX.Element {
+  return (
+    <>
+      {/* Suggestions */}
+      {line.suggestions.length > 0 && !line.classification && (
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 mb-2">
+            <Sparkles className="h-3.5 w-3.5" />
+            Sugerencias basadas en histórico
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {line.suggestions.map((s) => (
+              <button
+                key={s.projectId}
+                onClick={() => {
+                  setSelectedProject(s.projectId);
+                  const ws = projects.find((p) => p.id === s.projectId)?.workspaceName ?? "";
+                  setWorkspaceFilter(ws);
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors",
+                  selectedProject === s.projectId
+                    ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-indigo-300"
+                )}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: `hsl(${s.confidence * 120}, 70%, 45%)` }}
+                />
+                {s.projectName}
+                <span className="text-xs text-gray-400">{s.workspaceName}</span>
+                <span className="text-xs text-gray-400">{Math.round(s.confidence * 100)}%</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Workspace filter + project selector */}
+      <div className="space-y-2">
+        <label className="block text-xs font-medium text-gray-600">Proyecto Jira (COGS)</label>
+
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setWorkspaceFilter("")}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+              workspaceFilter === ""
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
+            )}
+          >
+            Todas
+          </button>
+          {MARCAS.map((marca) => (
+            <button
+              key={marca}
+              type="button"
+              onClick={() => setWorkspaceFilter(marca)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                workspaceFilter === marca
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
+              )}
+            >
+              {marca}
+            </button>
+          ))}
+        </div>
+
+        {workspaceFilter === "Awesomely" && (
+          <p className="text-xs text-gray-400 italic">
+            Awesomely no tiene workspace de Jira.
+          </p>
+        )}
+        <input
+          type="text"
+          value={projectSearch}
+          onChange={(e) => setProjectSearch(e.target.value)}
+          placeholder="Buscar proyecto…"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          disabled={isPending}
+        />
+        <select
+          value={selectedProject}
+          onChange={(e) => setSelectedProject(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          disabled={isPending}
+          size={Math.min(filteredProjects.length + 1, 7)}
+        >
+          <option value="">Selecciona un proyecto</option>
+          {filteredProjects.map((p) => (
+            <option key={p.id} value={p.id}>
+              [{p.key}] {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+}
+
+function NonCogsClassifier({
+  selectedMarca,
+  setSelectedMarca,
+  isPending,
+}: {
+  selectedMarca: string;
+  setSelectedMarca: (v: string) => void;
+  isPending: boolean;
+}): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs font-medium text-gray-600">Marca</label>
+      <div className="flex flex-wrap gap-1.5">
+        {MARCAS.map((marca) => (
+          <button
+            key={marca}
+            type="button"
+            disabled={isPending}
+            onClick={() => setSelectedMarca(marca)}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-sm font-medium border transition-colors",
+              selectedMarca === marca
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
+            )}
+          >
+            {marca}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

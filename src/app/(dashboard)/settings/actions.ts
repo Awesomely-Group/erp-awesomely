@@ -172,3 +172,72 @@ export async function removeSsoAllowedEmail(
   revalidatePath("/settings");
   return undefined;
 }
+
+// ─── Account Mappings ─────────────────────────────────────────────────────────
+
+interface AccountMappingData {
+  tag: string;
+  description: string;
+  l1: string;
+  accountNumSL?: string | null;
+  accountNameSL?: string | null;
+  accountNumOU?: string | null;
+  accountNameOU?: string | null;
+}
+
+export async function createAccountMapping(data: AccountMappingData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.accountMapping.upsert({
+    where: { tag: data.tag },
+    update: {
+      description: data.description,
+      l1: data.l1,
+      accountNumSL: data.accountNumSL ?? null,
+      accountNameSL: data.accountNameSL ?? null,
+      accountNumOU: data.accountNumOU ?? null,
+      accountNameOU: data.accountNameOU ?? null,
+    },
+    create: {
+      tag: data.tag,
+      description: data.description,
+      l1: data.l1,
+      accountNumSL: data.accountNumSL ?? null,
+      accountNameSL: data.accountNameSL ?? null,
+      accountNumOU: data.accountNumOU ?? null,
+      accountNameOU: data.accountNameOU ?? null,
+    },
+  });
+
+  revalidatePath("/settings");
+}
+
+export async function updateAccountMapping(id: string, data: AccountMappingData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.accountMapping.update({
+    where: { id },
+    data: {
+      tag: data.tag,
+      description: data.description,
+      l1: data.l1,
+      accountNumSL: data.accountNumSL ?? null,
+      accountNameSL: data.accountNameSL ?? null,
+      accountNumOU: data.accountNumOU ?? null,
+      accountNameOU: data.accountNameOU ?? null,
+    },
+  });
+
+  revalidatePath("/settings");
+}
+
+export async function deleteAccountMapping(id: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.accountMapping.delete({ where: { id } });
+
+  revalidatePath("/settings");
+}

@@ -15,7 +15,8 @@ async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   const marcas = [
     ...new Set([
       ...classifications.filter((c) => c.project).map((c) => c.project!.workspace.name),
-      ...classifications.filter((c) => !c.project).map(() => "Awesomely"),
+      ...classifications.filter((c) => !c.project && c.marca).map((c) => c.marca!),
+      ...classifications.filter((c) => !c.project && !c.marca).map(() => "Awesomely"),
     ]),
   ].sort();
 
@@ -44,11 +45,13 @@ export async function saveDraftLineNote({
 export async function classifyLine({
   lineId,
   projectId,
+  marca,
   notes,
   invoiceId,
 }: {
   lineId: string;
   projectId: string | null;
+  marca: string | null;
   notes: string;
   invoiceId: string;
 }): Promise<{ classificationId: string }> {
@@ -66,6 +69,7 @@ export async function classifyLine({
       where: { invoiceLineId: lineId },
       data: {
         projectId,
+        marca: marca ?? null,
         notes: notes || null,
         classifiedBy: session.user.email ?? session.user.id,
         classifiedAt: new Date(),
@@ -81,7 +85,7 @@ export async function classifyLine({
         entityType: "Classification",
         entityId: existing.id,
         previousValue: { projectId: existing.projectId, notes: existing.notes },
-        newValue: { projectId, notes },
+        newValue: { projectId, marca, notes },
         invoiceId,
         classificationId: existing.id,
       },
@@ -91,6 +95,7 @@ export async function classifyLine({
       data: {
         invoiceLineId: lineId,
         projectId,
+        marca: marca ?? null,
         notes: notes || null,
         classifiedBy: session.user.email ?? session.user.id,
         classifiedAt: new Date(),
@@ -104,7 +109,7 @@ export async function classifyLine({
         action: AuditAction.CLASSIFY,
         entityType: "Classification",
         entityId: classification.id,
-        newValue: { projectId, notes },
+        newValue: { projectId, marca, notes },
         invoiceId,
         classificationId: classification.id,
       },

@@ -29,11 +29,19 @@ export default async function InvoiceDetailPage({
 
   if (!invoice) notFound();
 
-  const projects = await prisma.jiraProject.findMany({
-    where: { active: true },
-    include: { workspace: true },
-    orderBy: { name: "asc" },
-  });
+  const [projects, cogsMappings] = await Promise.all([
+    prisma.jiraProject.findMany({
+      where: { active: true },
+      include: { workspace: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.accountMapping.findMany({ where: { l1: "COGS" } }),
+  ]);
+  const cogAccounts = [
+    ...new Set(
+      cogsMappings.flatMap((m) => [m.accountNumSL, m.accountNumOU].filter(Boolean) as string[])
+    ),
+  ];
 
   // Fetch suggestions for unclassified lines
   const suggestionsMap = await Promise.all(
@@ -121,6 +129,7 @@ export default async function InvoiceDetailPage({
         <ClassifyLinesForm
           invoiceId={invoice.id}
           invoiceMarca={invoice.marca}
+          cogAccounts={cogAccounts}
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,
@@ -142,6 +151,7 @@ export default async function InvoiceDetailPage({
                   projectId: l.classification.projectId ?? null,
                   projectName: l.classification.project?.name ?? null,
                   workspaceName: l.classification.project?.workspace.name ?? null,
+                  marca: l.classification.marca ?? null,
                   notes: l.classification.notes,
                 }
               : null,
