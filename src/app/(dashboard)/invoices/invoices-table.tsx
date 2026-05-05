@@ -25,6 +25,22 @@ const STATUS_COLORS: Record<string, string> = {
   APPROVED: "bg-green-100 text-green-700",
 };
 
+const HOLDED_STATUS_LABELS: Record<number, string> = {
+  [-1]: "Cancelada",
+  0: "Borrador",
+  1: "Pendiente",
+  2: "Pagada",
+  3: "Vencida",
+};
+
+const HOLDED_STATUS_COLORS: Record<number, string> = {
+  [-1]: "bg-gray-100 text-gray-500",
+  0: "bg-gray-100 text-gray-500",
+  1: "bg-amber-100 text-amber-700",
+  2: "bg-green-100 text-green-700",
+  3: "bg-red-100 text-red-700",
+};
+
 interface InvoiceRow {
   id: string;
   holdedId: string;
@@ -34,6 +50,7 @@ interface InvoiceRow {
   date: string;
   accountingMonth: string;
   totalEur: number;
+  holdedStatus: number | null;
   status: string;
   companyName: string;
   brand: string | null;
@@ -55,7 +72,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
   if (invoices.length === 0) {
     return (
       <tr>
-        <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+        <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
           No hay facturas con estos filtros
         </td>
       </tr>
@@ -128,6 +145,13 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
             <td className="px-4 py-3 text-right font-medium">
               {formatCurrency(inv.totalEur)}
+            </td>
+            <td className="px-4 py-3">
+              {inv.holdedStatus != null && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${HOLDED_STATUS_COLORS[inv.holdedStatus] ?? ""}`}>
+                  {HOLDED_STATUS_LABELS[inv.holdedStatus] ?? String(inv.holdedStatus)}
+                </span>
+              )}
             </td>
             <td className="px-4 py-3">
               <span

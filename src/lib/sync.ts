@@ -52,9 +52,6 @@ export async function syncJiraWorkspace(workspaceId: string): Promise<void> {
   if (errorMessage) throw new Error(errorMessage);
 }
 
-const HOLDED_STATUS_CANCELLED = -1;
-const HOLDED_STATUS_DRAFT = 0;
-
 // ─── Supplier Sync ─────────────────────────────────────────────────────────────
 
 export async function syncSuppliers(companyId: string): Promise<void> {
@@ -115,27 +112,9 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
       client.getAllInvoicesPaginated("purchase"),
     ]);
 
-    const isSkippable = (i: { status: number }) =>
-      i.status === HOLDED_STATUS_CANCELLED || i.status === HOLDED_STATUS_DRAFT;
-
-    const activeSales = salesInvoices.filter((i) => !isSkippable(i));
-    const skippedSales = salesInvoices.filter(isSkippable);
-    const activePurchases = purchaseInvoices.filter((i) => !isSkippable(i));
-    const skippedPurchases = purchaseInvoices.filter(isSkippable);
-
-    const skippedIds = [
-      ...skippedSales.map((i) => i.id),
-      ...skippedPurchases.map((i) => i.id),
-    ];
-    if (skippedIds.length > 0) {
-      await prisma.invoice.deleteMany({
-        where: { holdedId: { in: skippedIds }, companyId },
-      });
-    }
-
     await Promise.all([
-      upsertBatch(activeSales, InvoiceType.SALE, accountMaps),
-      upsertBatch(activePurchases, InvoiceType.PURCHASE, accountMaps),
+      upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
+      upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
     ]);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
@@ -237,6 +216,7 @@ async function upsertInvoice(
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
     update: {
+      holdedStatus: inv.status,
       number: inv.docNumber,
       counterparty: inv.contactName,
       date,
@@ -254,6 +234,7 @@ async function upsertInvoice(
       holdedId: inv.id,
       companyId,
       type,
+      holdedStatus: inv.status,
       number: inv.docNumber,
       counterparty: inv.contactName,
       date,

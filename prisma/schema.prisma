@@ -153,6 +153,7 @@ model Invoice {
   companyId    String
   company      Company       @relation(fields: [companyId], references: [id])
   type         InvoiceType
+  holdedStatus Int?
   status       InvoiceStatus @default(PENDING)
 
   number       String?
