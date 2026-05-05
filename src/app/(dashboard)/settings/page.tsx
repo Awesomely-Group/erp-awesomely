@@ -18,15 +18,15 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
   ]);
 
   return (
-    <div className="space-y-10 max-w-3xl">
-      <div>
+    <div className="space-y-10">
+      <div className="max-w-3xl">
         <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
         <p className="text-sm text-gray-500 mt-1">
           Gestiona las conexiones a Holded, Jira y el historial de cambios
         </p>
       </div>
 
-      <section className="space-y-4">
+      <section className="space-y-4 max-w-3xl">
         <h2 className="text-base font-semibold text-gray-900">
           Empresas Holded
         </h2>
@@ -62,7 +62,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
       </section>
 
       {/* Jira workspaces */}
-      <section className="space-y-4">
+      <section className="space-y-4 max-w-3xl">
         <h2 className="text-base font-semibold text-gray-900">
           Workspaces Jira
         </h2>
@@ -81,9 +81,11 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         <WorkspaceForm />
       </section>
 
-      <SsoAllowlistSection />
+      <div className="max-w-3xl">
+        <SsoAllowlistSection />
+      </div>
 
-      {/* Plan de Cuentas */}
+      {/* Plan de Cuentas — full width */}
       <section className="space-y-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Plan de Cuentas</h2>
@@ -106,7 +108,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         />
       </section>
 
-      {/* Audit log */}
+      {/* Audit log — full width */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-900">
           Historial de cambios

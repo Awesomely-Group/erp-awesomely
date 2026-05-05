@@ -117,6 +117,54 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
       upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
     ]);
+
+    // Remove invoices that no longer exist in Holded (source of truth).
+    // Only delete if no user work has been done (no classifications, no ERP payments).
+    const returnedHoldedIds = new Set([
+      ...salesInvoices.map((i) => i.id),
+      ...purchaseInvoices.map((i) => i.id),
+    ]);
+
+    const dbInvoices = await prisma.invoice.findMany({
+      where: { companyId },
+      select: { id: true, holdedId: true },
+    });
+
+    const orphanedIds = dbInvoices
+      .filter((i) => !returnedHoldedIds.has(i.holdedId))
+      .map((i) => i.id);
+
+    if (orphanedIds.length > 0) {
+      // Only delete invoices with no user work to preserve classification history
+      const safeToDelete = await prisma.invoice.findMany({
+        where: {
+          id: { in: orphanedIds },
+          lines: { none: { classification: { isNot: null } } },
+          erpPayments: { none: {} },
+        },
+        select: { id: true },
+      });
+
+      const safeIds = safeToDelete.map((i) => i.id);
+      if (safeIds.length > 0) {
+        // Null out FK refs that lack cascade before deletion
+        await prisma.auditLog.updateMany({
+          where: { invoiceId: { in: safeIds } },
+          data: { invoiceId: null },
+        });
+        await prisma.supplierVerification.updateMany({
+          where: { invoiceId: { in: safeIds } },
+          data: { invoiceId: null },
+        });
+        await prisma.invoice.deleteMany({ where: { id: { in: safeIds } } });
+        console.log(`[sync] Deleted ${safeIds.length} invoice(s) removed from Holded for company ${companyId}`);
+      }
+
+      const skipped = orphanedIds.length - safeIds.length;
+      if (skipped > 0) {
+        console.warn(`[sync] ${skipped} invoice(s) no longer in Holded but kept because they have classifications or payments`);
+      }
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
   }
@@ -332,6 +380,7 @@ async function upsertInvoice(
           data: {
             invoiceLineId: newLine.id,
             projectId: prevClassification.projectId,
+            marca: prevClassification.marca,
             notes: prevClassification.notes,
             status: prevClassification.status,
             classifiedBy: prevClassification.classifiedBy,
