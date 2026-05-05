@@ -40,7 +40,7 @@ export async function captureTempoHours(verificationId: string): Promise<void> {
 
   const result = await tempoClient.getApprovedHours(supplier.jiraAccountId, from, to);
   const expectedAmount = supplier.hourlyRate != null
-    ? Math.round(result.approvedHours * supplier.hourlyRate * 100) / 100
+    ? Math.round(result.approvedHours * Number(supplier.hourlyRate) * 100) / 100
     : null;
 
   await prisma.supplierVerification.update({
@@ -104,7 +104,7 @@ export async function verifyPeriod(verificationId: string): Promise<void> {
   } else if (
     verification.invoicedAmount != null &&
     verification.expectedAmount != null &&
-    Math.abs(verification.invoicedAmount - verification.expectedAmount) > 0.01
+    Math.abs(Number(verification.invoicedAmount) - Number(verification.expectedAmount)) > 0.01
   ) {
     status = "VERIFIED_MISMATCH";
   } else {
