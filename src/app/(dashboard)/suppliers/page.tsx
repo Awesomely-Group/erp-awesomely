@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { SupplierEnrichForm } from "./supplier-enrich-form";
-import { type VerificationStatus } from "@prisma/client";
+import { type VerificationStatus, type SupplierTipo, Prisma } from "@prisma/client";
+import { SuppliersFilters } from "./suppliers-filters";
+import { SupplierTipoSelect } from "./supplier-tipo-select";
+
+interface Props {
+  searchParams: Promise<{ search?: string; tipo?: string }>;
+}
 
 function statusBadge(status: VerificationStatus): React.JSX.Element {
   const configs: Record<VerificationStatus, { label: string; className: string }> = {
@@ -17,9 +22,23 @@ function statusBadge(status: VerificationStatus): React.JSX.Element {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${className}`}>{label}</span>;
 }
 
-export default async function SuppliersPage(): Promise<React.JSX.Element> {
+const TIPO_VALUES: SupplierTipo[] = ["SERVICIOS", "HERRAMIENTAS"];
+
+function isTipo(v: string): v is SupplierTipo {
+  return (TIPO_VALUES as string[]).includes(v);
+}
+
+export default async function SuppliersPage({ searchParams }: Props): Promise<React.JSX.Element> {
+  const { search, tipo } = await searchParams;
+
+  const where: Prisma.SupplierWhereInput = {
+    active: true,
+    ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+    ...(tipo && isTipo(tipo) ? { tipo } : {}),
+  };
+
   const suppliers = await prisma.supplier.findMany({
-    where: { active: true },
+    where,
     include: {
       verifications: {
         orderBy: { periodEnd: "desc" },
@@ -34,16 +53,24 @@ export default async function SuppliersPage(): Promise<React.JSX.Element> {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Proveedores</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Sincronizados desde Holded. Enriquece con Jira Account ID y tarifa horaria para verificar facturas.
+          Sincronizados desde Holded.
         </p>
+      </div>
+
+      <div className="mb-4">
+        <SuppliersFilters />
       </div>
 
       {suppliers.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-10 text-center">
           <p className="text-sm text-gray-500">
-            No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded.
+            {search ?? tipo
+              ? "No hay proveedores que coincidan con los filtros."
+              : "No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded."}
           </p>
-          <p className="text-xs text-gray-400 mt-1">Ejecuta una sincronización desde la sección Sincronización.</p>
+          {!(search ?? tipo) && (
+            <p className="text-xs text-gray-400 mt-1">Ejecuta una sincronización desde la sección Sincronización.</p>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -51,10 +78,9 @@ export default async function SuppliersPage(): Promise<React.JSX.Element> {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarifa €/h</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jira Account ID</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -67,21 +93,14 @@ export default async function SuppliersPage(): Promise<React.JSX.Element> {
                         {supplier.name}
                       </Link>
                     </td>
+                    <td className="px-4 py-3">
+                      <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       {supplier.hourlyRate != null ? `${supplier.hourlyRate.toFixed(2)} €` : <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 font-mono">
-                      {supplier.jiraAccountId ?? <span className="text-gray-400 font-sans">—</span>}
-                    </td>
                     <td className="px-4 py-3">
                       {lastVerification ? statusBadge(lastVerification.status) : <span className="text-xs text-gray-400">Sin períodos</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <SupplierEnrichForm
-                        supplierId={supplier.id}
-                        jiraAccountId={supplier.jiraAccountId}
-                        hourlyRate={supplier.hourlyRate}
-                      />
                     </td>
                   </tr>
                 );

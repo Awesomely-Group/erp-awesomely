@@ -311,12 +311,13 @@ model AuditLog {
 
 /// Proveedor sincronizado desde contactos Holded tipo "supplier", enriquecido con datos ERP.
 model Supplier {
-  id              String  @id @default(cuid())
-  holdedContactId String  @unique
+  id              String        @id @default(cuid())
+  holdedContactId String        @unique
   name            String
 
-  jiraAccountId String? @unique
+  jiraAccountId String?       @unique
   hourlyRate    Float?
+  tipo          SupplierTipo?
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -325,6 +326,13 @@ model Supplier {
   verifications SupplierVerification[]
 
   @@map("suppliers")
+}
+
+enum SupplierTipo {
+  SERVICIOS
+  HERRAMIENTAS
+
+  @@map("supplier_tipo")
 }
 
 enum VerificationStatus {
