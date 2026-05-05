@@ -16,6 +16,7 @@ export interface SyncLogRow {
   recordsLabel: string;
   result: SyncResult;
   errorMessage: string | null;
+  triggeredBy: string | null;
 }
 
 const RESULT_LABELS: Record<SyncResult, string> = {
@@ -178,6 +179,7 @@ export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
                 <SortIcon active={sortKey === "records"} dir={sortDir} />
               </th>
               <SyncSortTh label="Resultado" col="result" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Usuario</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Error</th>
             </tr>
           </thead>
@@ -197,6 +199,11 @@ export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
                     {RESULT_LABELS[row.result]}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                  {row.triggeredBy === "cron"
+                    ? <span className="italic text-gray-400">cron</span>
+                    : (row.triggeredBy ?? <span className="text-gray-300">—</span>)}
+                </td>
                 <td className="px-4 py-3 text-red-600 text-xs max-w-xs" title={row.errorMessage ?? ""}>
                   <span className="line-clamp-2">{row.errorMessage ?? ""}</span>
                 </td>
@@ -204,7 +211,7 @@ export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                   No hay sincronizaciones con estos filtros
                 </td>
               </tr>

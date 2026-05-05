@@ -25,6 +25,7 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
         : `${log.projectsSynced} proyectos`,
     result: log.result,
     errorMessage: log.errorMessage,
+    triggeredBy: log.triggeredBy,
   }));
 
   return (

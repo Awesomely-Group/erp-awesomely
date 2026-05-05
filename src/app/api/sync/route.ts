@@ -16,7 +16,8 @@ async function handleSync(req: Request): Promise<NextResponse> {
   }
 
   try {
-    const result = await syncAll();
+    const triggeredBy = isCron ? "cron" : (session?.user?.email ?? undefined);
+    const result = await syncAll(triggeredBy);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

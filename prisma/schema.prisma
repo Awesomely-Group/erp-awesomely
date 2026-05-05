@@ -404,6 +404,7 @@ model SyncLog {
   invoicesSynced Int            @default(0)
   projectsSynced Int            @default(0)
   errorMessage   String?
+  triggeredBy    String?
   startedAt      DateTime
   finishedAt     DateTime?
 

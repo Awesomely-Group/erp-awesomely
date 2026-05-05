@@ -6,7 +6,7 @@ import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
 
-export async function syncJiraWorkspace(workspaceId: string): Promise<void> {
+export async function syncJiraWorkspace(workspaceId: string, triggeredBy?: string): Promise<void> {
   const workspace = await prisma.jiraWorkspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
@@ -44,6 +44,7 @@ export async function syncJiraWorkspace(workspaceId: string): Promise<void> {
       workspaceId,
       projectsSynced,
       errorMessage,
+      triggeredBy: triggeredBy ?? null,
       startedAt,
       finishedAt: new Date(),
     },
@@ -70,7 +71,7 @@ export async function syncSuppliers(companyId: string): Promise<void> {
 
 // ─── Holded Sync ───────────────────────────────────────────────────────────────
 
-export async function syncHoldedCompany(companyId: string): Promise<void> {
+export async function syncHoldedCompany(companyId: string, triggeredBy?: string): Promise<void> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
@@ -127,6 +128,7 @@ export async function syncHoldedCompany(companyId: string): Promise<void> {
       companyId,
       invoicesSynced,
       errorMessage,
+      triggeredBy: triggeredBy ?? null,
       startedAt,
       finishedAt: new Date(),
     },
@@ -405,7 +407,7 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
 
 // ─── Full sync ─────────────────────────────────────────────────────────────────
 
-export async function syncAll(): Promise<{
+export async function syncAll(triggeredBy?: string): Promise<{
   companies: number;
   workspaces: number;
   errors: string[];
@@ -419,12 +421,12 @@ export async function syncAll(): Promise<{
 
   await Promise.allSettled([
     ...companies.map((c) =>
-      syncHoldedCompany(c.id).catch((e: unknown) => {
+      syncHoldedCompany(c.id, triggeredBy).catch((e: unknown) => {
         errors.push(`Holded ${c.name}: ${e instanceof Error ? e.message : String(e)}`);
       })
     ),
     ...workspaces.map((w) =>
-      syncJiraWorkspace(w.id).catch((e: unknown) => {
+      syncJiraWorkspace(w.id, triggeredBy).catch((e: unknown) => {
         errors.push(`Jira ${w.name}: ${e instanceof Error ? e.message : String(e)}`);
       })
     ),
