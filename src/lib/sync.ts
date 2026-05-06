@@ -60,13 +60,21 @@ export async function syncSuppliers(companyId: string): Promise<void> {
   const client = new HoldedClient(company.holdedApiKey);
   const contacts = await client.getSupplierContacts();
 
+  const activeHoldedIds = new Set(contacts.map((c) => c.id));
+
   for (const contact of contacts) {
     await prisma.supplier.upsert({
       where: { holdedContactId: contact.id },
       create: { holdedContactId: contact.id, name: contact.name },
-      update: { name: contact.name },
+      update: { name: contact.name, active: true },
     });
   }
+
+  // Deactivate suppliers no longer classified as supplier-type in Holded
+  await prisma.supplier.updateMany({
+    where: { holdedContactId: { notIn: [...activeHoldedIds] }, active: true },
+    data: { active: false },
+  });
 }
 
 // ─── Holded Sync ───────────────────────────────────────────────────────────────

@@ -310,11 +310,14 @@ export class HoldedClient {
    * Each window is one quarter (≤ ~100 invoices in practice).
    */
   async getSupplierContacts(): Promise<HoldedSupplierContact[]> {
-    const data = await this.fetch<Array<{ id: string; name: string }>>(
+    // Holded type field: 1=client, 2=supplier, 3=both client+supplier
+    const data = await this.fetch<Array<{ id: string; name: string; type?: number }>>(
       "/contacts",
       { type: "supplier" }
     );
-    return data.map((c) => ({ id: c.id, name: c.name }));
+    return data
+      .filter((c) => c.type !== 1) // exclude pure clients
+      .map((c) => ({ id: c.id, name: c.name }));
   }
 
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
