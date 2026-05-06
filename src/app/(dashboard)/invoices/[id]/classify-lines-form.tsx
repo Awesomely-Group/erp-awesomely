@@ -414,7 +414,7 @@ function CogsClassifier({
 
       {/* Workspace filter + project selector */}
       <div className="space-y-2">
-        <label className="block text-xs font-medium text-gray-600">Proyecto Jira (COGS)</label>
+        <label className="block text-xs font-medium text-gray-600">Proyecto Jira</label>
 
         <div className="flex flex-wrap gap-1.5">
           <button

@@ -35,7 +35,7 @@ export default async function InvoiceDetailPage({
       include: { workspace: true },
       orderBy: { name: "asc" },
     }),
-    prisma.accountMapping.findMany({ where: { l1: "COGS" } }),
+    prisma.accountMapping.findMany({ where: { l1: { in: ["COGS", "REVENUE"] } } }),
   ]);
   const cogAccounts = [
     ...new Set(
