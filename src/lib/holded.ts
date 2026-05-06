@@ -310,13 +310,18 @@ export class HoldedClient {
    * Each window is one quarter (≤ ~100 invoices in practice).
    */
   async getSupplierContacts(): Promise<HoldedSupplierContact[]> {
-    // Holded type field: 1=client, 2=supplier, 3=both client+supplier
-    const data = await this.fetch<Array<{ id: string; name: string; type?: number }>>(
+    // Use the Contacts API (not the invoicing API) which returns the real contact
+    // type classification. The invoicing /contacts endpoint returns contacts that
+    // appear in purchase documents regardless of their type label, causing clients
+    // to bleed into the supplier list.
+    // Contacts API type field: 1=client, 2=supplier, 3=both client+supplier
+    const data = await this.fetchFromBase<Array<{ id: string; name: string; type?: number }>>(
+      "https://api.holded.com/api/contacts/v1",
       "/contacts",
       { type: "supplier" }
     );
     return data
-      .filter((c) => c.type !== 1) // exclude pure clients
+      .filter((c) => c.type === 2 || c.type === 3) // only supplier or both
       .map((c) => ({ id: c.id, name: c.name }));
   }
 
