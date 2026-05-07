@@ -54,10 +54,8 @@ interface InvoiceRow {
   status: string;
   companyName: string;
   brand: string | null;
-  /** Distinct accounting labels from lines (code · name), truncated if several */
   accountsSummary: string;
-  /** Si hay ids Holded sin nombre resuelto, detalle para title/hover */
-  accountsTooltip?: string;
+  accountsTooltip: string | undefined;
 }
 
 interface Props {
@@ -72,7 +70,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
   if (invoices.length === 0) {
     return (
       <tr>
-        <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
+        <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
           No hay facturas con estos filtros
         </td>
       </tr>

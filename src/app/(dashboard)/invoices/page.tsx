@@ -1,11 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
 import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
-import {
-  formatInvoiceAccountsSummary,
-  formatInvoiceAccountsUnresolvedTooltip,
-  lineAccountingLabel,
-} from "@/lib/invoice-accounts";
+import { lineAccountingLabel, formatInvoiceAccountsSummary, formatInvoiceAccountsUnresolvedTooltip } from "@/lib/invoice-accounts";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -159,11 +155,8 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       include: {
         company: true,
         lines: {
+          select: { accountingAccount: true, accountingAccountName: true },
           orderBy: { sortOrder: "asc" },
-          select: {
-            accountingAccount: true,
-            accountingAccountName: true,
-          },
         },
       },
       orderBy,
@@ -281,9 +274,6 @@ export default async function InvoicesPage({
             <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
             <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
             <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
-            <th className="px-4 py-3 text-left font-medium text-gray-600 max-w-[220px]">
-              Cuenta contable
-            </th>
             <th className="px-4 py-3 text-left font-medium text-gray-600">Mes Referencia</th>
             <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
             <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
