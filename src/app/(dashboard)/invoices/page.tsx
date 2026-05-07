@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
 import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
 import Link from "next/link";
-import { InvoiceStatus, InvoiceType } from "@prisma/client";
+import { InvoiceStatus, InvoiceType, Prisma } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
 import { InvoicesTable } from "./invoices-table";
 import { InvoiceLinePanel } from "./invoice-line-panel";
@@ -98,19 +98,18 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
   const activeType: InvoiceType =
     params.type === "PURCHASE" ? InvoiceType.PURCHASE : InvoiceType.SALE;
 
-  const baseWhere = {
-    ...(params.search
-      ? {
-          OR: [
-            { number: { contains: params.search, mode: "insensitive" as const } },
-            { counterparty: { contains: params.search, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-    ...statusWhere,
-    ...(marcaFilter ?? {}),
-    ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
-  };
+  const andConditions: Prisma.InvoiceWhereInput[] = [];
+  if (params.search) {
+    andConditions.push({ OR: [
+      { number: { contains: params.search, mode: "insensitive" } },
+      { counterparty: { contains: params.search, mode: "insensitive" } },
+    ]});
+  }
+  if (Object.keys(statusWhere).length > 0) andConditions.push(statusWhere);
+  if (marcaFilter) andConditions.push(marcaFilter);
+  if (dateRange.gte || dateRange.lte) andConditions.push({ date: dateRange });
+
+  const baseWhere: Prisma.InvoiceWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
 
   const where = { ...baseWhere, type: activeType };
 
