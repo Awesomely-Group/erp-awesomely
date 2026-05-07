@@ -49,6 +49,8 @@ interface InvoiceRow {
   counterparty: string | null;
   date: string;
   accountingMonth: string;
+  subtotal: number;
+  total: number;
   totalEur: number;
   holdedStatus: number | null;
   status: string;
@@ -68,7 +70,7 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
   if (invoices.length === 0) {
     return (
       <tr>
-        <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+        <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
           No hay facturas con estos filtros
         </td>
       </tr>
@@ -130,6 +132,12 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             </td>
             <td className="px-4 py-3 text-gray-600 capitalize">{formatMonth(inv.accountingMonth)}</td>
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
+            <td className="px-4 py-3 text-right text-gray-600">
+              {formatCurrency(inv.subtotal)}
+            </td>
+            <td className="px-4 py-3 text-right text-gray-600">
+              {formatCurrency(inv.total)}
+            </td>
             <td className="px-4 py-3 text-right font-medium">
               {formatCurrency(inv.totalEur)}
             </td>
