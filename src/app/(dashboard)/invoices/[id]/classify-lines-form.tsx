@@ -53,7 +53,6 @@ interface Project {
 interface Props {
   invoiceId: string;
   invoiceMarca?: string | null;
-  cogAccounts: string[];
   lines: Line[];
   projects: Project[];
 }
@@ -65,15 +64,13 @@ const STATUS_COLORS: Record<string, string> = {
 
 const MARCAS = ["Gigson", "Gigson Solutions", "LaTroupe", "Awesomely"] as const;
 
-export function ClassifyLinesForm({ invoiceId, invoiceMarca, cogAccounts, lines, projects }: Props): React.JSX.Element {
+export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: Props): React.JSX.Element {
   const router = useRouter();
   const [localLines, setLocalLines] = useState(lines);
   const [expandedLine, setExpandedLine] = useState<string | null>(
     lines.find((l) => !l.classification)?.id ?? null
   );
   const [isPending, startTransition] = useTransition();
-
-  const cogAccountsSet = new Set(cogAccounts);
 
   function handleClassify(lineId: string, projectId: string | null, marca: string | null, notes: string): void {
     startTransition(async () => {
@@ -90,7 +87,7 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, cogAccounts, lines,
               projectId,
               projectName: project?.name ?? null,
               workspaceName: project?.workspaceName ?? null,
-              marca: marca,
+              marca,
               notes,
             },
           };
@@ -110,7 +107,6 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, cogAccounts, lines,
           line={line}
           projects={projects}
           invoiceMarca={invoiceMarca}
-          isCogs={cogAccountsSet.has(line.accountingAccount ?? "")}
           isExpanded={expandedLine === line.id}
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
@@ -126,7 +122,6 @@ function LineRow({
   line,
   projects,
   invoiceMarca,
-  isCogs,
   isExpanded,
   isPending,
   onToggle,
@@ -136,7 +131,6 @@ function LineRow({
   line: Line;
   projects: Project[];
   invoiceMarca?: string | null;
-  isCogs: boolean;
   isExpanded: boolean;
   isPending: boolean;
   onToggle: () => void;
@@ -148,34 +142,29 @@ function LineRow({
   const [notes, setNotes] = useState(initialNotes);
   const [notesOpen, setNotesOpen] = useState(!!initialNotes);
 
-  // For COGS: workspace filter chips
-  const defaultWorkspace =
-    invoiceMarca && projects.some((p) => p.workspaceName === invoiceMarca)
-      ? invoiceMarca
-      : "";
-  const [workspaceFilter, setWorkspaceFilter] = useState(defaultWorkspace);
-  const [projectSearch, setProjectSearch] = useState("");
-
-  // For non-COGS: direct marca selection
   const [selectedMarca, setSelectedMarca] = useState<string>(
     line.classification?.marca ??
     line.classification?.workspaceName ??
     (invoiceMarca && MARCAS.includes(invoiceMarca as (typeof MARCAS)[number]) ? invoiceMarca : "")
   );
 
-  const filteredProjects = projects.filter((p) => {
-    if (workspaceFilter && workspaceFilter !== "Awesomely" && p.workspaceName !== workspaceFilter) return false;
-    if (projectSearch) {
-      const q = projectSearch.toLowerCase();
-      return p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q);
+  function handleProjectChange(id: string): void {
+    setSelectedProject(id);
+    if (id) {
+      const project = projects.find((p) => p.id === id);
+      if (project && MARCAS.includes(project.workspaceName as (typeof MARCAS)[number])) {
+        setSelectedMarca(project.workspaceName);
+      }
     }
-    return true;
-  });
+  }
+
+  const classifiedLabel =
+    line.classification?.projectName ??
+    line.classification?.marca ??
+    line.classification?.workspaceName ??
+    null;
 
   const isEur = line.currency === "EUR";
-  const classifiedLabel = isCogs
-    ? (line.classification?.projectName ?? null)
-    : (line.classification?.marca ?? line.classification?.workspaceName ?? null);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -184,7 +173,6 @@ function LineRow({
         onClick={onToggle}
         className="w-full text-left hover:bg-gray-50 transition-colors"
       >
-        {/* Top row: icon + name + badge + chevron */}
         <div className="flex items-center gap-3 px-5 pt-4 pb-2">
           <div className="shrink-0">
             {line.classification ? (
@@ -217,7 +205,6 @@ function LineRow({
           />
         </div>
 
-        {/* Bottom row: financial details */}
         <div className="flex items-center gap-6 px-5 pb-3.5 text-xs text-gray-500">
           <span className="min-w-0 truncate">
             <span className="text-gray-400">Precio: </span>
@@ -255,28 +242,16 @@ function LineRow({
       {/* ── Expanded: classification form ── */}
       {isExpanded && (
         <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-4">
-          {isCogs ? (
-            <CogsClassifier
-              line={line}
-              projects={projects}
-              filteredProjects={filteredProjects}
-              selectedProject={selectedProject}
-              setSelectedProject={setSelectedProject}
-              workspaceFilter={workspaceFilter}
-              setWorkspaceFilter={setWorkspaceFilter}
-              projectSearch={projectSearch}
-              setProjectSearch={setProjectSearch}
-              isPending={isPending}
-            />
-          ) : (
-            <NonCogsClassifier
-              selectedMarca={selectedMarca}
-              setSelectedMarca={setSelectedMarca}
-              isPending={isPending}
-            />
-          )}
+          <UnifiedClassifier
+            line={line}
+            projects={projects}
+            selectedProject={selectedProject}
+            onProjectChange={handleProjectChange}
+            selectedMarca={selectedMarca}
+            onMarcaChange={setSelectedMarca}
+            isPending={isPending}
+          />
 
-          {/* Notes — hidden by default */}
           {notesOpen ? (
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
@@ -313,21 +288,10 @@ function LineRow({
             </button>
           )}
 
-          {/* Actions */}
           <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={() => {
-                if (isCogs) {
-                  onClassify(selectedProject || null, null, notes);
-                } else {
-                  onClassify(null, selectedMarca || null, notes);
-                }
-              }}
-              disabled={
-                isPending ||
-                (isCogs && !selectedProject && workspaceFilter !== "Awesomely") ||
-                (!isCogs && !selectedMarca)
-              }
+              onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
+              disabled={isPending || !selectedMarca}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
@@ -339,32 +303,41 @@ function LineRow({
   );
 }
 
-function CogsClassifier({
+function UnifiedClassifier({
   line,
   projects,
-  filteredProjects,
   selectedProject,
-  setSelectedProject,
-  workspaceFilter,
-  setWorkspaceFilter,
-  projectSearch,
-  setProjectSearch,
+  onProjectChange,
+  selectedMarca,
+  onMarcaChange,
   isPending,
 }: {
   line: Line;
   projects: Project[];
-  filteredProjects: Project[];
   selectedProject: string;
-  setSelectedProject: (v: string) => void;
-  workspaceFilter: string;
-  setWorkspaceFilter: (v: string) => void;
-  projectSearch: string;
-  setProjectSearch: (v: string) => void;
+  onProjectChange: (id: string) => void;
+  selectedMarca: string;
+  onMarcaChange: (marca: string) => void;
   isPending: boolean;
 }): React.JSX.Element {
+  const [workspaceFilter, setWorkspaceFilter] = useState(
+    selectedProject
+      ? (projects.find((p) => p.id === selectedProject)?.workspaceName ?? "")
+      : ""
+  );
+  const [projectSearch, setProjectSearch] = useState("");
+
+  const filteredProjects = projects.filter((p) => {
+    if (workspaceFilter && p.workspaceName !== workspaceFilter) return false;
+    if (projectSearch) {
+      const q = projectSearch.toLowerCase();
+      return p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
   return (
     <>
-      {/* Suggestions */}
       {line.suggestions.length > 0 && !line.classification && (
         <div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 mb-2">
@@ -376,7 +349,7 @@ function CogsClassifier({
               <button
                 key={s.projectId}
                 onClick={() => {
-                  setSelectedProject(s.projectId);
+                  onProjectChange(s.projectId);
                   const ws = projects.find((p) => p.id === s.projectId)?.workspaceName ?? "";
                   setWorkspaceFilter(ws);
                 }}
@@ -400,10 +373,8 @@ function CogsClassifier({
         </div>
       )}
 
-      {/* Workspace filter + project selector */}
       <div className="space-y-2">
-        <label className="block text-xs font-medium text-gray-600">Proyecto Jira</label>
-
+        <label className="block text-xs font-medium text-gray-600">Proyecto Jira (opcional)</label>
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
@@ -433,12 +404,6 @@ function CogsClassifier({
             </button>
           ))}
         </div>
-
-        {workspaceFilter === "Awesomely" && (
-          <p className="text-xs text-gray-400 italic">
-            Awesomely no tiene workspace de Jira.
-          </p>
-        )}
         <input
           type="text"
           value={projectSearch}
@@ -449,12 +414,18 @@ function CogsClassifier({
         />
         <select
           value={selectedProject}
-          onChange={(e) => setSelectedProject(e.target.value)}
+          onChange={(e) => {
+            onProjectChange(e.target.value);
+            if (e.target.value) {
+              const ws = projects.find((p) => p.id === e.target.value)?.workspaceName ?? "";
+              setWorkspaceFilter(ws);
+            }
+          }}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
           disabled={isPending}
           size={Math.min(filteredProjects.length + 1, 7)}
         >
-          <option value="">Selecciona un proyecto</option>
+          <option value="">Sin proyecto</option>
           {filteredProjects.map((p) => (
             <option key={p.id} value={p.id}>
               [{p.key}] {p.name}
@@ -462,40 +433,28 @@ function CogsClassifier({
           ))}
         </select>
       </div>
-    </>
-  );
-}
 
-function NonCogsClassifier({
-  selectedMarca,
-  setSelectedMarca,
-  isPending,
-}: {
-  selectedMarca: string;
-  setSelectedMarca: (v: string) => void;
-  isPending: boolean;
-}): React.JSX.Element {
-  return (
-    <div className="space-y-2">
-      <label className="block text-xs font-medium text-gray-600">Marca</label>
-      <div className="flex flex-wrap gap-1.5">
-        {MARCAS.map((marca) => (
-          <button
-            key={marca}
-            type="button"
-            disabled={isPending}
-            onClick={() => setSelectedMarca(marca)}
-            className={cn(
-              "rounded-full px-3 py-1.5 text-sm font-medium border transition-colors",
-              selectedMarca === marca
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
-            )}
-          >
-            {marca}
-          </button>
-        ))}
+      <div className="space-y-2">
+        <label className="block text-xs font-medium text-gray-600">Marca</label>
+        <div className="flex flex-wrap gap-1.5">
+          {MARCAS.map((marca) => (
+            <button
+              key={marca}
+              type="button"
+              disabled={isPending}
+              onClick={() => onMarcaChange(marca)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-sm font-medium border transition-colors",
+                selectedMarca === marca
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
+              )}
+            >
+              {marca}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

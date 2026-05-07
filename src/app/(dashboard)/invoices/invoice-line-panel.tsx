@@ -24,7 +24,7 @@ export async function InvoiceLinePanel({
 }: {
   invoiceId: string;
 }): Promise<React.JSX.Element> {
-  const [invoice, projects, cogsMappings] = await Promise.all([
+  const [invoice, projects] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: {
@@ -44,12 +44,7 @@ export async function InvoiceLinePanel({
       include: { workspace: true },
       orderBy: { name: "asc" },
     }),
-    prisma.accountMapping.findMany({ where: { l1: { in: ["COGS", "REVENUE"] } } }),
   ]);
-
-  const cogAccounts = new Set(
-    cogsMappings.flatMap((m) => [m.accountNumSL, m.accountNumOU].filter(Boolean) as string[])
-  );
 
   if (!invoice) {
     return (
@@ -59,7 +54,6 @@ export async function InvoiceLinePanel({
     );
   }
 
-  // Fetch AI suggestions for unclassified lines
   const suggestionsMap = await Promise.all(
     invoice.lines
       .filter((l) => !l.classification)
@@ -128,7 +122,6 @@ export async function InvoiceLinePanel({
         <ClassifyLinesForm
           invoiceId={invoice.id}
           invoiceMarca={invoice.marca}
-          cogAccounts={[...cogAccounts]}
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,
