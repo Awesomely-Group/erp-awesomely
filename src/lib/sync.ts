@@ -271,10 +271,14 @@ async function upsertInvoice(
     invTaxForeign = inv.tax ?? 0;
   }
 
+  // Holded keeps status=1 even after full payment; derive from paymentsPending instead.
+  const effectiveHoldedStatus =
+    inv.paymentsPending === 0 && (inv.paymentsTotal ?? 0) > 0 ? 2 : inv.status;
+
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
     update: {
-      holdedStatus: inv.status,
+      holdedStatus: effectiveHoldedStatus,
       number: inv.docNumber,
       counterparty: inv.contactName,
       date,
@@ -292,7 +296,7 @@ async function upsertInvoice(
       holdedId: inv.id,
       companyId,
       type,
-      holdedStatus: inv.status,
+      holdedStatus: effectiveHoldedStatus,
       number: inv.docNumber,
       counterparty: inv.contactName,
       date,
