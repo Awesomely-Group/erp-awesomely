@@ -4,6 +4,10 @@
 const HOLDED_BASE_URL = "https://api.holded.com/api/invoicing/v1";
 const HOLDED_ACCOUNTING_BASE_URL = "https://api.holded.com/api/accounting/v1";
 
+const HOLDED_SYNC_FROM_YEAR = process.env.HOLDED_SYNC_FROM_YEAR
+  ? parseInt(process.env.HOLDED_SYNC_FROM_YEAR, 10)
+  : 2020;
+
 export interface HoldedContact {
   id: string;
   name: string;
@@ -325,11 +329,10 @@ export class HoldedClient {
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];
 
-    const SYNC_FROM_YEAR = 2024;
     const now = new Date();
     const endYear = now.getFullYear();
 
-    for (let year = SYNC_FROM_YEAR; year <= endYear; year++) {
+    for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
       for (let quarter = 0; quarter < 4; quarter++) {
         const windowStart = new Date(year, quarter * 3, 1);
         // Stop opening future windows beyond today
