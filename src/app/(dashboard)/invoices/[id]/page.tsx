@@ -129,7 +129,7 @@ export default async function InvoiceDetailPage({
         <ClassifyLinesForm
           invoiceId={invoice.id}
           invoiceMarca={invoice.marca}
-          cogAccounts={cogAccounts}
+
           lines={invoice.lines.map((l) => ({
             id: l.id,
             name: l.name,
