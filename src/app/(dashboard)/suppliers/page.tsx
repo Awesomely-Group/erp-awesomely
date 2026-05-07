@@ -81,7 +81,6 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarifa €/h</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
               </tr>
             </thead>
@@ -114,9 +113,6 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
                     </td>
                     <td className="px-4 py-3">
                       <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {supplier.hourlyRate != null ? `${supplier.hourlyRate.toFixed(2)} €` : <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       {lastVerification ? statusBadge(lastVerification.status) : <span className="text-xs text-gray-400">Sin períodos</span>}
