@@ -147,7 +147,7 @@ export function CashflowChart({
         />
 
         {/* Inflows: base bottom, tax top */}
-        <Bar dataKey="inflowsBase" stackId="inflows" maxBarSize={48}>
+        <Bar dataKey="inflowsBase" stackId="inflows" maxBarSize={48} fill="#22c55e">
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
@@ -156,7 +156,7 @@ export function CashflowChart({
             />
           ))}
         </Bar>
-        <Bar dataKey="inflowsTax" stackId="inflows" maxBarSize={48} radius={[4, 4, 0, 0]}>
+        <Bar dataKey="inflowsTax" stackId="inflows" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#86efac">
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
@@ -167,7 +167,7 @@ export function CashflowChart({
         </Bar>
 
         {/* Outflows: base bottom, tax top */}
-        <Bar dataKey="outflowsBase" stackId="outflows" maxBarSize={48}>
+        <Bar dataKey="outflowsBase" stackId="outflows" maxBarSize={48} fill="#ef4444">
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
@@ -176,7 +176,7 @@ export function CashflowChart({
             />
           ))}
         </Bar>
-        <Bar dataKey="outflowsTax" stackId="outflows" maxBarSize={48} radius={[4, 4, 0, 0]}>
+        <Bar dataKey="outflowsTax" stackId="outflows" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#fca5a5">
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
