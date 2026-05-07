@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
 import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
-import { lineAccountingLabel } from "@/lib/invoice-accounts";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -68,8 +67,6 @@ type InvoicePageParams = {
   status?: string;
   type?: string;
   marca?: string;
-  /** Valores `InvoiceLine.accountingAccount` separados por coma (multiselect) */
-  account?: string;
   period?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -79,21 +76,6 @@ type InvoicePageParams = {
   invoiceId?: string;
 };
 
-async function fetchAccountingAccountFilterOptions(): Promise<{ value: string; label: string }[]> {
-  const rows = await prisma.invoiceLine.findMany({
-    where: { accountingAccount: { not: null } },
-    select: { accountingAccount: true, accountingAccountName: true },
-    distinct: ["accountingAccount"],
-  });
-  const opts = rows
-    .filter((r): r is { accountingAccount: string; accountingAccountName: string | null } => r.accountingAccount != null)
-    .map((r) => ({
-      value: r.accountingAccount,
-      label: lineAccountingLabel(r),
-    }));
-  opts.sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" }));
-  return opts;
-}
 
 async function loadInvoicesPageData(params: InvoicePageParams) {
   const page = Math.max(1, parseInt(params.page ?? "1", 10));
@@ -105,11 +87,6 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
 
   const marcaFilter = invoiceWhereMarca(params.marca);
 
-  const accountKeys =
-    params.account
-      ?.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean) ?? [];
 
   const statusWhere =
     params.status === STATUS_FILTER_UNASSIGNED
@@ -132,9 +109,6 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       : {}),
     ...statusWhere,
     ...(marcaFilter ?? {}),
-    ...(accountKeys.length > 0
-      ? { lines: { some: { accountingAccount: { in: accountKeys } } } }
-      : {}),
     ...(dateRange.gte || dateRange.lte ? { date: dateRange } : {}),
   };
 
@@ -192,12 +166,8 @@ export default async function InvoicesPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
   let data: Awaited<ReturnType<typeof loadInvoicesPageData>>;
-  let accountOptions: Awaited<ReturnType<typeof fetchAccountingAccountFilterOptions>>;
   try {
-    [data, accountOptions] = await Promise.all([
-      loadInvoicesPageData(params),
-      fetchAccountingAccountFilterOptions(),
-    ]);
+    data = await loadInvoicesPageData(params);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : "";
@@ -235,7 +205,6 @@ export default async function InvoicesPage({
       status: q.status,
       type: q.type,
       marca: q.marca,
-      account: q.account,
       period: q.period,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -367,7 +336,7 @@ export default async function InvoicesPage({
       )}
 
       <div className="w-full overflow-x-auto pb-1 -mx-1 px-1">
-        <InvoicesFilters accountOptions={accountOptions} />
+        <InvoicesFilters />
       </div>
 
       {tableSection}

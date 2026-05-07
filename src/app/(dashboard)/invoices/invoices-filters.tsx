@@ -24,16 +24,7 @@ const MARCA_ALL_OPTIONS = [
   ...MARCA_OPTIONS,
 ];
 
-export interface AccountFilterOption {
-  value: string;
-  label: string;
-}
-
-interface InvoicesFiltersProps {
-  accountOptions?: AccountFilterOption[];
-}
-
-export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): React.JSX.Element {
+export function InvoicesFilters(): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -42,17 +33,15 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
-  const [selectedAccount, setSelectedAccount] = useState(sp.get("account") ?? "");
   const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
-    status: string; marca: string; account: string;
+    status: string; marca: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
       type: sp.get("type") ?? "",
-      account: selectedAccount,
       marca: selectedMarca,
       ...overrides,
     };
@@ -60,7 +49,6 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
     if (m.search) params.set("search", m.search);
     if (m.status) params.set("status", m.status);
     if (m.type) params.set("type", m.type);
-    if (m.account) params.set("account", m.account);
     if (m.marca) params.set("marca", m.marca);
     if (m.period) {
       params.set("period", m.period);
@@ -78,7 +66,6 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
     setDateFrom("");
     setDateTo("");
     setStatus("");
-    setSelectedAccount("");
     setSelectedMarca("");
     const currentType = sp.get("type") ?? "";
     const params = new URLSearchParams();
@@ -144,20 +131,6 @@ export function InvoicesFilters({ accountOptions = [] }: InvoicesFiltersProps): 
           </div>
         </>
       )}
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
-        <select
-          value={selectedAccount}
-          onChange={(e) => { const v = e.target.value; setSelectedAccount(v); applyWith({ account: v }); }}
-          className={`${selectClass} w-52`}
-        >
-          <option value="">Todas</option>
-          {accountOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Estado</label>
