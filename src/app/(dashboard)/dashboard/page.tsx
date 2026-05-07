@@ -35,6 +35,7 @@ function buildDashboardInvoiceWhere(
 type RawMonthlyRow = {
   month: Date;
   invoice_type: string;
+  subtotal_eur: unknown;
   total_eur: unknown;
 };
 
@@ -64,9 +65,10 @@ async function getDashboardCashflow(
 
   const rows = await prisma.$queryRaw<RawMonthlyRow[]>`
     SELECT
-      DATE_TRUNC('month', date) AS month,
-      type AS invoice_type,
-      SUM("totalEur") AS total_eur
+      DATE_TRUNC('month', date)       AS month,
+      type                            AS invoice_type,
+      SUM(subtotal * "fxRateToEur")   AS subtotal_eur,
+      SUM("totalEur")                 AS total_eur
     FROM invoices
     ${whereClause}
     GROUP BY DATE_TRUNC('month', date), type
@@ -82,14 +84,25 @@ async function getDashboardCashflow(
       year: "numeric",
     });
     if (!pointMap.has(monthKey)) {
-      pointMap.set(monthKey, { monthKey, monthLabel, inflows: 0, outflows: 0, net: 0 });
+      pointMap.set(monthKey, {
+        monthKey, monthLabel,
+        inflowsBase: 0, inflowsTax: 0, inflows: 0,
+        outflowsBase: 0, outflowsTax: 0, outflows: 0,
+        net: 0,
+      });
     }
     const point = pointMap.get(monthKey)!;
-    const amount = Number(row.total_eur);
+    const subtotalAmt = Number(row.subtotal_eur);
+    const totalAmt = Number(row.total_eur);
+    const taxAmt = totalAmt - subtotalAmt;
     if (row.invoice_type === "SALE") {
-      point.inflows += amount;
+      point.inflowsBase += subtotalAmt;
+      point.inflowsTax += taxAmt;
+      point.inflows = point.inflowsBase + point.inflowsTax;
     } else {
-      point.outflows += amount;
+      point.outflowsBase += subtotalAmt;
+      point.outflowsTax += taxAmt;
+      point.outflows = point.outflowsBase + point.outflowsTax;
     }
     point.net = point.inflows - point.outflows;
   }

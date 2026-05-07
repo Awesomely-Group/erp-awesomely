@@ -17,10 +17,16 @@ import { formatCurrency } from "@/lib/utils";
 export type CashflowMonthlyPoint = {
   monthKey: string;
   monthLabel: string;
+  inflowsBase: number;
+  inflowsTax: number;
   inflows: number;
+  outflowsBase: number;
+  outflowsTax: number;
   outflows: number;
   net: number;
 };
+
+type TooltipEntry = { name: string; value: number; color: string; dataKey: string };
 
 type ChartClickData = {
   activePayload?: Array<{ payload: CashflowMonthlyPoint }>;
@@ -32,35 +38,55 @@ function CustomTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: { name: string; value: number; color: string }[];
+  payload?: TooltipEntry[];
   label?: string;
 }): React.JSX.Element | null {
   if (!active || !payload?.length) return null;
 
-  const inflows = payload.find((p) => p.name === "inflows");
-  const outflows = payload.find((p) => p.name === "outflows");
-  const net = (inflows?.value ?? 0) - (outflows?.value ?? 0);
+  const find = (key: string): number =>
+    (payload.find((p) => p.dataKey === key)?.value as number) ?? 0;
+
+  const inflowsBase = find("inflowsBase");
+  const inflowsTax = find("inflowsTax");
+  const outflowsBase = find("outflowsBase");
+  const outflowsTax = find("outflowsTax");
+  const inflows = inflowsBase + inflowsTax;
+  const outflows = outflowsBase + outflowsTax;
+  const net = inflows - outflows;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm min-w-[210px]">
       <p className="font-semibold text-gray-700 mb-2">{label}</p>
-      {inflows && (
-        <p className="text-green-600">
-          Entradas: {formatCurrency(inflows.value)}
-        </p>
+      {inflows > 0 && (
+        <div className="mb-1.5">
+          <p className="text-green-600 font-medium">Entradas: {formatCurrency(inflows)}</p>
+          <p className="text-xs text-gray-500 ml-2 mt-0.5">
+            Base: {formatCurrency(inflowsBase)} · IVA: {formatCurrency(inflowsTax)}
+          </p>
+        </div>
       )}
-      {outflows && (
-        <p className="text-red-500">
-          Salidas: {formatCurrency(outflows.value)}
-        </p>
+      {outflows > 0 && (
+        <div className="mb-1.5">
+          <p className="text-red-500 font-medium">Salidas: {formatCurrency(outflows)}</p>
+          <p className="text-xs text-gray-500 ml-2 mt-0.5">
+            Base: {formatCurrency(outflowsBase)} · IVA: {formatCurrency(outflowsTax)}
+          </p>
+        </div>
       )}
-      <p className={net >= 0 ? "text-indigo-600 font-medium mt-1" : "text-red-600 font-medium mt-1"}>
+      <p className={`font-medium mt-1 border-t border-gray-100 pt-1.5 ${net >= 0 ? "text-indigo-600" : "text-red-600"}`}>
         Neto: {formatCurrency(net)}
       </p>
       <p className="text-xs text-gray-400 mt-1">Haz clic para ver facturas</p>
     </div>
   );
 }
+
+const LEGEND_LABELS: Record<string, string> = {
+  inflowsBase: "Entradas (base)",
+  inflowsTax: "Entradas (IVA)",
+  outflowsBase: "Salidas (base)",
+  outflowsTax: "Salidas (IVA)",
+};
 
 export function CashflowChart({
   data,
@@ -116,12 +142,12 @@ export function CashflowChart({
         />
         <Tooltip content={<CustomTooltip />} />
         <Legend
-          formatter={(value: string) =>
-            value === "inflows" ? "Entradas" : "Salidas"
-          }
-          wrapperStyle={{ fontSize: 13 }}
+          formatter={(value: string) => LEGEND_LABELS[value] ?? value}
+          wrapperStyle={{ fontSize: 12 }}
         />
-        <Bar dataKey="inflows" radius={[4, 4, 0, 0]} maxBarSize={48}>
+
+        {/* Inflows: base bottom, tax top */}
+        <Bar dataKey="inflowsBase" stackId="inflows" maxBarSize={48}>
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
@@ -130,11 +156,31 @@ export function CashflowChart({
             />
           ))}
         </Bar>
-        <Bar dataKey="outflows" radius={[4, 4, 0, 0]} maxBarSize={48}>
+        <Bar dataKey="inflowsTax" stackId="inflows" maxBarSize={48} radius={[4, 4, 0, 0]}>
+          {data.map((entry) => (
+            <Cell
+              key={entry.monthKey}
+              fill={selectedMonth === entry.monthKey ? "#4ade80" : "#86efac"}
+              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
+            />
+          ))}
+        </Bar>
+
+        {/* Outflows: base bottom, tax top */}
+        <Bar dataKey="outflowsBase" stackId="outflows" maxBarSize={48}>
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
               fill={selectedMonth === entry.monthKey ? "#dc2626" : "#ef4444"}
+              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
+            />
+          ))}
+        </Bar>
+        <Bar dataKey="outflowsTax" stackId="outflows" maxBarSize={48} radius={[4, 4, 0, 0]}>
+          {data.map((entry) => (
+            <Cell
+              key={entry.monthKey}
+              fill={selectedMonth === entry.monthKey ? "#f87171" : "#fca5a5"}
               opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
             />
           ))}

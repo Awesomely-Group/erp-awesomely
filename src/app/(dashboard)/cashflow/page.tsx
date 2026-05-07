@@ -3,7 +3,7 @@ import { Prisma, InvoiceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
-import { MARCA_FILTER_UNASSIGNED } from "@/lib/org";
+import { MARCA_FILTER_UNASSIGNED, invoiceWhereMarca } from "@/lib/org";
 import { HoldedClient } from "@/lib/holded";
 import Link from "next/link";
 import { CashflowFilters } from "./cashflow-filters";
@@ -30,6 +30,7 @@ type CashflowKpis = {
 type RawMonthlyRow = {
   month: Date;
   invoice_type: string;
+  subtotal_eur: unknown;
   total_eur: unknown;
 };
 
@@ -68,10 +69,17 @@ async function getCashflowData(params: CashflowParams): Promise<{
     ];
     if (dateRange.gte) conditions.push(Prisma.sql`i.date >= ${dateRange.gte}`);
     if (dateRange.lte) conditions.push(Prisma.sql`i.date <= ${dateRange.lte}`);
-    if (params.marca === MARCA_FILTER_UNASSIGNED) {
-      conditions.push(Prisma.sql`i.marca IS NULL`);
-    } else if (params.marca) {
-      conditions.push(Prisma.sql`i.marca = ${params.marca}`);
+    {
+      const marcaList = params.marca?.split(",").filter(Boolean) ?? [];
+      const hasUnassigned = marcaList.includes(MARCA_FILTER_UNASSIGNED);
+      const namedMarcas = marcaList.filter((m) => m !== MARCA_FILTER_UNASSIGNED);
+      if (marcaList.length > 0) {
+        const mc: Prisma.Sql[] = [];
+        if (hasUnassigned) mc.push(Prisma.sql`i.marca IS NULL`);
+        if (namedMarcas.length > 0) mc.push(Prisma.sql`i.marca IN (${Prisma.join(namedMarcas.map((m) => Prisma.sql`${m}`))})`);
+        if (mc.length === 1) conditions.push(mc[0]);
+        else conditions.push(Prisma.sql`(${Prisma.join(mc, " OR ")})`);
+      }
     }
     if (params.company) {
       conditions.push(Prisma.sql`i."companyId" = ${params.company}`);
@@ -81,9 +89,10 @@ async function getCashflowData(params: CashflowParams): Promise<{
 
     rows = await prisma.$queryRaw<RawMonthlyRow[]>`
       SELECT
-        DATE_TRUNC('month', i.date) AS month,
-        i.type                      AS invoice_type,
-        SUM(il."totalEur")          AS total_eur
+        DATE_TRUNC('month', i.date)         AS month,
+        i.type                              AS invoice_type,
+        SUM(il.subtotal * i."fxRateToEur")  AS subtotal_eur,
+        SUM(il."totalEur")                  AS total_eur
       FROM invoices i
       JOIN invoice_lines il ON il."invoiceId" = i.id
       ${where}
@@ -94,10 +103,17 @@ async function getCashflowData(params: CashflowParams): Promise<{
     const conditions: Prisma.Sql[] = [];
     if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
     if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
-    if (params.marca === MARCA_FILTER_UNASSIGNED) {
-      conditions.push(Prisma.sql`marca IS NULL`);
-    } else if (params.marca) {
-      conditions.push(Prisma.sql`marca = ${params.marca}`);
+    {
+      const marcaList = params.marca?.split(",").filter(Boolean) ?? [];
+      const hasUnassigned = marcaList.includes(MARCA_FILTER_UNASSIGNED);
+      const namedMarcas = marcaList.filter((m) => m !== MARCA_FILTER_UNASSIGNED);
+      if (marcaList.length > 0) {
+        const mc: Prisma.Sql[] = [];
+        if (hasUnassigned) mc.push(Prisma.sql`marca IS NULL`);
+        if (namedMarcas.length > 0) mc.push(Prisma.sql`marca IN (${Prisma.join(namedMarcas.map((m) => Prisma.sql`${m}`))})`);
+        if (mc.length === 1) conditions.push(mc[0]);
+        else conditions.push(Prisma.sql`(${Prisma.join(mc, " OR ")})`);
+      }
     }
     if (params.company) {
       conditions.push(Prisma.sql`"companyId" = ${params.company}`);
@@ -110,9 +126,10 @@ async function getCashflowData(params: CashflowParams): Promise<{
 
     rows = await prisma.$queryRaw<RawMonthlyRow[]>`
       SELECT
-        DATE_TRUNC('month', date) AS month,
-        type                      AS invoice_type,
-        SUM("totalEur")           AS total_eur
+        DATE_TRUNC('month', date)         AS month,
+        type                              AS invoice_type,
+        SUM(subtotal * "fxRateToEur")     AS subtotal_eur,
+        SUM("totalEur")                   AS total_eur
       FROM invoices
       ${where}
       GROUP BY DATE_TRUNC('month', date), type
@@ -131,16 +148,27 @@ async function getCashflowData(params: CashflowParams): Promise<{
     const monthLabel = d.toLocaleDateString("es-ES", { month: "short", year: "numeric" });
 
     if (!pointMap.has(monthKey)) {
-      pointMap.set(monthKey, { monthKey, monthLabel, inflows: 0, outflows: 0, net: 0 });
+      pointMap.set(monthKey, {
+        monthKey, monthLabel,
+        inflowsBase: 0, inflowsTax: 0, inflows: 0,
+        outflowsBase: 0, outflowsTax: 0, outflows: 0,
+        net: 0,
+      });
     }
 
     const point = pointMap.get(monthKey)!;
-    const amount = Number(row.total_eur);
+    const subtotalAmt = Number(row.subtotal_eur);
+    const totalAmt = Number(row.total_eur);
+    const taxAmt = totalAmt - subtotalAmt;
 
     if (row.invoice_type === "SALE") {
-      point.inflows += amount;
+      point.inflowsBase += subtotalAmt;
+      point.inflowsTax += taxAmt;
+      point.inflows = point.inflowsBase + point.inflowsTax;
     } else {
-      point.outflows += amount;
+      point.outflowsBase += subtotalAmt;
+      point.outflowsTax += taxAmt;
+      point.outflows = point.outflowsBase + point.outflowsTax;
     }
     point.net = point.inflows - point.outflows;
   }
@@ -180,14 +208,11 @@ async function getMonthInvoices(
 
   const accounts = params.account?.split(",").filter(Boolean) ?? [];
 
-  const where = {
+  const marcaFilter = invoiceWhereMarca(params.marca);
+  const where: Prisma.InvoiceWhereInput = {
     date: { gte: from, lte: to },
     ...(params.type ? { type: params.type as InvoiceType } : {}),
-    ...(params.marca === MARCA_FILTER_UNASSIGNED
-      ? { marca: null }
-      : params.marca
-        ? { marca: params.marca }
-        : {}),
+    ...(marcaFilter ?? {}),
     ...(params.company ? { companyId: params.company } : {}),
     ...(accounts.length > 0
       ? { lines: { some: { accountingAccount: { in: accounts } } } }

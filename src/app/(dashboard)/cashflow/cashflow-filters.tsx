@@ -13,8 +13,29 @@ const PERIODS = [
   { value: "custom", label: "Personalizado…" },
 ];
 
+const MARCA_ALL_OPTIONS = [
+  { value: MARCA_FILTER_UNASSIGNED, label: "Sin asignar" },
+  ...MARCA_OPTIONS,
+];
+
 type Company = { id: string; name: string };
 type AccountOption = { num: string; name: string };
+
+function ChevronIcon({ open }: { open: boolean }): React.JSX.Element {
+  return (
+    <svg
+      className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
 
 export function CashflowFilters({
   companies,
@@ -29,9 +50,14 @@ export function CashflowFilters({
   const [period, setPeriod] = useState(sp.get("period") ?? "");
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
-  const [marca, setMarca] = useState(sp.get("marca") ?? "");
   const [company, setCompany] = useState(sp.get("company") ?? "");
   const [type, setType] = useState(sp.get("type") ?? "");
+
+  const [selectedMarcas, setSelectedMarcas] = useState<string[]>(
+    sp.get("marca")?.split(",").filter(Boolean) ?? []
+  );
+  const [marcasOpen, setMarcasOpen] = useState(false);
+  const marcasContainerRef = useRef<HTMLDivElement>(null);
 
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>(
     sp.get("account")?.split(",").filter(Boolean) ?? []
@@ -39,6 +65,17 @@ export function CashflowFilters({
   const [accountsOpen, setAccountsOpen] = useState(false);
   const accountsContainerRef = useRef<HTMLDivElement>(null);
   const applyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!marcasOpen) return;
+    function handlePointerDown(e: PointerEvent): void {
+      if (marcasContainerRef.current && !marcasContainerRef.current.contains(e.target as Node)) {
+        setMarcasOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [marcasOpen]);
 
   useEffect(() => {
     if (!accountsOpen) return;
@@ -56,7 +93,8 @@ export function CashflowFilters({
     marca: string; company: string; type: string; account: string;
   }>): void {
     const m = {
-      period, dateFrom, dateTo, marca, company, type,
+      period, dateFrom, dateTo, company, type,
+      marca: selectedMarcas.join(","),
       account: selectedAccounts.join(","),
       ...overrides,
     };
@@ -75,6 +113,14 @@ export function CashflowFilters({
     router.push(`/cashflow?${params.toString()}`);
   }
 
+  function toggleMarca(value: string): void {
+    const next = selectedMarcas.includes(value)
+      ? selectedMarcas.filter((m) => m !== value)
+      : [...selectedMarcas, value];
+    setSelectedMarcas(next);
+    applyWith({ marca: next.join(",") });
+  }
+
   function toggleAccount(num: string): void {
     const next = selectedAccounts.includes(num)
       ? selectedAccounts.filter((a) => a !== num)
@@ -91,14 +137,22 @@ export function CashflowFilters({
     setPeriod("");
     setDateFrom("");
     setDateTo("");
-    setMarca("");
     setCompany("");
     setType("");
+    setSelectedMarcas([]);
+    setMarcasOpen(false);
     setSelectedAccounts([]);
     setAccountsOpen(false);
     if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
     router.push("/cashflow");
   }
+
+  const marcaLabel =
+    selectedMarcas.length === 0
+      ? "Todas"
+      : selectedMarcas.length === 1
+        ? (MARCA_ALL_OPTIONS.find((o) => o.value === selectedMarcas[0])?.label ?? selectedMarcas[0])
+        : `${selectedMarcas.length} seleccionadas`;
 
   const accountLabel =
     selectedAccounts.length === 0
@@ -151,19 +205,42 @@ export function CashflowFilters({
         </>
       )}
 
-      <div className="flex flex-col gap-1">
+      {/* Marca multiselect */}
+      <div className="flex flex-col gap-1" ref={marcasContainerRef}>
         <label className="text-xs text-gray-500 font-medium">Marca</label>
-        <select
-          value={marca}
-          onChange={(e) => { const v = e.target.value; setMarca(v); applyWith({ marca: v }); }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white min-w-[11rem]"
-        >
-          <option value="">Todas</option>
-          <option value={MARCA_FILTER_UNASSIGNED}>Sin asignar</option>
-          {MARCA_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMarcasOpen((o) => !o)}
+            className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[11rem] flex items-center justify-between gap-2 transition-colors ${
+              selectedMarcas.length > 0
+                ? "border-indigo-500 text-indigo-700"
+                : "border-gray-300 text-gray-700"
+            }`}
+          >
+            <span className="truncate">{marcaLabel}</span>
+            <ChevronIcon open={marcasOpen} />
+          </button>
+
+          {marcasOpen && (
+            <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[13rem]">
+              {MARCA_ALL_OPTIONS.map((o) => (
+                <label
+                  key={o.value}
+                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedMarcas.includes(o.value)}
+                    onChange={() => toggleMarca(o.value)}
+                    className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                  />
+                  <span className="text-sm text-gray-800">{o.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">
@@ -207,12 +284,7 @@ export function CashflowFilters({
               }`}
             >
               <span className="truncate">{accountLabel}</span>
-              <svg
-                className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${accountsOpen ? "rotate-180" : ""}`}
-                viewBox="0 0 20 20" fill="currentColor"
-              >
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
+              <ChevronIcon open={accountsOpen} />
             </button>
 
             {accountsOpen && (
