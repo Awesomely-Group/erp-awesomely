@@ -6,7 +6,6 @@ import { formatCurrency } from "@/lib/utils";
 import { classifyLine, saveDraftLineNote } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { accountingAccountTooltip, lineAccountingLabel } from "@/lib/invoice-accounts";
 
 interface Suggestion {
   projectId: string;
@@ -174,9 +173,6 @@ function LineRow({
   });
 
   const isEur = line.currency === "EUR";
-  const accLabel = lineAccountingLabel(line);
-  const accTitle = accountingAccountTooltip(line) ?? (accLabel || undefined);
-
   const classifiedLabel = isCogs
     ? (line.classification?.projectName ?? null)
     : (line.classification?.marca ?? line.classification?.workspaceName ?? null);
@@ -199,14 +195,6 @@ function LineRow({
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-medium text-gray-900 truncate">{line.name}</p>
-            {accLabel ? (
-              <p className="text-xs text-gray-500 truncate mt-0.5 font-mono" title={accTitle}>
-                {accLabel}
-                {!isCogs && line.accountingAccount && (
-                  <span className="ml-1.5 text-gray-400 font-sans">(OPEX/no-COGS)</span>
-                )}
-              </p>
-            ) : null}
             {line.description && (
               <p className="text-xs text-gray-400 truncate mt-0.5">{line.description}</p>
             )}

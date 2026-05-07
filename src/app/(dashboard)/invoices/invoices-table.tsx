@@ -54,8 +54,6 @@ interface InvoiceRow {
   status: string;
   companyName: string;
   brand: string | null;
-  accountsSummary: string;
-  accountsTooltip: string | undefined;
 }
 
 interface Props {
@@ -129,15 +127,6 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
             </td>
             <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
               {inv.counterparty ?? "—"}
-            </td>
-            <td
-              className="px-4 py-3 text-gray-600 max-w-[220px]"
-              title={
-                [inv.accountsSummary, inv.accountsTooltip].filter(Boolean).join("\n\n") ||
-                undefined
-              }
-            >
-              <span className="line-clamp-2 text-xs leading-snug">{inv.accountsSummary}</span>
             </td>
             <td className="px-4 py-3 text-gray-600 capitalize">{formatMonth(inv.accountingMonth)}</td>
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>

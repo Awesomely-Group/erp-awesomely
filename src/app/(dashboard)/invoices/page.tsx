@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
 import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
-import { lineAccountingLabel, formatInvoiceAccountsSummary, formatInvoiceAccountsUnresolvedTooltip } from "@/lib/invoice-accounts";
+import { lineAccountingLabel } from "@/lib/invoice-accounts";
 import Link from "next/link";
 import { InvoiceStatus, InvoiceType } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
@@ -154,10 +154,6 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
       where,
       include: {
         company: true,
-        lines: {
-          select: { accountingAccount: true, accountingAccountName: true },
-          orderBy: { sortOrder: "asc" },
-        },
       },
       orderBy,
       skip: (page - 1) * pageSize,
@@ -297,8 +293,6 @@ export default async function InvoicesPage({
               status: inv.status,
               companyName: inv.company.name,
               brand: inv.marca,
-              accountsSummary: formatInvoiceAccountsSummary(inv.lines),
-              accountsTooltip: formatInvoiceAccountsUnresolvedTooltip(inv.lines),
             }))}
           />
         </tbody>
