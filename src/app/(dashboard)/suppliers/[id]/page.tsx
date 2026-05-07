@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { VerificationRow, type SerializedVerification, type AvailableInvoice } from "./verification-row";
 import { NewVerificationForm } from "./new-verification-form";
+import { RolesSection } from "./roles-section";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -14,11 +15,18 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
   const supplier = await prisma.supplier.findUnique({
     where: { id },
     include: {
+      roles: {
+        where: { active: true },
+        orderBy: { name: "asc" },
+      },
       verifications: {
         orderBy: { periodStart: "desc" },
         include: {
           invoice: {
             select: { number: true, counterparty: true, totalEur: true },
+          },
+          role: {
+            select: { name: true, ratePerHour: true },
           },
         },
       },
@@ -67,6 +75,9 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
     invoice: v.invoice
       ? { number: v.invoice.number, counterparty: v.invoice.counterparty, totalEur: Number(v.invoice.totalEur) }
       : null,
+    role: v.role
+      ? { name: v.role.name, ratePerHour: Number(v.role.ratePerHour) }
+      : null,
   }));
 
   return (
@@ -88,9 +99,14 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
               </span>
             </div>
           </div>
-          <NewVerificationForm supplierId={supplier.id} />
+          <NewVerificationForm supplierId={supplier.id} roles={supplier.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) }))} />
         </div>
       </div>
+
+      <RolesSection
+        supplierId={supplier.id}
+        roles={supplier.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) }))}
+      />
 
       {/* Tabla de verificaciones */}
       {verifications.length === 0 ? (

@@ -29,6 +29,7 @@ export interface SerializedVerification {
   verifiedBy: string | null;
   notes: string | null;
   invoice: { number: string | null; counterparty: string | null; totalEur: number } | null;
+  role: { name: string; ratePerHour: number } | null;
 }
 
 export interface AvailableInvoice {
@@ -130,7 +131,14 @@ export function VerificationRow({ verification: v, availableInvoices }: Props): 
     <div className="border-b border-gray-100 last:border-0">
       <div className="grid grid-cols-[2fr_1fr_1fr_1fr_2fr_1fr_1fr_1fr_2fr] gap-2 items-center px-4 py-3 text-sm hover:bg-gray-50">
         {/* Período */}
-        <span className="text-gray-700 text-xs">{period}</span>
+        <span className="text-gray-700 text-xs">
+          {period}
+          {v.role && (
+            <span className="block text-gray-400 mt-0.5">
+              {v.role.name} · {v.role.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+            </span>
+          )}
+        </span>
 
         {/* Horas aprobadas */}
         <span className="text-gray-700 text-xs text-right">

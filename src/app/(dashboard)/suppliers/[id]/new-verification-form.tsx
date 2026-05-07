@@ -3,24 +3,33 @@
 import { useState, useTransition } from "react";
 import { createVerification } from "./actions";
 
-interface Props {
-  supplierId: string;
+interface Role {
+  id: string;
+  name: string;
+  ratePerHour: number;
 }
 
-export function NewVerificationForm({ supplierId }: Props): React.JSX.Element {
+interface Props {
+  supplierId: string;
+  roles: Role[];
+}
+
+export function NewVerificationForm({ supplierId, roles }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
+  const [roleId, setRoleId] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     if (!periodStart || !periodEnd) return;
     startTransition(async () => {
-      await createVerification(supplierId, periodStart, periodEnd);
+      await createVerification(supplierId, periodStart, periodEnd, roleId || undefined);
       setOpen(false);
       setPeriodStart("");
       setPeriodEnd("");
+      setRoleId("");
     });
   };
 
@@ -53,6 +62,20 @@ export function NewVerificationForm({ supplierId }: Props): React.JSX.Element {
         required
         className="border border-gray-300 rounded px-2 py-1 text-sm"
       />
+      {roles.length > 0 && (
+        <select
+          value={roleId}
+          onChange={(e) => setRoleId(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1 text-sm"
+        >
+          <option value="">Sin rol (tarifa general)</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name} — {r.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+            </option>
+          ))}
+        </select>
+      )}
       <button
         type="submit"
         disabled={isPending}

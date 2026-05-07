@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { type VerificationStatus, type SupplierTipo, Prisma } from "@prisma/client";
 import { SuppliersFilters } from "./suppliers-filters";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
+import { SupplierEntidadSelect } from "./supplier-entidad-select";
 
 interface Props {
   searchParams: Promise<{ search?: string; tipo?: string }>;
@@ -78,6 +79,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarifa €/h</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
@@ -106,6 +108,9 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
                           </svg>
                         </a>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <SupplierEntidadSelect supplierId={supplier.id} entidad={supplier.entidad} />
                     </td>
                     <td className="px-4 py-3">
                       <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />

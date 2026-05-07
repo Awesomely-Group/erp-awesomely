@@ -337,14 +337,32 @@ model Supplier {
   jiraAccountId String?      @unique
   hourlyRate    Decimal?
   tipo          SupplierTipo?
+  entidad       SupplierEntidad?
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  roles         SupplierRole[]
   verifications SupplierVerification[]
 
   @@map("suppliers")
+}
+
+model SupplierRole {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name        String
+  ratePerHour Decimal
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  verifications SupplierVerification[]
+
+  @@index([supplierId])
+  @@map("supplier_roles")
 }
 
 enum SupplierTipo {
@@ -352,6 +370,13 @@ enum SupplierTipo {
   HERRAMIENTAS
 
   @@map("supplier_tipo")
+}
+
+enum SupplierEntidad {
+  AWESOMELY_SL
+  AWESOMELY_OU
+
+  @@map("supplier_entidad")
 }
 
 enum VerificationStatus {
@@ -370,6 +395,9 @@ model SupplierVerification {
   id         String   @id @default(cuid())
   supplierId String
   supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  roleId String?
+  role   SupplierRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   periodStart DateTime
   periodEnd   DateTime
