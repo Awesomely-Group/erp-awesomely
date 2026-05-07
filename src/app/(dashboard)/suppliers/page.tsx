@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { type VerificationStatus, type SupplierTipo, Prisma } from "@prisma/client";
 import { SuppliersFilters } from "./suppliers-filters";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
-import { SupplierEntidadSelect } from "./supplier-entidad-select";
 
 interface Props {
   searchParams: Promise<{ search?: string; tipo?: string }>;
@@ -41,6 +40,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
   const suppliers = await prisma.supplier.findMany({
     where,
     include: {
+      company: { select: { name: true } },
       verifications: {
         orderBy: { periodEnd: "desc" },
         take: 1,
@@ -108,8 +108,8 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
                         </a>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <SupplierEntidadSelect supplierId={supplier.id} entidad={supplier.entidad} />
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {supplier.company?.name ?? <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />

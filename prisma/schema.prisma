@@ -75,6 +75,7 @@ model Company {
   active       Boolean  @default(true)
 
   invoices     Invoice[]
+  suppliers    Supplier[]
   syncLogs     SyncLog[]
 
   createdAt DateTime @default(now())
@@ -330,14 +331,15 @@ model AuditLog {
 
 /// Proveedor sincronizado desde contactos Holded tipo "supplier", enriquecido con datos ERP.
 model Supplier {
-  id              String        @id @default(cuid())
-  holdedContactId String        @unique
+  id              String   @id @default(cuid())
+  holdedContactId String
+  companyId       String?
+  company         Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
   name            String
 
   jiraAccountId String?      @unique
   hourlyRate    Decimal?
   tipo          SupplierTipo?
-  entidad       SupplierEntidad?
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -346,6 +348,8 @@ model Supplier {
   roles         SupplierRole[]
   verifications SupplierVerification[]
 
+  @@unique([holdedContactId, companyId])
+  @@index([companyId])
   @@map("suppliers")
 }
 
@@ -372,12 +376,6 @@ enum SupplierTipo {
   @@map("supplier_tipo")
 }
 
-enum SupplierEntidad {
-  AWESOMELY_SL
-  AWESOMELY_OU
-
-  @@map("supplier_entidad")
-}
 
 enum VerificationStatus {
   PENDING
