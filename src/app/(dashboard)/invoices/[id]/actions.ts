@@ -239,3 +239,33 @@ export async function updateInvoiceMarca({
 
   revalidatePath(`/invoices/${invoiceId}`);
 }
+
+export async function bulkUpdateInvoiceMarca({
+  invoiceIds,
+  marca,
+}: {
+  invoiceIds: string[];
+  marca: string | null;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+  if (invoiceIds.length === 0) return;
+
+  await prisma.invoice.updateMany({
+    where: { id: { in: invoiceIds } },
+    data: { marca: marca ?? null },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Invoice",
+      entityId: invoiceIds[0],
+      previousValue: { bulk: true, count: invoiceIds.length },
+      newValue: { marca: marca ?? null, invoiceIds },
+    },
+  });
+
+  revalidatePath("/invoices");
+}
