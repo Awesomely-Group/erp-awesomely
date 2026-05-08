@@ -17,6 +17,7 @@ type CashflowParams = {
   company?: string;
   type?: string;
   account?: string;
+  l1?: string;
   selectedMonth?: string;
 };
 
@@ -282,11 +283,25 @@ export default async function CashflowPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
 
+  const l1List = params.l1?.split(",").filter(Boolean) ?? [];
+  let effectiveParams = params;
+  if (l1List.length > 0) {
+    const mappings = await prisma.accountMapping.findMany({ where: { l1: { in: l1List } } });
+    const l1Accounts = [...new Set(
+      mappings.flatMap((m) => [m.accountNumSL, m.accountNumOU].filter(Boolean) as string[])
+    )];
+    const explicitAccounts = params.account?.split(",").filter(Boolean) ?? [];
+    const resolvedAccounts = explicitAccounts.length > 0
+      ? l1Accounts.filter((a) => explicitAccounts.includes(a))
+      : l1Accounts;
+    effectiveParams = { ...params, account: resolvedAccounts.join(",") || undefined };
+  }
+
   const [{ monthly, kpis }, companies, accounts, monthInvoices] = await Promise.all([
-    getCashflowData(params),
+    getCashflowData(effectiveParams),
     getCompanies(),
     getAccounts(),
-    params.selectedMonth ? getMonthInvoices(params, params.selectedMonth) : Promise.resolve(null),
+    effectiveParams.selectedMonth ? getMonthInvoices(effectiveParams, effectiveParams.selectedMonth) : Promise.resolve(null),
   ]);
 
   const netIsPositive = kpis.netCashflow >= 0;
@@ -305,6 +320,7 @@ export default async function CashflowPage({
       company: params.company,
       type: params.type,
       account: params.account,
+      l1: params.l1,
       selectedMonth: params.selectedMonth,
       ...overrides,
     };
