@@ -418,6 +418,10 @@ export async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
     include: { project: { include: { workspace: true } } },
   });
 
+  // Only overwrite marca when there are line classifications — otherwise preserve
+  // the manually-assigned marca (e.g. set via bulk update without line-level detail)
+  if (classifications.length === 0) return;
+
   const marcas = [
     ...new Set([
       ...classifications.filter((c) => c.project).map((c) => c.project!.workspace.name),
