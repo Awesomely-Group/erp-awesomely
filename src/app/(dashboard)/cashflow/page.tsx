@@ -15,7 +15,6 @@ type CashflowParams = {
   dateTo?: string;
   marca?: string;
   company?: string;
-  type?: string;
   account?: string;
   l1?: string;
   selectedMonth?: string;
@@ -141,9 +140,6 @@ async function getCashflowData(params: CashflowParams): Promise<{
   const pointMap = new Map<string, CashflowMonthlyPoint>();
 
   for (const row of rows) {
-    if (params.type === "SALE" && row.invoice_type !== "SALE") continue;
-    if (params.type === "PURCHASE" && row.invoice_type !== "PURCHASE") continue;
-
     const d = new Date(row.month);
     const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const monthLabel = d.toLocaleDateString("es-ES", { month: "short", year: "numeric" });
@@ -212,7 +208,6 @@ async function getMonthInvoices(
   const marcaFilter = invoiceWhereMarca(params.marca);
   const where: Prisma.InvoiceWhereInput = {
     date: { gte: from, lte: to },
-    ...(params.type ? { type: params.type as InvoiceType } : {}),
     ...(marcaFilter ?? {}),
     ...(params.company ? { companyId: params.company } : {}),
     ...(accounts.length > 0
@@ -318,7 +313,6 @@ export default async function CashflowPage({
       dateTo: params.dateTo,
       marca: params.marca,
       company: params.company,
-      type: params.type,
       account: params.account,
       l1: params.l1,
       selectedMonth: params.selectedMonth,

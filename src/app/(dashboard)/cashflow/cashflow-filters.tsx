@@ -57,7 +57,6 @@ export function CashflowFilters({
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [company, setCompany] = useState(sp.get("company") ?? "");
-  const [type, setType] = useState(sp.get("type") ?? "");
 
   const [selectedMarcas, setSelectedMarcas] = useState<string[]>(
     sp.get("marca")?.split(",").filter(Boolean) ?? []
@@ -113,10 +112,10 @@ export function CashflowFilters({
 
   function applyWith(overrides: Partial<{
     period: string; dateFrom: string; dateTo: string;
-    marca: string; company: string; type: string; account: string; l1: string;
+    marca: string; company: string; account: string; l1: string;
   }>): void {
     const m = {
-      period, dateFrom, dateTo, company, type,
+      period, dateFrom, dateTo, company,
       marca: selectedMarcas.join(","),
       account: selectedAccounts.join(","),
       l1: selectedL1.join(","),
@@ -132,7 +131,6 @@ export function CashflowFilters({
     }
     if (m.marca) params.set("marca", m.marca);
     if (m.company) params.set("company", m.company);
-    if (m.type) params.set("type", m.type);
     if (m.account) params.set("account", m.account);
     if (m.l1) params.set("l1", m.l1);
     router.push(`/cashflow?${params.toString()}`);
@@ -171,7 +169,6 @@ export function CashflowFilters({
     setDateFrom("");
     setDateTo("");
     setCompany("");
-    setType("");
     setSelectedMarcas([]);
     setMarcasOpen(false);
     setSelectedAccounts([]);
@@ -334,19 +331,6 @@ export function CashflowFilters({
           {companies.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Tipo</label>
-        <select
-          value={type}
-          onChange={(e) => { const v = e.target.value; setType(v); applyWith({ type: v }); }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">Compra y venta</option>
-          <option value="SALE">Venta</option>
-          <option value="PURCHASE">Compra</option>
         </select>
       </div>
 
