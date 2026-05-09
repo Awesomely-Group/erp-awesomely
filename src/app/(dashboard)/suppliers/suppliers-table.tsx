@@ -14,6 +14,12 @@ interface SupplierRole {
   ratePerHour: number;
 }
 
+export interface RoleTemplate {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface SupplierRow {
   id: string;
   name: string | null;
@@ -49,14 +55,16 @@ function statusBadge(status: VerificationStatus): React.JSX.Element {
 function ExpandedSupplierRow({
   supplierId,
   roles,
+  roleTemplates,
 }: {
   supplierId: string;
   roles: SupplierRole[];
+  roleTemplates: RoleTemplate[];
 }): React.JSX.Element {
   return (
     <tr className="bg-indigo-50/40 border-b border-gray-100">
       <td colSpan={5} className="px-6 py-4">
-        <RolesSection supplierId={supplierId} roles={roles} />
+        <RolesSection supplierId={supplierId} roles={roles} templates={roleTemplates} />
       </td>
     </tr>
   );
@@ -68,12 +76,14 @@ interface SupplierTableRowProps {
   supplier: SupplierRow;
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
+  roleTemplates: RoleTemplate[];
 }
 
 function SupplierTableRow({
   supplier,
   isExpanded,
   onToggleExpand,
+  roleTemplates,
 }: SupplierTableRowProps): React.JSX.Element {
   return (
     <>
@@ -130,7 +140,7 @@ function SupplierTableRow({
       </tr>
 
       {isExpanded && (
-        <ExpandedSupplierRow supplierId={supplier.id} roles={supplier.roles} />
+        <ExpandedSupplierRow supplierId={supplier.id} roles={supplier.roles} roleTemplates={roleTemplates} />
       )}
     </>
   );
@@ -140,10 +150,11 @@ function SupplierTableRow({
 
 interface Props {
   suppliers: SupplierRow[];
+  roleTemplates?: RoleTemplate[];
   emptyMessage?: string;
 }
 
-export function SuppliersTable({ suppliers, emptyMessage }: Props): React.JSX.Element {
+export function SuppliersTable({ suppliers, roleTemplates = [], emptyMessage }: Props): React.JSX.Element {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function handleToggle(id: string): void {
@@ -177,6 +188,7 @@ export function SuppliersTable({ suppliers, emptyMessage }: Props): React.JSX.El
               supplier={supplier}
               isExpanded={expandedId === supplier.id}
               onToggleExpand={handleToggle}
+              roleTemplates={roleTemplates}
             />
           ))}
         </tbody>

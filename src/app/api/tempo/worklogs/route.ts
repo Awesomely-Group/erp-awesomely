@@ -38,6 +38,20 @@ export interface TempoWorklogsDetailResponse {
   totalHours: number;
 }
 
+export interface IssueHoursEntry {
+  issueKey: string;
+  summary: string;
+  assigneeName: string | null;
+  originalEstimateHours: number | null;
+  spentHours: number;
+}
+
+export interface IssueHoursResponse {
+  issues: IssueHoursEntry[];
+  totalSpentHours: number;
+  totalEstimateHours: number;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -71,6 +85,45 @@ export async function GET(request: Request): Promise<NextResponse> {
     const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
 
     const groupBy = searchParams.get("groupBy");
+
+    if (groupBy === "issue") {
+      const secondsByIssue = new Map<string, number>();
+      for (const w of worklogs) {
+        const key = w.issue.key;
+        secondsByIssue.set(key, (secondsByIssue.get(key) ?? 0) + w.timeSpentSeconds);
+      }
+      const issueKeys = [...secondsByIssue.keys()];
+
+      const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
+      const jiraIssues = await jira.getIssuesByKeys(issueKeys);
+      const issueMap = new Map(jiraIssues.map((i) => [i.key, i]));
+
+      const issues: IssueHoursEntry[] = issueKeys
+        .map((key) => {
+          const jiraData = issueMap.get(key);
+          const spentSeconds = secondsByIssue.get(key) ?? 0;
+          return {
+            issueKey: key,
+            summary: jiraData?.summary ?? key,
+            assigneeName: jiraData?.assigneeName ?? null,
+            originalEstimateHours: jiraData?.originalEstimateSeconds != null
+              ? Math.round((jiraData.originalEstimateSeconds / 3600) * 100) / 100
+              : null,
+            spentHours: Math.round((spentSeconds / 3600) * 100) / 100,
+          };
+        })
+        .sort((a, b) =>
+          (a.assigneeName ?? "").localeCompare(b.assigneeName ?? "") ||
+          a.issueKey.localeCompare(b.issueKey)
+        );
+
+      const totalSpentHours = Math.round(issues.reduce((s, i) => s + i.spentHours, 0) * 100) / 100;
+      const totalEstimateHours = Math.round(
+        issues.reduce((s, i) => s + (i.originalEstimateHours ?? 0), 0) * 100
+      ) / 100;
+
+      return NextResponse.json({ issues, totalSpentHours, totalEstimateHours } satisfies IssueHoursResponse);
+    }
 
     if (groupBy === "worklog") {
       const accountIds = [...new Set(worklogs.map((w) => w.author.accountId))];

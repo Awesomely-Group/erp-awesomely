@@ -369,6 +369,19 @@ model SupplierRole {
   @@map("supplier_roles")
 }
 
+/// Catálogo global de roles de proveedor, gestionable desde Configuración.
+model RoleTemplate {
+  id     String  @id @default(cuid())
+  name   String
+  color  String  @default("gray")
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("role_templates")
+}
+
 enum SupplierTipo {
   SERVICIOS
   HERRAMIENTAS

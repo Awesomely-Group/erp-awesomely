@@ -22,7 +22,8 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     ...(tipo && isTipo(tipo) ? { tipo } : {}),
   };
 
-  const suppliers = await prisma.supplier.findMany({
+  const [suppliers, roleTemplatesRaw] = await Promise.all([
+    prisma.supplier.findMany({
     where,
     include: {
       company: { select: { name: true } },
@@ -36,7 +37,11 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
       },
     },
     orderBy: { name: "asc" },
-  });
+  }),
+    prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
+
+  const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
 
   const suppliersData = suppliers.map((s) => ({
     id: s.id,
@@ -65,7 +70,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
         <SuppliersFilters />
       </div>
 
-      <SuppliersTable suppliers={suppliersData} emptyMessage={emptyMessage} />
+      <SuppliersTable suppliers={suppliersData} roleTemplates={roleTemplates} emptyMessage={emptyMessage} />
     </div>
   );
 }

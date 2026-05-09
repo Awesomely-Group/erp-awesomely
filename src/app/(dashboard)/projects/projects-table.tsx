@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useTransition } from "react";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
-import type { TempoWorklogsMonthlyResponse, TempoWorklogsDetailResponse } from "@/app/api/tempo/worklogs/route";
+import type { TempoWorklogsMonthlyResponse } from "@/app/api/tempo/worklogs/route";
 
 export interface ProjectRow {
   id: string;
@@ -325,7 +325,21 @@ function useMonthlyHours(
   return { data, loading, error };
 }
 
-// ─── Expanded row with worklog detail ────────────────────────────────────────
+// ─── Expanded row with estimated vs. realized hours ──────────────────────────
+
+interface IssueHoursEntry {
+  issueKey: string;
+  summary: string;
+  assigneeName: string | null;
+  originalEstimateHours: number | null;
+  spentHours: number;
+}
+
+interface IssueHoursResponse {
+  issues: IssueHoursEntry[];
+  totalSpentHours: number;
+  totalEstimateHours: number;
+}
 
 interface ExpandedRowProps {
   projectId: string;
@@ -336,7 +350,7 @@ interface ExpandedRowProps {
 }
 
 function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: ExpandedRowProps): React.JSX.Element {
-  const [data, setData] = useState<TempoWorklogsDetailResponse | null>(null);
+  const [data, setData] = useState<IssueHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -349,12 +363,12 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: Expanded
 
     async function load(): Promise<void> {
       try {
-        const res = await fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=worklog`);
+        const res = await fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=issue`);
         const text = await res.text();
         let parsed: unknown;
         try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
         if (!res.ok) throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
-        if (!cancelled) { setData(parsed as TempoWorklogsDetailResponse); setLoading(false); }
+        if (!cancelled) { setData(parsed as IssueHoursResponse); setLoading(false); }
       } catch (e: unknown) {
         if (!cancelled) { setError(e instanceof Error ? e.message : "Error desconocido"); setLoading(false); }
       }
@@ -380,7 +394,7 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: Expanded
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
-            Cargando worklogs...
+            Cargando tareas...
           </div>
         )}
 
@@ -388,35 +402,42 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: Expanded
           <p className="text-xs text-red-500">Error: {error}</p>
         )}
 
-        {hasTempoToken && data && data.worklogs.length === 0 && (
-          <p className="text-xs text-gray-400">Sin horas registradas en este período.</p>
+        {hasTempoToken && data && data.issues.length === 0 && (
+          <p className="text-xs text-gray-400">Sin tareas con horas en este período.</p>
         )}
 
-        {hasTempoToken && data && data.worklogs.length > 0 && (
+        {hasTempoToken && data && data.issues.length > 0 && (
           <div className="max-h-64 overflow-y-auto">
             <table className="text-xs w-full">
               <thead className="sticky top-0 bg-indigo-50">
                 <tr className="text-gray-500">
+                  <th className="text-left font-medium pb-1.5 pr-4">Tarea</th>
+                  <th className="text-left font-medium pb-1.5 pr-6">Resumen</th>
                   <th className="text-left font-medium pb-1.5 pr-6">Persona</th>
-                  <th className="text-left font-medium pb-1.5 pr-6">Tarea</th>
-                  <th className="text-left font-medium pb-1.5 pr-6">Fecha</th>
-                  <th className="text-right font-medium pb-1.5">Horas</th>
+                  <th className="text-right font-medium pb-1.5 pr-4">Estimado</th>
+                  <th className="text-right font-medium pb-1.5">Realizado</th>
                 </tr>
               </thead>
               <tbody>
-                {data.worklogs.map((w, i) => (
-                  <tr key={i} className="border-t border-gray-100">
-                    <td className="py-1 pr-6 text-gray-700">{w.displayName}</td>
-                    <td className="py-1 pr-6">
-                      <span className="font-mono bg-gray-100 text-gray-700 px-1 py-0.5 rounded">{w.issueKey}</span>
+                {data.issues.map((issue) => (
+                  <tr key={issue.issueKey} className="border-t border-gray-100">
+                    <td className="py-1 pr-4">
+                      <span className="font-mono bg-gray-100 text-gray-700 px-1 py-0.5 rounded">{issue.issueKey}</span>
                     </td>
-                    <td className="py-1 pr-6 text-gray-500 tabular-nums">{w.startDate}</td>
-                    <td className="py-1 text-right tabular-nums text-gray-700">{w.hours}h</td>
+                    <td className="py-1 pr-6 text-gray-700 max-w-[220px] truncate">{issue.summary}</td>
+                    <td className="py-1 pr-6 text-gray-500">{issue.assigneeName ?? "—"}</td>
+                    <td className="py-1 pr-4 text-right tabular-nums text-gray-400">
+                      {issue.originalEstimateHours != null ? `${issue.originalEstimateHours}h` : "—"}
+                    </td>
+                    <td className="py-1 text-right tabular-nums text-gray-700">{issue.spentHours}h</td>
                   </tr>
                 ))}
                 <tr className="border-t border-gray-300 font-semibold">
                   <td colSpan={3} className="pt-1.5 text-gray-900">Total</td>
-                  <td className="pt-1.5 text-right tabular-nums text-gray-900">{data.totalHours}h</td>
+                  <td className="pt-1.5 pr-4 text-right tabular-nums text-gray-400">
+                    {data.totalEstimateHours > 0 ? `${data.totalEstimateHours}h` : "—"}
+                  </td>
+                  <td className="pt-1.5 text-right tabular-nums text-gray-900">{data.totalSpentHours}h</td>
                 </tr>
               </tbody>
             </table>

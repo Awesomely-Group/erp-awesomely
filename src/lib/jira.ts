@@ -8,6 +8,13 @@ export interface JiraProjectData {
   archived: boolean;
 }
 
+export interface JiraIssueData {
+  key: string;
+  summary: string;
+  assigneeName: string | null;
+  originalEstimateSeconds: number | null;
+}
+
 export interface JiraPaginatedResponse<T> {
   values: T[];
   startAt: number;
@@ -63,7 +70,32 @@ export class JiraClient {
     return new Map(entries);
   }
 
-    async getAllProjects(): Promise<JiraProjectData[]> {
+    async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {
+    if (keys.length === 0) return [];
+    const jql = `issueKey IN (${keys.join(",")})`;
+    const res = await this.fetch<{
+      issues: Array<{
+        key: string;
+        fields: {
+          summary: string;
+          assignee: { displayName: string } | null;
+          timeoriginalestimate: number | null;
+        };
+      }>;
+    }>("/search", {
+      jql,
+      fields: "summary,assignee,timeoriginalestimate",
+      maxResults: "200",
+    });
+    return res.issues.map((i) => ({
+      key: i.key,
+      summary: i.fields.summary,
+      assigneeName: i.fields.assignee?.displayName ?? null,
+      originalEstimateSeconds: i.fields.timeoriginalestimate,
+    }));
+  }
+
+  async getAllProjects(): Promise<JiraProjectData[]> {
     const all: JiraProjectData[] = [];
     let startAt = 0;
     const maxResults = 50;

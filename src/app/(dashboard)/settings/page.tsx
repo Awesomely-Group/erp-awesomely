@@ -4,9 +4,10 @@ import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
 import { SsoAllowlistSection } from "./sso-allowlist";
 import { AccountMappingTable } from "./account-mapping-table";
+import { RoleTemplatesSection } from "./role-templates-section";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
-  const [companies, workspaces, auditLogs, accountMappings] = await Promise.all([
+  const [companies, workspaces, auditLogs, accountMappings, roleTemplates] = await Promise.all([
     prisma.company.findMany({ orderBy: { name: "asc" } }),
     prisma.jiraWorkspace.findMany({ orderBy: { name: "asc" } }),
     prisma.auditLog.findMany({
@@ -15,6 +16,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
       take: 50,
     }),
     prisma.accountMapping.findMany({ orderBy: [{ l1: "asc" }, { tag: "asc" }] }),
+    prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -84,6 +86,19 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
       <div className="max-w-3xl">
         <SsoAllowlistSection />
       </div>
+
+      {/* Roles de proveedor */}
+      <section className="space-y-4 max-w-3xl">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Roles de proveedor</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Catálogo de roles predefinidos para asignar a los proveedores de servicios.
+          </p>
+        </div>
+        <RoleTemplatesSection
+          templates={roleTemplates.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
+        />
+      </section>
 
       {/* Plan de Cuentas — full width */}
       <section className="space-y-4">

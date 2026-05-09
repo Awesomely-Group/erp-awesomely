@@ -12,28 +12,33 @@ interface Props {
 export default async function SupplierDetailPage({ params }: Props): Promise<React.JSX.Element> {
   const { id } = await params;
 
-  const supplier = await prisma.supplier.findUnique({
-    where: { id },
-    include: {
-      roles: {
-        where: { active: true },
-        orderBy: { name: "asc" },
-      },
-      verifications: {
-        orderBy: { periodStart: "desc" },
-        include: {
-          invoice: {
-            select: { number: true, counterparty: true, totalEur: true },
-          },
-          role: {
-            select: { name: true, ratePerHour: true },
+  const [supplier, roleTemplatesRaw] = await Promise.all([
+    prisma.supplier.findUnique({
+      where: { id },
+      include: {
+        roles: {
+          where: { active: true },
+          orderBy: { name: "asc" },
+        },
+        verifications: {
+          orderBy: { periodStart: "desc" },
+          include: {
+            invoice: {
+              select: { number: true, counterparty: true, totalEur: true },
+            },
+            role: {
+              select: { name: true, ratePerHour: true },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
 
   if (!supplier) notFound();
+
+  const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
 
   const availableInvoicesRaw = supplier.name
     ? await prisma.invoice.findMany({
@@ -106,6 +111,7 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
       <RolesSection
         supplierId={supplier.id}
         roles={supplier.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) }))}
+        templates={roleTemplates}
       />
 
       {/* Tabla de verificaciones */}
