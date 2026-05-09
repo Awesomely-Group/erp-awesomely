@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { createRole, updateRole, deleteRole } from "./actions";
-import { roleColorClasses } from "@/lib/role-colors";
 
 type Role = { id: string; name: string; ratePerHour: number };
 type Template = { id: string; name: string; color: string };
@@ -10,9 +9,11 @@ type Template = { id: string; name: string; color: string };
 function RoleRow({
   role,
   supplierId,
+  templates,
 }: {
   role: Role;
   supplierId: string;
+  templates: Template[];
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(role.name);
@@ -32,16 +33,24 @@ function RoleRow({
     });
   }
 
+  const hasMatchingTemplate = templates.some((t) => t.name === role.name);
+
   if (editing) {
     return (
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 last:border-0">
-        <input
+        <select
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Nombre del rol"
           className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
           autoFocus
-        />
+        >
+          {!hasMatchingTemplate && (
+            <option value={role.name}>{role.name}</option>
+          )}
+          {templates.map((t) => (
+            <option key={t.id} value={t.name}>{t.name}</option>
+          ))}
+        </select>
         <div className="flex items-center gap-1">
           <input
             type="number"
@@ -117,10 +126,6 @@ function AddRoleForm({
     });
   }
 
-  function selectTemplate(t: Template): void {
-    setName(t.name);
-  }
-
   if (!open) {
     return (
       <button
@@ -133,67 +138,49 @@ function AddRoleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-2">
-      {templates.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {templates.map((t) => {
-            const { bg, text } = roleColorClasses(t.color);
-            const selected = name === t.name;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => selectTemplate(t)}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${bg} ${text} ${selected ? "ring-2 ring-offset-1 ring-indigo-400" : "opacity-70 hover:opacity-100"}`}
-              >
-                {selected && (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-                {t.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex items-center gap-2">
+    <form onSubmit={handleSubmit} className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
+      <select
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        required
+        autoFocus
+        className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
+      >
+        <option value="" disabled>Selecciona un rol…</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.name}>{t.name}</option>
+        ))}
+        {templates.length === 0 && (
+          <option value="" disabled>Sin plantillas configuradas</option>
+        )}
+      </select>
+      <div className="flex items-center gap-1">
         <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nombre del rol"
+          type="number"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          min="0"
+          step="0.01"
+          placeholder="0.00"
           required
-          className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
-          autoFocus={templates.length === 0}
+          className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right"
         />
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            required
-            className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right"
-          />
-          <span className="text-sm text-gray-500">€/h</span>
-        </div>
-        <button
-          type="submit"
-          disabled={isPending || !name.trim() || !rate}
-          className="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {isPending ? "Creando…" : "Crear"}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setName(""); setRate(""); setOpen(false); }}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          Cancelar
-        </button>
+        <span className="text-sm text-gray-500">€/h</span>
       </div>
+      <button
+        type="submit"
+        disabled={isPending || !name.trim() || !rate}
+        className="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {isPending ? "Creando…" : "Crear"}
+      </button>
+      <button
+        type="button"
+        onClick={() => { setName(""); setRate(""); setOpen(false); }}
+        className="text-sm text-gray-500 hover:text-gray-700"
+      >
+        Cancelar
+      </button>
     </form>
   );
 }
@@ -224,7 +211,7 @@ export function RolesSection({
       ) : (
         <div>
           {roles.map((role) => (
-            <RoleRow key={role.id} role={role} supplierId={supplierId} />
+            <RoleRow key={role.id} role={role} supplierId={supplierId} templates={templates} />
           ))}
           <div className="px-4 pb-3">
             <AddRoleForm supplierId={supplierId} templates={templates} />
