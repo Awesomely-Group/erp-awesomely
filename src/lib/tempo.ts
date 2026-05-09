@@ -5,6 +5,7 @@ export interface TempoWorklog {
   timeSpentSeconds: number;
   author: { accountId: string };
   startDate: string;
+  description?: string;
 }
 
 export interface TempoApprovedHoursResult {

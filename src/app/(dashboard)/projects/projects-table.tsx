@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useTransition } from "react";
+import React, { useState, useMemo, useRef, useEffect, useTransition } from "react";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
 import type { TempoWorklogsMonthlyResponse } from "@/app/api/tempo/worklogs/route";
@@ -326,21 +326,12 @@ function useMonthlyHours(
   return { data, loading, error };
 }
 
-// ─── Expanded row with estimated vs. realized hours ──────────────────────────
+// ─── Expanded row: User → Issue → Worklog hierarchy ──────────────────────────
 
-interface IssueHoursEntry {
-  issueKey: string;
-  summary: string;
-  assigneeName: string | null;
-  originalEstimateHours: number | null;
-  spentHours: number;
-}
-
-interface IssueHoursResponse {
-  issues: IssueHoursEntry[];
-  totalSpentHours: number;
-  totalEstimateHours: number;
-}
+interface WorklogDetail { description: string; issueKey: string; hours: number; }
+interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; worklogs: WorklogDetail[]; }
+interface UserWithIssues { accountId: string; displayName: string; totalHours: number; issues: IssueWithWorklogs[]; }
+interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; }
 
 interface ExpandedRowProps {
   projectId: string;
@@ -351,8 +342,26 @@ interface ExpandedRowProps {
   workspaceDomain: string;
 }
 
+function IssueIcon(): React.JSX.Element {
+  return (
+    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function WorklogIcon(): React.JSX.Element {
+  return (
+    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 16 16">
+      <rect width="16" height="16" rx="3" fill="#22c55e" />
+      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
 function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceDomain }: ExpandedRowProps): React.JSX.Element {
-  const [data, setData] = useState<IssueHoursResponse | null>(null);
+  const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -365,12 +374,12 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
 
     async function load(): Promise<void> {
       try {
-        const res = await fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=issue`);
+        const res = await fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=hierarchical`);
         const text = await res.text();
         let parsed: unknown;
         try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
         if (!res.ok) throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
-        if (!cancelled) { setData(parsed as IssueHoursResponse); setLoading(false); }
+        if (!cancelled) { setData(parsed as HierarchicalHoursResponse); setLoading(false); }
       } catch (e: unknown) {
         if (!cancelled) { setError(e instanceof Error ? e.message : "Error desconocido"); setLoading(false); }
       }
@@ -396,7 +405,7 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
-            Cargando tareas...
+            Cargando...
           </div>
         )}
 
@@ -404,50 +413,94 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
           <p className="text-xs text-red-500">Error: {error}</p>
         )}
 
-        {hasTempoToken && data && data.issues.length === 0 && (
+        {hasTempoToken && data && data.users.length === 0 && (
           <p className="text-xs text-gray-400">Sin tareas con horas en este período.</p>
         )}
 
-        {hasTempoToken && data && data.issues.length > 0 && (
-          <div className="max-h-64 overflow-y-auto">
+        {hasTempoToken && data && data.users.length > 0 && (
+          <div className="max-h-96 overflow-y-auto">
             <table className="text-xs w-full">
-              <thead className="sticky top-0 bg-indigo-50">
+              <thead className="sticky top-0 bg-indigo-50 border-b border-indigo-100">
                 <tr className="text-gray-500">
-                  <th className="text-left font-medium pb-1.5 pr-4">Tarea</th>
-                  <th className="text-left font-medium pb-1.5 pr-6">Resumen</th>
-                  <th className="text-left font-medium pb-1.5 pr-6">Persona</th>
-                  <th className="text-right font-medium pb-1.5 pr-4">Estimado</th>
-                  <th className="text-right font-medium pb-1.5">Realizado</th>
+                  <th className="text-left font-medium py-1.5 pr-4">Usuario / Tarea / Worklog</th>
+                  <th className="text-left font-medium py-1.5 pr-4 w-24">Key</th>
+                  <th className="text-right font-medium py-1.5 w-16">Horas</th>
                 </tr>
               </thead>
               <tbody>
-                {data.issues.map((issue) => (
-                  <tr key={issue.issueKey} className="border-t border-gray-100">
-                    <td className="py-1 pr-4">
-                      <a
-                        href={`https://${workspaceDomain}/browse/${issue.issueKey}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono bg-gray-100 text-indigo-700 hover:bg-indigo-100 px-1 py-0.5 rounded transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {issue.issueKey}
-                      </a>
-                    </td>
-                    <td className="py-1 pr-6 text-gray-700 max-w-[220px] truncate">{issue.summary}</td>
-                    <td className="py-1 pr-6 text-gray-500">{issue.assigneeName ?? "—"}</td>
-                    <td className="py-1 pr-4 text-right tabular-nums text-gray-400">
-                      {issue.originalEstimateHours != null ? `${issue.originalEstimateHours}h` : "—"}
-                    </td>
-                    <td className="py-1 text-right tabular-nums text-gray-700">{issue.spentHours}h</td>
-                  </tr>
+                {data.users.map((user) => (
+                  <React.Fragment key={user.accountId}>
+                    {/* User row */}
+                    <tr className="border-t border-gray-200 bg-white/60">
+                      <td className="py-1.5 pr-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 select-none">
+                            {user.displayName[0]?.toUpperCase() ?? "?"}
+                          </div>
+                          <span className="font-semibold text-gray-900">{user.displayName}</span>
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-4" />
+                      <td className="py-1.5 text-right tabular-nums font-semibold text-gray-900">{user.totalHours}h</td>
+                    </tr>
+
+                    {user.issues.map((issue) => (
+                      <React.Fragment key={`${user.accountId}-${issue.issueKey}`}>
+                        {/* Issue row */}
+                        <tr className="border-t border-gray-100">
+                          <td className="py-1 pr-4">
+                            <div className="flex items-center gap-2 pl-7">
+                              <IssueIcon />
+                              <span className="text-gray-700 truncate max-w-[240px]">{issue.summary}</span>
+                            </div>
+                          </td>
+                          <td className="py-1 pr-4">
+                            <a
+                              href={`https://${workspaceDomain}/browse/${issue.issueKey}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:text-indigo-800 font-mono"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {issue.issueKey}
+                            </a>
+                          </td>
+                          <td className="py-1 text-right tabular-nums text-gray-700">{issue.totalHours}h</td>
+                        </tr>
+
+                        {/* Worklog rows */}
+                        {issue.worklogs.map((wl, wi) => (
+                          <tr key={`${user.accountId}-${issue.issueKey}-${wi}`} className="border-t border-gray-50">
+                            <td className="py-0.5 pr-4">
+                              <div className="flex items-center gap-2 pl-14">
+                                <WorklogIcon />
+                                <span className="text-gray-500 truncate max-w-[200px]">{wl.description}</span>
+                              </div>
+                            </td>
+                            <td className="py-0.5 pr-4">
+                              <a
+                                href={`https://${workspaceDomain}/browse/${wl.issueKey}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:text-indigo-800 font-mono"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {wl.issueKey}
+                              </a>
+                            </td>
+                            <td className="py-0.5 text-right tabular-nums text-gray-500">{wl.hours}h</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </React.Fragment>
                 ))}
-                <tr className="border-t border-gray-300 font-semibold">
-                  <td colSpan={3} className="pt-1.5 text-gray-900">Total</td>
-                  <td className="pt-1.5 pr-4 text-right tabular-nums text-gray-400">
-                    {data.totalEstimateHours > 0 ? `${data.totalEstimateHours}h` : "—"}
-                  </td>
-                  <td className="pt-1.5 text-right tabular-nums text-gray-900">{data.totalSpentHours}h</td>
+
+                {/* Total row */}
+                <tr className="border-t-2 border-gray-300 font-semibold">
+                  <td className="pt-2 text-gray-900">Total</td>
+                  <td className="pt-2" />
+                  <td className="pt-2 text-right tabular-nums text-gray-900">{data.totalHours}h</td>
                 </tr>
               </tbody>
             </table>

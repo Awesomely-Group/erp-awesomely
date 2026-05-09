@@ -52,6 +52,31 @@ export interface IssueHoursResponse {
   totalEstimateHours: number;
 }
 
+export interface WorklogDetail {
+  description: string;
+  issueKey: string;
+  hours: number;
+}
+
+export interface IssueWithWorklogs {
+  issueKey: string;
+  summary: string;
+  totalHours: number;
+  worklogs: WorklogDetail[];
+}
+
+export interface UserWithIssues {
+  accountId: string;
+  displayName: string;
+  totalHours: number;
+  issues: IssueWithWorklogs[];
+}
+
+export interface HierarchicalHoursResponse {
+  users: UserWithIssues[];
+  totalHours: number;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const session = await auth();
@@ -146,6 +171,51 @@ export async function GET(request: Request): Promise<NextResponse> {
       ) / 100;
 
       return NextResponse.json({ issues, totalSpentHours, totalEstimateHours } satisfies IssueHoursResponse);
+    }
+
+    if (groupBy === "hierarchical") {
+      const allIssueIds = [...new Set(worklogs.map((w) => w.issue.id))];
+      const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
+      const [jiraIssues, nameMap] = await Promise.all([
+        jira.getIssuesByIds(allIssueIds),
+        jira.getUsersByAccountIds([...new Set(worklogs.map((w) => w.author.accountId))]),
+      ]);
+      const issueMap = new Map(jiraIssues.map((i) => [i.numericId, i]));
+
+      // user → issue → worklogs
+      const userMap = new Map<string, Map<number, { seconds: number; entries: Array<{ desc: string; seconds: number }> }>>();
+      for (const w of worklogs) {
+        let issueGroups = userMap.get(w.author.accountId);
+        if (!issueGroups) { issueGroups = new Map(); userMap.set(w.author.accountId, issueGroups); }
+        let ig = issueGroups.get(w.issue.id);
+        if (!ig) { ig = { seconds: 0, entries: [] }; issueGroups.set(w.issue.id, ig); }
+        ig.seconds += w.timeSpentSeconds;
+        ig.entries.push({ desc: w.description ?? "", seconds: w.timeSpentSeconds });
+      }
+
+      const users: UserWithIssues[] = [...userMap.entries()]
+        .map(([accountId, issueGroups]) => {
+          const issues: IssueWithWorklogs[] = [...issueGroups.entries()].map(([issueId, ig]) => {
+            const jiraData = issueMap.get(issueId);
+            const issueKey = jiraData?.key ?? String(issueId);
+            return {
+              issueKey,
+              summary: jiraData?.summary ?? issueKey,
+              totalHours: Math.round((ig.seconds / 3600) * 100) / 100,
+              worklogs: ig.entries.map((e) => ({
+                description: e.desc || "—",
+                issueKey,
+                hours: Math.round((e.seconds / 3600) * 100) / 100,
+              })),
+            };
+          }).sort((a, b) => a.issueKey.localeCompare(b.issueKey));
+          const totalHours = Math.round(issues.reduce((s, i) => s + i.totalHours, 0) * 100) / 100;
+          return { accountId, displayName: nameMap.get(accountId) ?? accountId, totalHours, issues };
+        })
+        .sort((a, b) => b.totalHours - a.totalHours);
+
+      const totalHours = Math.round(users.reduce((s, u) => s + u.totalHours, 0) * 100) / 100;
+      return NextResponse.json({ users, totalHours } satisfies HierarchicalHoursResponse);
     }
 
     if (groupBy === "worklog") {
