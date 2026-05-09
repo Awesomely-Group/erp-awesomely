@@ -337,7 +337,7 @@ model Supplier {
   company         Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
   name            String
 
-  jiraAccountId String?      @unique
+  jiraAccountId String?
   hourlyRate    Decimal?
   tipo          SupplierTipo?
 
