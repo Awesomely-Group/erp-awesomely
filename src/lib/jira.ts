@@ -15,6 +15,13 @@ export interface JiraIssueData {
   originalEstimateSeconds: number | null;
 }
 
+export interface JiraUser {
+  accountId: string;
+  displayName: string;
+  emailAddress: string;
+  avatarUrl: string | null;
+}
+
 export interface JiraPaginatedResponse<T> {
   values: T[];
   startAt: number;
@@ -71,7 +78,7 @@ export class JiraClient {
   }
 
     async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {
-    const validKeys = keys.filter((k) => k.trim().length > 0);
+    const validKeys = keys.filter((k) => k != null && k.trim().length > 0);
     if (validKeys.length === 0) return [];
     const jql = `issueKey IN (${validKeys.map((k) => `"${k}"`).join(",")})`;
     const res = await this.fetch<{
@@ -93,6 +100,24 @@ export class JiraClient {
       summary: i.fields.summary,
       assigneeName: i.fields.assignee?.displayName ?? null,
       originalEstimateSeconds: i.fields.timeoriginalestimate,
+    }));
+  }
+
+  async searchUsers(query: string): Promise<JiraUser[]> {
+    if (!query.trim()) return [];
+    const results = await this.fetch<
+      Array<{
+        accountId: string;
+        displayName: string;
+        emailAddress: string;
+        avatarUrls: { "48x48": string };
+      }>
+    >("/user/search", { query, maxResults: "20" });
+    return results.map((u) => ({
+      accountId: u.accountId,
+      displayName: u.displayName,
+      emailAddress: u.emailAddress,
+      avatarUrl: u.avatarUrls?.["48x48"] ?? null,
     }));
   }
 

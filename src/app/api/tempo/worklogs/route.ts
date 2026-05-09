@@ -89,7 +89,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (groupBy === "issue") {
       const secondsByIssue = new Map<string, number>();
       for (const w of worklogs) {
-        const key = w.issue.key;
+        const key = w.issue?.key;
+        if (!key) continue;
         secondsByIssue.set(key, (secondsByIssue.get(key) ?? 0) + w.timeSpentSeconds);
       }
       const issueKeys = [...secondsByIssue.keys()];
