@@ -12,5 +12,5 @@ export async function updateProjectStatus(
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
   await prisma.jiraProject.update({ where: { id: projectId }, data: { status } });
-  revalidatePath("/projects");
+  revalidatePath("/projects", "layout");
 }

@@ -4,27 +4,7 @@ import { Fragment, useState } from "react";
 import Link from "next/link";
 import { formatCurrency, formatDate, holdedInvoiceUrl, cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
-
-interface ProfitabilityInvoice {
-  id: string;
-  holdedId: string;
-  type: "SALE" | "PURCHASE";
-  number: string | null;
-  counterparty: string | null;
-  date: string;
-  amount: number;
-}
-
-interface ProfitabilityRow {
-  projectId: string;
-  projectName: string;
-  workspaceName: string;
-  revenue: number;
-  costs: number;
-  margin: number;
-  marginPct: number;
-  invoices: ProfitabilityInvoice[];
-}
+import type { ProfitabilityRow } from "@/lib/profitability";
 
 interface Props {
   rows: ProfitabilityRow[];

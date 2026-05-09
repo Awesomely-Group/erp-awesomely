@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useRef, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
 import type { TempoWorklogsMonthlyResponse } from "@/app/api/tempo/worklogs/route";
@@ -326,200 +327,6 @@ function useMonthlyHours(
   return { data, loading, error };
 }
 
-// ─── Expanded row: User → Issue → Worklog hierarchy ──────────────────────────
-
-interface WorklogDetail { description: string; issueKey: string; hours: number; }
-interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; }
-interface UserWithIssues { accountId: string; displayName: string; totalHours: number; issues: IssueWithWorklogs[]; }
-interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; }
-
-interface ExpandedRowProps {
-  projectId: string;
-  hasTempoToken: boolean;
-  from: string;
-  to: string;
-  totalCols: number;
-  workspaceDomain: string;
-}
-
-function IssueIcon(): React.JSX.Element {
-  return (
-    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" viewBox="0 0 16 16" fill="none">
-      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function WorklogIcon(): React.JSX.Element {
-  return (
-    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 16 16">
-      <rect width="16" height="16" rx="3" fill="#22c55e" />
-      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </svg>
-  );
-}
-
-function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceDomain }: ExpandedRowProps): React.JSX.Element {
-  const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!hasTempoToken) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setData(null);
-
-    async function load(): Promise<void> {
-      try {
-        const res = await fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=hierarchical`);
-        const text = await res.text();
-        let parsed: unknown;
-        try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
-        if (!res.ok) throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
-        if (!cancelled) { setData(parsed as HierarchicalHoursResponse); setLoading(false); }
-      } catch (e: unknown) {
-        if (!cancelled) { setError(e instanceof Error ? e.message : "Error desconocido"); setLoading(false); }
-      }
-    }
-
-    void load();
-    return () => { cancelled = true; };
-  }, [projectId, hasTempoToken, from, to]);
-
-  return (
-    <tr className="bg-indigo-50/40 border-b border-gray-100">
-      <td colSpan={totalCols} className="px-6 py-3">
-        {!hasTempoToken && (
-          <p className="text-xs text-gray-400">
-            Token de Tempo no configurado.{" "}
-            <a href="/settings" className="text-indigo-600 hover:underline">Configúralo en Configuración</a>.
-          </p>
-        )}
-
-        {hasTempoToken && loading && (
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-            </svg>
-            Cargando...
-          </div>
-        )}
-
-        {hasTempoToken && error && (
-          <p className="text-xs text-red-500">Error: {error}</p>
-        )}
-
-        {hasTempoToken && data && data.users.length === 0 && (
-          <p className="text-xs text-gray-400">Sin tareas con horas en este período.</p>
-        )}
-
-        {hasTempoToken && data && data.users.length > 0 && (
-          <div className="max-h-96 overflow-y-auto">
-            <table className="text-xs w-full">
-              <thead className="sticky top-0 bg-indigo-50 border-b border-indigo-100">
-                <tr className="text-gray-500">
-                  <th className="text-left font-medium py-1.5 pr-4">Usuario / Tarea / Worklog</th>
-                  <th className="text-left font-medium py-1.5 pr-4 w-24">Key</th>
-                  <th className="text-right font-medium py-1.5 pr-4 w-20">Estimado</th>
-                  <th className="text-right font-medium py-1.5 w-16">Realizado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.users.map((user) => (
-                  <React.Fragment key={user.accountId}>
-                    {/* User row */}
-                    <tr className="border-t border-gray-200 bg-white/60">
-                      <td className="py-1.5 pr-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 select-none">
-                            {user.displayName[0]?.toUpperCase() ?? "?"}
-                          </div>
-                          <span className="font-semibold text-gray-900">{user.displayName}</span>
-                        </div>
-                      </td>
-                      <td className="py-1.5 pr-4" />
-                      <td className="py-1.5 pr-4" />
-                      <td className="py-1.5 text-right tabular-nums font-semibold text-gray-900">{user.totalHours}h</td>
-                    </tr>
-
-                    {user.issues.map((issue) => (
-                      <React.Fragment key={`${user.accountId}-${issue.issueKey}`}>
-                        {/* Issue row */}
-                        <tr className="border-t border-gray-100">
-                          <td className="py-1 pr-4">
-                            <div className="flex items-center gap-2 pl-7">
-                              <IssueIcon />
-                              <span className="text-gray-700 truncate max-w-[240px]">{issue.summary}</span>
-                            </div>
-                          </td>
-                          <td className="py-1 pr-4">
-                            <a
-                              href={`https://${workspaceDomain}/browse/${issue.issueKey}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-indigo-600 hover:text-indigo-800 font-mono"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {issue.issueKey}
-                            </a>
-                          </td>
-                          <td className="py-1 pr-4 text-right tabular-nums text-gray-400">
-                            {issue.originalEstimateHours != null ? `${issue.originalEstimateHours}h` : "—"}
-                          </td>
-                          <td className="py-1 text-right tabular-nums text-gray-700">{issue.totalHours}h</td>
-                        </tr>
-
-                        {/* Worklog rows */}
-                        {issue.worklogs.map((wl, wi) => (
-                          <tr key={`${user.accountId}-${issue.issueKey}-${wi}`} className="border-t border-gray-50">
-                            <td className="py-0.5 pr-4">
-                              <div className="flex items-center gap-2 pl-14">
-                                <WorklogIcon />
-                                <span className="text-gray-500 truncate max-w-[200px]">{wl.description}</span>
-                              </div>
-                            </td>
-                            <td className="py-0.5 pr-4">
-                              <a
-                                href={`https://${workspaceDomain}/browse/${wl.issueKey}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800 font-mono"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {wl.issueKey}
-                              </a>
-                            </td>
-                            <td className="py-0.5 pr-4" />
-                            <td className="py-0.5 text-right tabular-nums text-gray-500">{wl.hours}h</td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    ))}
-                  </React.Fragment>
-                ))}
-
-                {/* Total row */}
-                <tr className="border-t-2 border-gray-300 font-semibold">
-                  <td className="pt-2 text-gray-900">Total</td>
-                  <td className="pt-2" />
-                  <td className="pt-2 pr-4 text-right tabular-nums text-gray-400">
-                    {data.totalEstimateHours > 0 ? `${data.totalEstimateHours}h` : "—"}
-                  </td>
-                  <td className="pt-2 text-right tabular-nums text-gray-900">{data.totalHours}h</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-      </td>
-    </tr>
-  );
-}
-
 // ─── Project row ──────────────────────────────────────────────────────────────
 
 interface ProjectRowProps {
@@ -528,9 +335,6 @@ interface ProjectRowProps {
   periodFrom: string;
   periodTo: string;
   showTotal: boolean;
-  isExpanded: boolean;
-  totalCols: number;
-  onToggleExpand: (id: string) => void;
 }
 
 function ProjectTableRow({
@@ -539,10 +343,8 @@ function ProjectTableRow({
   periodFrom,
   periodTo,
   showTotal,
-  isExpanded,
-  totalCols,
-  onToggleExpand,
 }: ProjectRowProps): React.JSX.Element {
+  const router = useRouter();
   const { data, loading } = useMonthlyHours(project.id, project.hasTempoToken, periodFrom, periodTo);
 
   function renderHoursCell(monthKey: string): React.JSX.Element {
@@ -573,55 +375,42 @@ function ProjectTableRow({
   }
 
   return (
-    <>
-      <tr
-        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
-        onClick={() => onToggleExpand(project.id)}
-      >
-        <td className="px-4 py-3">
-          <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
-            {project.jiraKey}
-          </span>
+    <tr
+      className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
+      onClick={() => router.push(`/projects/${project.id}`)}
+    >
+      <td className="px-4 py-3">
+        <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+          {project.jiraKey}
+        </span>
+      </td>
+      <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
+      <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <StatusBadge projectId={project.id} status={project.status} />
+      </td>
+
+      {months.map((m) => (
+        <td key={m.key} className="px-3 py-3 text-right tabular-nums text-sm">
+          {renderHoursCell(m.key)}
         </td>
-        <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
-        <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
-        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <StatusBadge projectId={project.id} status={project.status} />
+      ))}
+
+      {showTotal && (
+        <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">
+          {renderTotalCell()}
         </td>
-
-        {months.map((m) => (
-          <td key={m.key} className="px-3 py-3 text-right tabular-nums text-sm">
-            {renderHoursCell(m.key)}
-          </td>
-        ))}
-
-        {showTotal && (
-          <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">
-            {renderTotalCell()}
-          </td>
-        )}
-
-        <td className="px-4 py-3">
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </td>
-      </tr>
-
-      {isExpanded && (
-        <ExpandedRow
-          projectId={project.id}
-          hasTempoToken={project.hasTempoToken}
-          from={periodFrom}
-          to={periodTo}
-          totalCols={totalCols}
-          workspaceDomain={project.workspaceDomain}
-        />
       )}
-    </>
+
+      <td className="px-4 py-3">
+        <svg
+          className="w-4 h-4 text-gray-400"
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </td>
+    </tr>
   );
 }
 
@@ -635,7 +424,6 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
   const [search, setSearch] = useState("");
   const [filterBrand, setFilterBrand] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -645,7 +433,7 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
     [periodType, periodOffset],
   );
   const showTotal = months.length > 1;
-  // 4 fixed + month cols + optional Total + expand arrow
+  // 4 fixed + month cols + optional Total + arrow
   const totalCols = 4 + months.length + (showTotal ? 1 : 0) + 1;
 
   const brandOptions = useMemo(() => {
@@ -753,9 +541,6 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
                 periodFrom={periodFrom}
                 periodTo={periodTo}
                 showTotal={showTotal}
-                isExpanded={expandedId === project.id}
-                totalCols={totalCols}
-                onToggleExpand={(id) => setExpandedId((prev) => (prev === id ? null : id))}
               />
             ))}
             {filtered.length === 0 && (
