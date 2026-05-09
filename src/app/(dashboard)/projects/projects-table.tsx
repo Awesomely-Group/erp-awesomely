@@ -329,9 +329,9 @@ function useMonthlyHours(
 // ─── Expanded row: User → Issue → Worklog hierarchy ──────────────────────────
 
 interface WorklogDetail { description: string; issueKey: string; hours: number; }
-interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; worklogs: WorklogDetail[]; }
+interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; }
 interface UserWithIssues { accountId: string; displayName: string; totalHours: number; issues: IssueWithWorklogs[]; }
-interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; }
+interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; }
 
 interface ExpandedRowProps {
   projectId: string;
@@ -424,7 +424,8 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
                 <tr className="text-gray-500">
                   <th className="text-left font-medium py-1.5 pr-4">Usuario / Tarea / Worklog</th>
                   <th className="text-left font-medium py-1.5 pr-4 w-24">Key</th>
-                  <th className="text-right font-medium py-1.5 w-16">Horas</th>
+                  <th className="text-right font-medium py-1.5 pr-4 w-20">Estimado</th>
+                  <th className="text-right font-medium py-1.5 w-16">Realizado</th>
                 </tr>
               </thead>
               <tbody>
@@ -440,6 +441,7 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
                           <span className="font-semibold text-gray-900">{user.displayName}</span>
                         </div>
                       </td>
+                      <td className="py-1.5 pr-4" />
                       <td className="py-1.5 pr-4" />
                       <td className="py-1.5 text-right tabular-nums font-semibold text-gray-900">{user.totalHours}h</td>
                     </tr>
@@ -465,6 +467,9 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
                               {issue.issueKey}
                             </a>
                           </td>
+                          <td className="py-1 pr-4 text-right tabular-nums text-gray-400">
+                            {issue.originalEstimateHours != null ? `${issue.originalEstimateHours}h` : "—"}
+                          </td>
                           <td className="py-1 text-right tabular-nums text-gray-700">{issue.totalHours}h</td>
                         </tr>
 
@@ -488,6 +493,7 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
                                 {wl.issueKey}
                               </a>
                             </td>
+                            <td className="py-0.5 pr-4" />
                             <td className="py-0.5 text-right tabular-nums text-gray-500">{wl.hours}h</td>
                           </tr>
                         ))}
@@ -500,6 +506,9 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceD
                 <tr className="border-t-2 border-gray-300 font-semibold">
                   <td className="pt-2 text-gray-900">Total</td>
                   <td className="pt-2" />
+                  <td className="pt-2 pr-4 text-right tabular-nums text-gray-400">
+                    {data.totalEstimateHours > 0 ? `${data.totalEstimateHours}h` : "—"}
+                  </td>
                   <td className="pt-2 text-right tabular-nums text-gray-900">{data.totalHours}h</td>
                 </tr>
               </tbody>

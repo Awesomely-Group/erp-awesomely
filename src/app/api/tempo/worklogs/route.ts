@@ -62,6 +62,7 @@ export interface IssueWithWorklogs {
   issueKey: string;
   summary: string;
   totalHours: number;
+  originalEstimateHours: number | null;
   worklogs: WorklogDetail[];
 }
 
@@ -75,6 +76,7 @@ export interface UserWithIssues {
 export interface HierarchicalHoursResponse {
   users: UserWithIssues[];
   totalHours: number;
+  totalEstimateHours: number;
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -202,6 +204,9 @@ export async function GET(request: Request): Promise<NextResponse> {
               issueKey,
               summary: jiraData?.summary ?? issueKey,
               totalHours: Math.round((ig.seconds / 3600) * 100) / 100,
+              originalEstimateHours: jiraData?.originalEstimateSeconds != null
+                ? Math.round((jiraData.originalEstimateSeconds / 3600) * 100) / 100
+                : null,
               worklogs: ig.entries.map((e) => ({
                 description: e.desc || "—",
                 issueKey,
@@ -215,7 +220,12 @@ export async function GET(request: Request): Promise<NextResponse> {
         .sort((a, b) => b.totalHours - a.totalHours);
 
       const totalHours = Math.round(users.reduce((s, u) => s + u.totalHours, 0) * 100) / 100;
-      return NextResponse.json({ users, totalHours } satisfies HierarchicalHoursResponse);
+      const totalEstimateHours = Math.round(
+        [...new Set(users.flatMap((u) => u.issues).map((i) => i.issueKey))]
+          .map((key) => users.flatMap((u) => u.issues).find((i) => i.issueKey === key)?.originalEstimateHours ?? 0)
+          .reduce((s, h) => s + h, 0) * 100
+      ) / 100;
+      return NextResponse.json({ users, totalHours, totalEstimateHours } satisfies HierarchicalHoursResponse);
     }
 
     if (groupBy === "worklog") {
