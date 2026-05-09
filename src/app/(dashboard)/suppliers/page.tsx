@@ -1,25 +1,10 @@
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { type VerificationStatus, type SupplierTipo, Prisma } from "@prisma/client";
+import { type SupplierTipo, Prisma } from "@prisma/client";
 import { SuppliersFilters } from "./suppliers-filters";
-import { SupplierTipoSelect } from "./supplier-tipo-select";
+import { SuppliersTable } from "./suppliers-table";
 
 interface Props {
   searchParams: Promise<{ search?: string; tipo?: string }>;
-}
-
-function statusBadge(status: VerificationStatus): React.JSX.Element {
-  const configs: Record<VerificationStatus, { label: string; className: string }> = {
-    PENDING: { label: "Pendiente", className: "bg-gray-100 text-gray-700" },
-    HOURS_CAPTURED: { label: "Horas capturadas", className: "bg-blue-100 text-blue-700" },
-    INVOICE_RECEIVED: { label: "Factura recibida", className: "bg-yellow-100 text-yellow-700" },
-    PERIOD_MISMATCH: { label: "Período incorrecto", className: "bg-red-100 text-red-700" },
-    VERIFIED_MISMATCH: { label: "Importe incorrecto", className: "bg-orange-100 text-orange-700" },
-    VERIFIED_OK: { label: "Verificado OK", className: "bg-green-100 text-green-700" },
-    APPROVED: { label: "Aprobado", className: "bg-green-600 text-white" },
-  };
-  const { label, className } = configs[status];
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${className}`}>{label}</span>;
 }
 
 const TIPO_VALUES: SupplierTipo[] = ["SERVICIOS", "HERRAMIENTAS"];
@@ -45,9 +30,27 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
         orderBy: { periodEnd: "desc" },
         take: 1,
       },
+      roles: {
+        where: { active: true },
+        orderBy: { name: "asc" },
+      },
     },
     orderBy: { name: "asc" },
   });
+
+  const suppliersData = suppliers.map((s) => ({
+    id: s.id,
+    name: s.name,
+    holdedContactId: s.holdedContactId,
+    companyName: s.company?.name ?? null,
+    tipo: s.tipo,
+    lastVerification: s.verifications[0] ? { status: s.verifications[0].status } : null,
+    roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),
+  }));
+
+  const emptyMessage = search ?? tipo
+    ? "No hay proveedores que coincidan con los filtros."
+    : "No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded.";
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -62,68 +65,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
         <SuppliersFilters />
       </div>
 
-      {suppliers.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-10 text-center">
-          <p className="text-sm text-gray-500">
-            {search ?? tipo
-              ? "No hay proveedores que coincidan con los filtros."
-              : "No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded."}
-          </p>
-          {!(search ?? tipo) && (
-            <p className="text-xs text-gray-400 mt-1">Ejecuta una sincronización desde la sección Sincronización.</p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {suppliers.map((supplier) => {
-                const lastVerification = supplier.verifications[0];
-                return (
-                  <tr key={supplier.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Link href={`/suppliers/${supplier.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
-                          {supplier.name}
-                        </Link>
-                        <a
-                          href={`https://app.holded.com/contacts/${supplier.holdedContactId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gray-300 hover:text-gray-500 shrink-0"
-                          title="Ver en Holded"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                            <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                          </svg>
-                        </a>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {supplier.company?.name ?? <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
-                    </td>
-                    <td className="px-4 py-3">
-                      {lastVerification ? statusBadge(lastVerification.status) : <span className="text-xs text-gray-400">Sin períodos</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <SuppliersTable suppliers={suppliersData} emptyMessage={emptyMessage} />
     </div>
   );
 }

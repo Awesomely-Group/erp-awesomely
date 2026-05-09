@@ -193,6 +193,7 @@ export async function createRole(
     data: { supplierId, name: name.trim(), ratePerHour: rate },
   });
   revalidatePath(`/suppliers/${supplierId}`);
+  revalidatePath("/suppliers");
 }
 
 export async function updateRole(
@@ -208,6 +209,7 @@ export async function updateRole(
     data: { name: name.trim(), ratePerHour: rate },
   });
   revalidatePath(`/suppliers/${supplierId}`);
+  revalidatePath("/suppliers");
 }
 
 export async function deleteRole(roleId: string, supplierId: string): Promise<void> {
@@ -216,4 +218,5 @@ export async function deleteRole(roleId: string, supplierId: string): Promise<vo
     data: { active: false },
   });
   revalidatePath(`/suppliers/${supplierId}`);
+  revalidatePath("/suppliers");
 }
