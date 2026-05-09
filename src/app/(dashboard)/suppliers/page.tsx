@@ -22,23 +22,24 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     ...(tipo && isTipo(tipo) ? { tipo } : {}),
   };
 
-  const [suppliers, roleTemplatesRaw] = await Promise.all([
+  const [suppliers, roleTemplatesRaw, firstWorkspace] = await Promise.all([
     prisma.supplier.findMany({
-    where,
-    include: {
-      company: { select: { name: true } },
-      verifications: {
-        orderBy: { periodEnd: "desc" },
-        take: 1,
+      where,
+      include: {
+        company: { select: { name: true } },
+        verifications: {
+          orderBy: { periodEnd: "desc" },
+          take: 1,
+        },
+        roles: {
+          where: { active: true },
+          orderBy: { name: "asc" },
+        },
       },
-      roles: {
-        where: { active: true },
-        orderBy: { name: "asc" },
-      },
-    },
-    orderBy: { name: "asc" },
-  }),
+      orderBy: { name: "asc" },
+    }),
     prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.jiraWorkspace.findFirst({ where: { active: true }, select: { id: true } }),
   ]);
 
   const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
@@ -49,6 +50,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     holdedContactId: s.holdedContactId,
     companyName: s.company?.name ?? null,
     tipo: s.tipo,
+    jiraAccountId: s.jiraAccountId,
     lastVerification: s.verifications[0] ? { status: s.verifications[0].status } : null,
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),
   }));
@@ -70,7 +72,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
         <SuppliersFilters />
       </div>
 
-      <SuppliersTable suppliers={suppliersData} roleTemplates={roleTemplates} emptyMessage={emptyMessage} />
+      <SuppliersTable suppliers={suppliersData} roleTemplates={roleTemplates} workspaceId={firstWorkspace?.id ?? null} emptyMessage={emptyMessage} />
     </div>
   );
 }

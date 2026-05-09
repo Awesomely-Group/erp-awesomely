@@ -11,10 +11,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query");
+  const accountId = searchParams.get("accountId");
   const workspaceId = searchParams.get("workspaceId");
 
-  if (!query) {
-    return NextResponse.json({ error: "Missing query" }, { status: 400 });
+  if (!query && !accountId) {
+    return NextResponse.json({ error: "Missing query or accountId" }, { status: 400 });
   }
 
   const workspace = workspaceId
@@ -26,7 +27,17 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const jira = new JiraClient(workspace.domain, workspace.email, workspace.apiToken);
-  const users: JiraUser[] = await jira.searchUsers(query);
 
+  if (accountId) {
+    const names = await jira.getUsersByAccountIds([accountId]);
+    const displayName = names.get(accountId);
+    if (!displayName || displayName === accountId) {
+      return NextResponse.json([]);
+    }
+    const user: JiraUser = { accountId, displayName, emailAddress: "", avatarUrl: null };
+    return NextResponse.json([user]);
+  }
+
+  const users: JiraUser[] = await jira.searchUsers(query!);
   return NextResponse.json(users);
 }

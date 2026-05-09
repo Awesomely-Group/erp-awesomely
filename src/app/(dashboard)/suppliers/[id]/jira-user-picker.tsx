@@ -27,6 +27,19 @@ export function JiraUserPicker({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!currentAccountId || currentDisplayName || !workspaceId) return;
+    const params = new URLSearchParams({ accountId: currentAccountId, workspaceId });
+    fetch(`/api/jira/users?${params.toString()}`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as JiraUser[];
+        if (data[0]?.displayName) setSelectedDisplayName(data[0].displayName);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 0);
     } else {

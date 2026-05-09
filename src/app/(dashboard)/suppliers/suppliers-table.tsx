@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { type VerificationStatus, type SupplierTipo } from "@prisma/client";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
 import { RolesSection } from "./[id]/roles-section";
+import { JiraUserPicker } from "./[id]/jira-user-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ export interface SupplierRow {
   holdedContactId: string;
   companyName: string | null;
   tipo: SupplierTipo | null;
+  jiraAccountId: string | null;
   lastVerification: { status: VerificationStatus } | null;
   roles: SupplierRole[];
 }
@@ -50,99 +52,171 @@ function statusBadge(status: VerificationStatus): React.JSX.Element {
   );
 }
 
-// ─── Fila expandida ───────────────────────────────────────────────────────────
+// ─── Drawer ───────────────────────────────────────────────────────────────────
 
-function ExpandedSupplierRow({
-  supplierId,
-  roles,
+function SupplierDrawer({
+  supplier,
   roleTemplates,
+  workspaceId,
+  onClose,
 }: {
-  supplierId: string;
-  roles: SupplierRole[];
+  supplier: SupplierRow | null;
   roleTemplates: RoleTemplate[];
+  workspaceId: string | null;
+  onClose: () => void;
 }): React.JSX.Element {
+  const isOpen = supplier !== null;
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") onClose();
+    }
+    if (isOpen) document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [isOpen, onClose]);
+
   return (
-    <tr className="bg-indigo-50/40 border-b border-gray-100">
-      <td colSpan={5} className="px-6 py-4">
-        <RolesSection supplierId={supplierId} roles={roles} templates={roleTemplates} />
-      </td>
-    </tr>
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 bg-black/30 z-40 transition-opacity duration-200 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div
+        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+      >
+        {supplier && (
+          <>
+            {/* Header */}
+            <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold text-gray-900">{supplier.name}</h2>
+                  <a
+                    href={`https://app.holded.com/contacts/${supplier.holdedContactId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-300 hover:text-gray-500 transition-colors"
+                    title="Ver en Holded"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                      <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                    </svg>
+                  </a>
+                </div>
+                {supplier.companyName && (
+                  <p className="text-xs text-gray-400 mt-0.5">{supplier.companyName}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 transition-colors ml-4 mt-0.5"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+              {/* Jira user */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Usuario de Jira</p>
+                <JiraUserPicker
+                  supplierId={supplier.id}
+                  currentAccountId={supplier.jiraAccountId}
+                  currentDisplayName={null}
+                  workspaceId={workspaceId}
+                />
+              </div>
+
+              {/* Roles */}
+              <div>
+                <RolesSection
+                  supplierId={supplier.id}
+                  roles={supplier.roles}
+                  templates={roleTemplates}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="shrink-0 px-5 py-3 border-t border-gray-100">
+              <Link
+                href={`/suppliers/${supplier.id}`}
+                onClick={onClose}
+                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Ver períodos de verificación →
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
 // ─── Fila de proveedor ────────────────────────────────────────────────────────
 
-interface SupplierTableRowProps {
-  supplier: SupplierRow;
-  isExpanded: boolean;
-  onToggleExpand: (id: string) => void;
-  roleTemplates: RoleTemplate[];
-}
-
 function SupplierTableRow({
   supplier,
-  isExpanded,
-  onToggleExpand,
-  roleTemplates,
-}: SupplierTableRowProps): React.JSX.Element {
+  onOpen,
+}: {
+  supplier: SupplierRow;
+  onOpen: (s: SupplierRow) => void;
+}): React.JSX.Element {
   return (
-    <>
-      <tr
-        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
-        onClick={() => onToggleExpand(supplier.id)}
-      >
-        <td className="px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/suppliers/${supplier.id}`}
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {supplier.name}
-            </Link>
-            <a
-              href={`https://app.holded.com/contacts/${supplier.holdedContactId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-300 hover:text-gray-500 shrink-0"
-              title="Ver en Holded"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-              </svg>
-            </a>
-          </div>
-        </td>
-        <td className="px-4 py-3 text-sm text-gray-700">
-          {supplier.companyName ?? <span className="text-gray-400">—</span>}
-        </td>
-        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
-        </td>
-        <td className="px-4 py-3">
-          {supplier.lastVerification
-            ? statusBadge(supplier.lastVerification.status)
-            : <span className="text-xs text-gray-400">Sin períodos</span>}
-        </td>
-        <td className="px-4 py-3">
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+    <tr
+      className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
+      onClick={() => onOpen(supplier)}
+    >
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-800">{supplier.name}</span>
+          <a
+            href={`https://app.holded.com/contacts/${supplier.holdedContactId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-300 hover:text-gray-500 shrink-0"
+            title="Ver en Holded"
+            onClick={(e) => e.stopPropagation()}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </td>
-      </tr>
-
-      {isExpanded && (
-        <ExpandedSupplierRow supplierId={supplier.id} roles={supplier.roles} roleTemplates={roleTemplates} />
-      )}
-    </>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+              <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+            </svg>
+          </a>
+        </div>
+      </td>
+      <td className="px-4 py-3 text-sm text-gray-700">
+        {supplier.companyName ?? <span className="text-gray-400">—</span>}
+      </td>
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
+      </td>
+      <td className="px-4 py-3">
+        {supplier.lastVerification
+          ? statusBadge(supplier.lastVerification.status)
+          : <span className="text-xs text-gray-400">Sin períodos</span>}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <svg
+          className="w-4 h-4 text-gray-300 ml-auto"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </td>
+    </tr>
   );
 }
 
@@ -151,15 +225,12 @@ function SupplierTableRow({
 interface Props {
   suppliers: SupplierRow[];
   roleTemplates?: RoleTemplate[];
+  workspaceId?: string | null;
   emptyMessage?: string;
 }
 
-export function SuppliersTable({ suppliers, roleTemplates = [], emptyMessage }: Props): React.JSX.Element {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  function handleToggle(id: string): void {
-    setExpandedId((prev) => (prev === id ? null : id));
-  }
+export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = null, emptyMessage }: Props): React.JSX.Element {
+  const [activeSupplier, setActiveSupplier] = useState<SupplierRow | null>(null);
 
   if (suppliers.length === 0) {
     return (
@@ -170,29 +241,36 @@ export function SuppliersTable({ suppliers, roleTemplates = [], emptyMessage }: 
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <table className="min-w-full divide-y divide-gray-100">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {suppliers.map((supplier) => (
-            <SupplierTableRow
-              key={supplier.id}
-              supplier={supplier}
-              isExpanded={expandedId === supplier.id}
-              onToggleExpand={handleToggle}
-              roleTemplates={roleTemplates}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-100">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {suppliers.map((supplier) => (
+              <SupplierTableRow
+                key={supplier.id}
+                supplier={supplier}
+                onOpen={setActiveSupplier}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <SupplierDrawer
+        supplier={activeSupplier}
+        roleTemplates={roleTemplates}
+        workspaceId={workspaceId}
+        onClose={() => setActiveSupplier(null)}
+      />
+    </>
   );
 }
