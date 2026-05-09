@@ -71,8 +71,9 @@ export class JiraClient {
   }
 
     async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {
-    if (keys.length === 0) return [];
-    const jql = `issueKey IN (${keys.join(",")})`;
+    const validKeys = keys.filter((k) => k.trim().length > 0);
+    if (validKeys.length === 0) return [];
+    const jql = `issueKey IN (${validKeys.map((k) => `"${k}"`).join(",")})`;
     const res = await this.fetch<{
       issues: Array<{
         key: string;
