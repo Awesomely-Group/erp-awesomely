@@ -82,7 +82,7 @@ export class JiraClient {
           timeoriginalestimate: number | null;
         };
       }>;
-    }>("/search", {
+    }>("/search/jql", {
       jql,
       fields: "summary,assignee,timeoriginalestimate",
       maxResults: "200",
