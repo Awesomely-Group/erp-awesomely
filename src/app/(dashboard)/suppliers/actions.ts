@@ -19,6 +19,18 @@ export async function updateSupplierData(
   revalidatePath("/suppliers");
 }
 
+export async function updateJiraAccountId(
+  supplierId: string,
+  jiraAccountId: string | null,
+): Promise<void> {
+  await prisma.supplier.update({
+    where: { id: supplierId },
+    data: { jiraAccountId },
+  });
+  revalidatePath("/suppliers");
+  revalidatePath(`/suppliers/${supplierId}`);
+}
+
 export async function updateSupplierTipo(
   supplierId: string,
   tipo: SupplierTipo | "",

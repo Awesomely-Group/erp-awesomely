@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { JiraClient } from "@/lib/jira";
 import { VerificationRow, type SerializedVerification, type AvailableInvoice } from "./verification-row";
 import { NewVerificationForm } from "./new-verification-form";
 import { RolesSection } from "./roles-section";
+import { JiraUserPicker } from "./jira-user-picker";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -12,7 +14,7 @@ interface Props {
 export default async function SupplierDetailPage({ params }: Props): Promise<React.JSX.Element> {
   const { id } = await params;
 
-  const [supplier, roleTemplatesRaw] = await Promise.all([
+  const [supplier, roleTemplatesRaw, firstWorkspace] = await Promise.all([
     prisma.supplier.findUnique({
       where: { id },
       include: {
@@ -34,11 +36,20 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
       },
     }),
     prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.jiraWorkspace.findFirst({ where: { active: true }, select: { id: true, domain: true, email: true, apiToken: true } }),
   ]);
 
   if (!supplier) notFound();
 
   const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
+
+  let jiraDisplayName: string | null = null;
+  if (supplier.jiraAccountId && firstWorkspace) {
+    const jira = new JiraClient(firstWorkspace.domain, firstWorkspace.email, firstWorkspace.apiToken);
+    const names = await jira.getUsersByAccountIds([supplier.jiraAccountId]);
+    const resolved = names.get(supplier.jiraAccountId);
+    jiraDisplayName = resolved !== supplier.jiraAccountId ? (resolved ?? null) : null;
+  }
 
   const availableInvoicesRaw = supplier.name
     ? await prisma.invoice.findMany({
@@ -99,9 +110,12 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
               <span>
                 Tarifa: {supplier.hourlyRate != null ? `${supplier.hourlyRate.toFixed(2)} €/h` : <span className="text-gray-400">no configurada</span>}
               </span>
-              <span>
-                Jira ID: {supplier.jiraAccountId ?? <span className="text-gray-400 font-mono">—</span>}
-              </span>
+              <JiraUserPicker
+                supplierId={supplier.id}
+                currentAccountId={supplier.jiraAccountId}
+                currentDisplayName={jiraDisplayName}
+                workspaceId={firstWorkspace?.id ?? null}
+              />
             </div>
           </div>
           <NewVerificationForm supplierId={supplier.id} roles={supplier.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) }))} />
