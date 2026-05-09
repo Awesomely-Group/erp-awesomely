@@ -86,26 +86,48 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const groupBy = searchParams.get("groupBy");
 
-    if (groupBy === "issue") {
+    if (groupBy === "issue-debug") {
       const secondsByIssue = new Map<string, number>();
+      const skipped: unknown[] = [];
       for (const w of worklogs) {
         const key = w.issue?.key;
-        if (!key) continue;
+        if (!key) { skipped.push(w); continue; }
         secondsByIssue.set(key, (secondsByIssue.get(key) ?? 0) + w.timeSpentSeconds);
       }
       const issueKeys = [...secondsByIssue.keys()];
+      const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
+      let jiraIssues: unknown[] = [];
+      let jiraError: string | null = null;
+      try { jiraIssues = await jira.getIssuesByKeys(issueKeys); } catch (e) { jiraError = String(e); }
+      return NextResponse.json({
+        step1_tempoWorklogs: { total: worklogs.length, skippedNoKey: skipped.length, sample: worklogs.slice(0, 3) },
+        step2_issueAggregation: { issueCount: issueKeys.length, issueKeys: issueKeys.slice(0, 20) },
+        step3_jiraFetch: { fetched: jiraIssues.length, error: jiraError, sample: jiraIssues.slice(0, 5) },
+      });
+    }
+
+    if (groupBy === "issue") {
+      // Tempo v4 devuelve issue.id (numérico), no issue.key
+      const secondsById = new Map<number, number>();
+      for (const w of worklogs) {
+        const id = w.issue?.id;
+        if (id == null) continue;
+        secondsById.set(id, (secondsById.get(id) ?? 0) + w.timeSpentSeconds);
+      }
+      const issueIds = [...secondsById.keys()];
 
       const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-      const jiraIssues = await jira.getIssuesByKeys(issueKeys);
-      const issueMap = new Map(jiraIssues.map((i) => [i.key, i]));
+      // getIssuesByIds devuelve JiraIssueData con numericId incluido
+      const jiraIssues = await jira.getIssuesByIds(issueIds);
+      const idxById = new Map(jiraIssues.map((i) => [i.numericId, i]));
 
-      const issues: IssueHoursEntry[] = issueKeys
-        .map((key) => {
-          const jiraData = issueMap.get(key);
-          const spentSeconds = secondsByIssue.get(key) ?? 0;
+      const issues: IssueHoursEntry[] = issueIds
+        .map((id) => {
+          const jiraData = idxById.get(id);
+          const spentSeconds = secondsById.get(id) ?? 0;
           return {
-            issueKey: key,
-            summary: jiraData?.summary ?? key,
+            issueKey: jiraData?.key ?? String(id),
+            summary: jiraData?.summary ?? String(id),
             assigneeName: jiraData?.assigneeName ?? null,
             originalEstimateHours: jiraData?.originalEstimateSeconds != null
               ? Math.round((jiraData.originalEstimateSeconds / 3600) * 100) / 100
@@ -138,7 +160,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         .map((w) => ({
           accountId: w.author.accountId,
           displayName: nameMap.get(w.author.accountId) ?? w.author.accountId,
-          issueKey: w.issue.key,
+          issueKey: w.issue.key ?? String(w.issue.id),
           startDate: w.startDate,
           hours: Math.round((w.timeSpentSeconds / 3600) * 100) / 100,
         }))

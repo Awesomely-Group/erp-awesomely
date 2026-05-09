@@ -9,6 +9,7 @@ export interface JiraProjectData {
 }
 
 export interface JiraIssueData {
+  numericId: number;
   key: string;
   summary: string;
   assigneeName: string | null;
@@ -29,6 +30,16 @@ export interface JiraPaginatedResponse<T> {
   total: number;
   isLast: boolean;
 }
+
+type JiraSearchIssue = {
+  id: string;
+  key: string;
+  fields: {
+    summary: string;
+    assignee: { displayName: string } | null;
+    timeoriginalestimate: number | null;
+  };
+};
 
 export class JiraClient {
   private readonly baseUrl: string;
@@ -62,6 +73,16 @@ export class JiraClient {
     return res.json() as Promise<T>;
   }
 
+  private mapIssue(i: JiraSearchIssue): JiraIssueData {
+    return {
+      numericId: Number(i.id),
+      key: i.key,
+      summary: i.fields.summary,
+      assigneeName: i.fields.assignee?.displayName ?? null,
+      originalEstimateSeconds: i.fields.timeoriginalestimate,
+    };
+  }
+
   async getUsersByAccountIds(accountIds: string[]): Promise<Map<string, string>> {
     const unique = [...new Set(accountIds)];
     const entries = await Promise.all(
@@ -77,30 +98,29 @@ export class JiraClient {
     return new Map(entries);
   }
 
-    async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {
-    const validKeys = keys.filter((k) => k != null && k.trim().length > 0);
-    if (validKeys.length === 0) return [];
-    const jql = `issueKey IN (${validKeys.map((k) => `"${k}"`).join(",")})`;
-    const res = await this.fetch<{
-      issues: Array<{
-        key: string;
-        fields: {
-          summary: string;
-          assignee: { displayName: string } | null;
-          timeoriginalestimate: number | null;
-        };
-      }>;
-    }>("/search/jql", {
+  async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {
+    const valid = keys.filter((k) => k != null && k.trim().length > 0);
+    if (valid.length === 0) return [];
+    const jql = `issueKey IN (${valid.map((k) => `"${k}"`).join(",")})`;
+    const res = await this.fetch<{ issues: JiraSearchIssue[] }>("/search/jql", {
       jql,
       fields: "summary,assignee,timeoriginalestimate",
       maxResults: "200",
     });
-    return res.issues.map((i) => ({
-      key: i.key,
-      summary: i.fields.summary,
-      assigneeName: i.fields.assignee?.displayName ?? null,
-      originalEstimateSeconds: i.fields.timeoriginalestimate,
-    }));
+    return res.issues.map((i) => this.mapIssue(i));
+  }
+
+  // Tempo v4 devuelve issue.id (numérico), no issue.key.
+  // Este método resuelve los IDs numéricos a datos completos incluyendo key.
+  async getIssuesByIds(ids: number[]): Promise<JiraIssueData[]> {
+    if (ids.length === 0) return [];
+    const jql = `id IN (${ids.join(",")})`;
+    const res = await this.fetch<{ issues: JiraSearchIssue[] }>("/search/jql", {
+      jql,
+      fields: "summary,assignee,timeoriginalestimate",
+      maxResults: "200",
+    });
+    return res.issues.map((i) => this.mapIssue(i));
   }
 
   async searchUsers(query: string): Promise<JiraUser[]> {
@@ -127,14 +147,11 @@ export class JiraClient {
     const maxResults = 50;
 
     while (true) {
-      const res = await this.fetch<JiraPaginatedResponse<JiraProjectData>>(
-        "/project/search",
-        {
-          startAt: startAt.toString(),
-          maxResults: maxResults.toString(),
-          expand: "description",
-        }
-      );
+      const res = await this.fetch<JiraPaginatedResponse<JiraProjectData>>("/project/search", {
+        startAt: startAt.toString(),
+        maxResults: maxResults.toString(),
+        expand: "description",
+      });
 
       all.push(...res.values);
       if (res.isLast || res.values.length < maxResults) break;

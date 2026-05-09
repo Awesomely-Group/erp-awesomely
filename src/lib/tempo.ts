@@ -1,7 +1,7 @@
 // Tempo REST API v4 client
 
 export interface TempoWorklog {
-  issue: { key: string };
+  issue: { id: number; key?: string };
   timeSpentSeconds: number;
   author: { accountId: string };
   startDate: string;
