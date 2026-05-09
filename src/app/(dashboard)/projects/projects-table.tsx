@@ -10,6 +10,7 @@ export interface ProjectRow {
   jiraKey: string;
   name: string;
   workspaceName: string;
+  workspaceDomain: string;
   status: ProjectStatus;
   hasTempoToken: boolean;
 }
@@ -347,9 +348,10 @@ interface ExpandedRowProps {
   from: string;
   to: string;
   totalCols: number;
+  workspaceDomain: string;
 }
 
-function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: ExpandedRowProps): React.JSX.Element {
+function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols, workspaceDomain }: ExpandedRowProps): React.JSX.Element {
   const [data, setData] = useState<IssueHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -422,7 +424,15 @@ function ExpandedRow({ projectId, hasTempoToken, from, to, totalCols }: Expanded
                 {data.issues.map((issue) => (
                   <tr key={issue.issueKey} className="border-t border-gray-100">
                     <td className="py-1 pr-4">
-                      <span className="font-mono bg-gray-100 text-gray-700 px-1 py-0.5 rounded">{issue.issueKey}</span>
+                      <a
+                        href={`https://${workspaceDomain}/browse/${issue.issueKey}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono bg-gray-100 text-indigo-700 hover:bg-indigo-100 px-1 py-0.5 rounded transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {issue.issueKey}
+                      </a>
                     </td>
                     <td className="py-1 pr-6 text-gray-700 max-w-[220px] truncate">{issue.summary}</td>
                     <td className="py-1 pr-6 text-gray-500">{issue.assigneeName ?? "—"}</td>
@@ -546,6 +556,7 @@ function ProjectTableRow({
           from={periodFrom}
           to={periodTo}
           totalCols={totalCols}
+          workspaceDomain={project.workspaceDomain}
         />
       )}
     </>

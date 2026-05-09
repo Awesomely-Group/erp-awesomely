@@ -20,6 +20,7 @@ export default async function ProjectsPage(): Promise<React.JSX.Element> {
       jiraKey: project.jiraKey,
       name: project.name,
       workspaceName: ws.name,
+      workspaceDomain: ws.domain.replace(/^https?:\/\//, "").replace(/\/$/, ""),
       status: project.status as ProjectStatus,
       hasTempoToken: !!ws.tempoApiToken,
     }))
