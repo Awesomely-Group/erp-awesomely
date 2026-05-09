@@ -12,32 +12,42 @@ export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query");
   const accountId = searchParams.get("accountId");
-  const workspaceId = searchParams.get("workspaceId");
 
   if (!query && !accountId) {
     return NextResponse.json({ error: "Missing query or accountId" }, { status: 400 });
   }
 
-  const workspace = workspaceId
-    ? await prisma.jiraWorkspace.findUnique({ where: { id: workspaceId } })
-    : await prisma.jiraWorkspace.findFirst({ where: { active: true } });
+  const workspaces = await prisma.jiraWorkspace.findMany({ where: { active: true } });
 
-  if (!workspace) {
+  if (workspaces.length === 0) {
     return NextResponse.json({ error: "No Jira workspace configured" }, { status: 404 });
   }
 
-  const jira = new JiraClient(workspace.domain, workspace.email, workspace.apiToken);
+  const clients = workspaces.map((w) => new JiraClient(w.domain, w.email, w.apiToken));
 
   if (accountId) {
-    const names = await jira.getUsersByAccountIds([accountId]);
-    const displayName = names.get(accountId);
-    if (!displayName || displayName === accountId) {
-      return NextResponse.json([]);
+    const results = await Promise.all(clients.map((c) => c.getUsersByAccountIds([accountId])));
+    for (const names of results) {
+      const displayName = names.get(accountId);
+      if (displayName && displayName !== accountId) {
+        const user: JiraUser = { accountId, displayName, emailAddress: "", avatarUrl: null };
+        return NextResponse.json([user]);
+      }
     }
-    const user: JiraUser = { accountId, displayName, emailAddress: "", avatarUrl: null };
-    return NextResponse.json([user]);
+    return NextResponse.json([]);
   }
 
-  const users: JiraUser[] = await jira.searchUsers(query!);
+  const perWorkspace = await Promise.all(clients.map((c) => c.searchUsers(query!)));
+  const seen = new Set<string>();
+  const users: JiraUser[] = [];
+  for (const batch of perWorkspace) {
+    for (const u of batch) {
+      if (!seen.has(u.accountId)) {
+        seen.add(u.accountId);
+        users.push(u);
+      }
+    }
+  }
+
   return NextResponse.json(users);
 }
