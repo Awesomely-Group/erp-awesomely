@@ -2,10 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
-import { getProjectProfitability } from "@/lib/profitability";
 import { ProjectDateFilters } from "./project-date-filters";
-import { ProjectInvoicesTable } from "./project-invoices-table";
 import { ProjectTimesheetSection } from "./project-timesheet-section";
 import { StatusBadge } from "./status-badge";
 
@@ -44,17 +41,8 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
     to = new Date(currentYear, q * 3 + 3, 0);
   }
 
-  const periodLabel =
-    sp.period === "year"
-      ? `Año ${currentYear}`
-      : sp.from
-        ? `${sp.from} — ${sp.to}`
-        : `Q${Math.floor(currentMonth / 3) + 1} ${currentYear}`;
-
   const fromStr = format(from, "yyyy-MM-dd");
   const toStr = format(to, "yyyy-MM-dd");
-
-  const profitability = await getProjectProfitability(projectId, from, to);
 
   return (
     <div className="space-y-6">
@@ -85,47 +73,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         </div>
         <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
       </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-sm text-gray-500">Ingresos · {periodLabel}</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            {formatCurrency(profitability?.revenue ?? 0)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-sm text-gray-500">Gastos · {periodLabel}</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">
-            {formatCurrency(profitability?.costs ?? 0)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-sm text-gray-500">Margen · {periodLabel}</p>
-          <p className={`text-2xl font-bold mt-1 ${(profitability?.margin ?? 0) >= 0 ? "text-indigo-600" : "text-red-600"}`}>
-            {formatCurrency(profitability?.margin ?? 0)}
-          </p>
-          {(profitability?.revenue ?? 0) > 0 && (
-            <p className="text-sm text-gray-400 mt-0.5">
-              {profitability!.marginPct.toFixed(1)}% sobre ingresos
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Rentabilidad */}
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold text-gray-800">
-          Rentabilidad · {periodLabel}
-        </h2>
-        {profitability && profitability.invoices.length > 0 ? (
-          <ProjectInvoicesTable invoices={profitability.invoices} />
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
-            Sin facturas clasificadas para este período
-          </div>
-        )}
-      </section>
 
       {/* Timesheet */}
       <section className="space-y-3">
