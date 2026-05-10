@@ -178,7 +178,12 @@ export function JiraUserPicker({
                     <div className="h-6 w-6 rounded-full bg-gray-200 shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{user.displayName}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-800 truncate">{user.displayName}</p>
+                      {user.active === false && (
+                        <span className="shrink-0 text-xs text-gray-400">(inactivo)</span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 truncate">{user.emailAddress}</p>
                   </div>
                   {user.accountId === selectedAccountId && (

@@ -73,6 +73,34 @@ export class TempoClient {
     return all;
   }
 
+  async getUniqueAuthorAccountIds(from: string, to: string): Promise<Set<string>> {
+    const ids = new Set<string>();
+    let offset = 0;
+    const limit = 1000;
+
+    while (true) {
+      const url = new URL(`${this.baseUrl}/worklogs`);
+      url.searchParams.set("from", from);
+      url.searchParams.set("to", to);
+      url.searchParams.set("limit", limit.toString());
+      url.searchParams.set("offset", offset.toString());
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: this.authHeader, Accept: "application/json" },
+        next: { revalidate: 0 },
+      });
+
+      if (!res.ok) break;
+
+      const data = (await res.json()) as TempoResponse;
+      for (const w of data.results) ids.add(w.author.accountId);
+      if (data.results.length < limit || !data.metadata.next) break;
+      offset += limit;
+    }
+
+    return ids;
+  }
+
   async getApprovedHours(
     jiraAccountId: string,
     from: string,

@@ -21,6 +21,7 @@ export interface JiraUser {
   displayName: string;
   emailAddress: string;
   avatarUrl: string | null;
+  active?: boolean;
 }
 
 export interface JiraPaginatedResponse<T> {
@@ -130,15 +131,38 @@ export class JiraClient {
         accountId: string;
         displayName: string;
         emailAddress: string;
+        active: boolean;
         avatarUrls: { "48x48": string };
       }>
-    >("/user/search", { query, maxResults: "20" });
+    >("/user/search", { query, maxResults: "50", includeInactive: "true" });
     return results.map((u) => ({
       accountId: u.accountId,
       displayName: u.displayName,
       emailAddress: u.emailAddress,
       avatarUrl: u.avatarUrls?.["48x48"] ?? null,
+      active: u.active,
     }));
+  }
+
+  async getUserByAccountId(accountId: string): Promise<JiraUser | null> {
+    try {
+      const u = await this.fetch<{
+        accountId: string;
+        displayName: string;
+        emailAddress: string;
+        active: boolean;
+        avatarUrls: { "48x48": string };
+      }>("/user", { accountId });
+      return {
+        accountId: u.accountId,
+        displayName: u.displayName,
+        emailAddress: u.emailAddress,
+        avatarUrl: u.avatarUrls?.["48x48"] ?? null,
+        active: u.active,
+      };
+    } catch {
+      return null;
+    }
   }
 
   async getAllProjects(): Promise<JiraProjectData[]> {
