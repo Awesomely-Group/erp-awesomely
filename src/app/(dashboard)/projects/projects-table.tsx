@@ -385,7 +385,6 @@ function ProjectTableRow({
         </span>
       </td>
       <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
-      <td className="px-4 py-3 text-gray-500">{project.workspaceName}</td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <StatusBadge projectId={project.id} status={project.status} />
       </td>
@@ -422,8 +421,8 @@ interface Props {
 
 export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
   const [search, setSearch] = useState("");
-  const [filterBrand, setFilterBrand] = useState<string>("");
-  const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">("");
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">(ProjectStatus.ONGOING);
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -433,13 +432,25 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
     [periodType, periodOffset],
   );
   const showTotal = months.length > 1;
-  // 4 fixed + month cols + optional Total + arrow
-  const totalCols = 4 + months.length + (showTotal ? 1 : 0) + 1;
+  // 3 fixed + month cols + optional Total + arrow
+  const totalCols = 3 + months.length + (showTotal ? 1 : 0) + 1;
 
-  const brandOptions = useMemo(() => {
-    const names = Array.from(new Set(allProjects.map((p) => p.workspaceName)));
-    return names.sort((a, b) => a.localeCompare(b));
+  const workspaceTabs = useMemo(() => {
+    const seen = new Set<string>();
+    const tabs: string[] = [];
+    for (const p of allProjects) {
+      if (!seen.has(p.workspaceName)) { seen.add(p.workspaceName); tabs.push(p.workspaceName); }
+    }
+    return tabs;
   }, [allProjects]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: allProjects.length };
+    for (const ws of workspaceTabs) {
+      counts[ws] = allProjects.filter((p) => p.workspaceName === ws).length;
+    }
+    return counts;
+  }, [allProjects, workspaceTabs]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -447,14 +458,35 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
       if (q && !p.name.toLowerCase().includes(q) && !p.jiraKey.toLowerCase().includes(q)) {
         return false;
       }
-      if (filterBrand && p.workspaceName !== filterBrand) return false;
+      if (activeTab !== "all" && p.workspaceName !== activeTab) return false;
       if (filterStatus && p.status !== filterStatus) return false;
       return true;
     });
-  }, [allProjects, search, filterBrand, filterStatus]);
+  }, [allProjects, search, activeTab, filterStatus]);
 
   return (
     <div className="space-y-4">
+      {/* Workspace tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[{ key: "all", label: "Todos" }, ...workspaceTabs.map((ws) => ({ key: ws, label: ws }))].map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap border-b-2 -mb-px ${
+              activeTab === key
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            {label}
+            <span className={`ml-1.5 text-xs ${activeTab === key ? "text-indigo-400" : "text-gray-400"}`}>
+              {tabCounts[key] ?? 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
@@ -464,17 +496,6 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
           placeholder="Buscar por nombre o clave..."
           className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[220px]"
         />
-
-        <select
-          value={filterBrand}
-          onChange={(e) => setFilterBrand(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        >
-          <option value="">Todas las marcas</option>
-          {brandOptions.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
 
         <select
           value={filterStatus}
@@ -487,10 +508,10 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
           ))}
         </select>
 
-        {(search || filterBrand || filterStatus) && (
+        {(search || filterStatus !== ProjectStatus.ONGOING) && (
           <button
             type="button"
-            onClick={() => { setSearch(""); setFilterBrand(""); setFilterStatus(""); }}
+            onClick={() => { setSearch(""); setFilterStatus(ProjectStatus.ONGOING); }}
             className="text-sm text-gray-500 hover:text-gray-700 underline"
           >
             Limpiar filtros
@@ -517,7 +538,6 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Clave</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Proyecto</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Marca</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
               {months.map((m) => (
                 <th key={m.key} className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap capitalize">
