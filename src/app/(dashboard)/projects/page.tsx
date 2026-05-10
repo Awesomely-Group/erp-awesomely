@@ -28,23 +28,28 @@ export default async function ProjectsPage(): Promise<React.JSX.Element> {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Proyectos</h1>
-        <p className="text-sm text-gray-500 mt-1">Proyectos de Jira sincronizados</p>
-      </div>
-
       {workspaces.length === 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center text-gray-400">
-          No hay workspaces configurados. Ve a{" "}
-          <a href="/settings" className="text-indigo-600 hover:underline">
-            Configuración
-          </a>{" "}
-          para añadir uno.
-        </div>
+        <>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Proyectos</h1>
+            <p className="text-sm text-gray-500 mt-1">Proyectos de Jira sincronizados</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center text-gray-400">
+            No hay workspaces configurados. Ve a{" "}
+            <a href="/settings" className="text-indigo-600 hover:underline">
+              Configuración
+            </a>{" "}
+            para añadir uno.
+          </div>
+        </>
       )}
 
       {workspaces.length > 0 && (
-        <ProjectsTable allProjects={allProjects} />
+        <ProjectsTable
+          allProjects={allProjects}
+          pageTitle="Proyectos"
+          pageSubtitle="Proyectos de Jira sincronizados"
+        />
       )}
     </div>
   );

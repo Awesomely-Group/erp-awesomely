@@ -177,9 +177,52 @@ export function PaymentsView({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Pagos y Cobros</h1>
-        <p className="text-sm text-gray-500 mt-1">Facturas pendientes de pago y cobro</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Pagos y Cobros</h1>
+          <p className="text-sm text-gray-500 mt-1">Facturas pendientes de pago y cobro</p>
+        </div>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Empresa</label>
+            <select
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">Todas</option>
+              {companies.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Desde</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Hasta</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          {hasFilters && (
+            <button
+              onClick={() => { setCompany("all"); setFromDate(""); setToDate(""); }}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -201,43 +244,6 @@ export function PaymentsView({
           </p>
           <p className="text-xs text-gray-400 mt-1">{balance >= 0 ? "A favor" : "En contra"}</p>
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <select
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="all">Todas las empresas</option>
-          {companies.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-        <input
-          type="date"
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          aria-label="Fecha desde"
-        />
-        <input
-          type="date"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          aria-label="Fecha hasta"
-        />
-        <span className="text-xs text-gray-500">Filtro por vencimiento</span>
-        {hasFilters && (
-          <button
-            onClick={() => { setCompany("all"); setFromDate(""); setToDate(""); }}
-            className="text-sm text-gray-500 hover:text-gray-700 px-2 py-2"
-          >
-            Limpiar filtros
-          </button>
-        )}
       </div>
 
       {/* Tabs */}

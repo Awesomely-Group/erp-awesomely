@@ -50,9 +50,7 @@ export function DashboardFilters(): React.JSX.Element {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <p className="text-xs font-medium text-gray-500 mb-3">Filtros del resumen</p>
-      <div className="flex flex-wrap gap-3 items-end">
+    <div className="flex flex-wrap gap-3 items-end">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Periodo</label>
           <select
@@ -117,7 +115,6 @@ export function DashboardFilters(): React.JSX.Element {
         >
           Limpiar
         </button>
-      </div>
     </div>
   );
 }

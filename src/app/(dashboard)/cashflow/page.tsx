@@ -326,14 +326,15 @@ export default async function CashflowPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Flujo de Caja</h1>
-        <p className="text-sm text-gray-500 mt-1">Consolidado · en EUR</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Flujo de Caja</h1>
+          <p className="text-sm text-gray-500 mt-1">Consolidado · en EUR</p>
+        </div>
+        <Suspense>
+          <CashflowFilters companies={companies} accounts={accounts} />
+        </Suspense>
       </div>
-
-      <Suspense>
-        <CashflowFilters companies={companies} accounts={accounts} />
-      </Suspense>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">

@@ -194,24 +194,25 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Bienvenido, {session?.user?.name?.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Resumen global del grupo Awesomely
-          {hasFilters && (
-            <span className="text-indigo-600 font-medium">
-              {" "}
-              · cifras filtradas
-            </span>
-          )}
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Bienvenido, {session?.user?.name?.split(" ")[0]}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Resumen global del grupo Awesomely
+            {hasFilters && (
+              <span className="text-indigo-600 font-medium">
+                {" "}
+                · cifras filtradas
+              </span>
+            )}
+          </p>
+        </div>
+        <Suspense fallback={null}>
+          <DashboardFilters />
+        </Suspense>
       </div>
-
-      <Suspense fallback={null}>
-        <DashboardFilters />
-      </Suspense>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {cards.map((card) => (

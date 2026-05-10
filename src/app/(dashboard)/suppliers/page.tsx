@@ -60,15 +60,14 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     : "No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded.";
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Proveedores</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Sincronizados desde Holded.
-        </p>
-      </div>
-
-      <div className="mb-4">
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Proveedores</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Sincronizados desde Holded.
+          </p>
+        </div>
         <SuppliersFilters />
       </div>
 

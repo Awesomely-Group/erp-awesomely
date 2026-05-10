@@ -275,13 +275,16 @@ export default async function InvoicesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Facturas</h1>
           <p className="text-sm text-gray-500 mt-1">
             {total.toLocaleString("es-ES")} facturas
             {totalPages > 1 && ` · página ${page} de ${totalPages}`}
           </p>
+        </div>
+        <div className="overflow-x-auto pb-1">
+          <InvoicesFilters />
         </div>
       </div>
 
@@ -338,10 +341,6 @@ export default async function InvoicesPage({
           )}
         </div>
       )}
-
-      <div className="w-full overflow-x-auto pb-1 -mx-1 px-1">
-        <InvoicesFilters />
-      </div>
 
       {tableSection}
 

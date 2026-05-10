@@ -417,9 +417,11 @@ function ProjectTableRow({
 
 interface Props {
   allProjects: ProjectRow[];
+  pageTitle?: string;
+  pageSubtitle?: string;
 }
 
-export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
+export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): React.JSX.Element {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">(ProjectStatus.ONGOING);
@@ -466,6 +468,48 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
 
   return (
     <div className="space-y-4">
+      {/* Header with filters top-right */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          {pageTitle && <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>}
+          {pageSubtitle && <p className="text-sm text-gray-500 mt-1">{pageSubtitle}</p>}
+        </div>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Buscar</label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nombre o clave..."
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[200px]"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Estado</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as ProjectStatus | "")}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">Todos</option>
+              {ALL_STATUSES.map((s) => (
+                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              ))}
+            </select>
+          </div>
+          {(search || filterStatus !== ProjectStatus.ONGOING) && (
+            <button
+              type="button"
+              onClick={() => { setSearch(""); setFilterStatus(ProjectStatus.ONGOING); }}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors self-end"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Workspace tabs */}
       <div className="flex gap-1 border-b border-gray-200">
         {[{ key: "all", label: "Todos" }, ...workspaceTabs.map((ws) => ({ key: ws, label: ws }))].map(({ key, label }) => (
@@ -487,49 +531,18 @@ export function ProjectsTable({ allProjects }: Props): React.JSX.Element {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nombre o clave..."
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[220px]"
-        />
-
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as ProjectStatus | "")}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        >
-          <option value="">Todos los estados</option>
-          {ALL_STATUSES.map((s) => (
-            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-          ))}
-        </select>
-
-        {(search || filterStatus !== ProjectStatus.ONGOING) && (
-          <button
-            type="button"
-            onClick={() => { setSearch(""); setFilterStatus(ProjectStatus.ONGOING); }}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
-          >
-            Limpiar filtros
-          </button>
-        )}
-
-        <span className="ml-auto text-xs text-gray-400">
+      {/* Count + Period selector */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">
           {filtered.length} de {allProjects.length} proyectos
         </span>
+        <PeriodSelector
+          periodType={periodType}
+          periodOffset={periodOffset}
+          onTypeChange={setPeriodType}
+          onOffsetChange={setPeriodOffset}
+        />
       </div>
-
-      {/* Period selector */}
-      <PeriodSelector
-        periodType={periodType}
-        periodOffset={periodOffset}
-        onTypeChange={setPeriodType}
-        onOffsetChange={setPeriodOffset}
-      />
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
