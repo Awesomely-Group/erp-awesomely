@@ -271,7 +271,11 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                       <td className="px-4 py-2 text-right tabular-nums text-gray-400">
                         {issue.originalEstimateHours != null ? `${issue.originalEstimateHours}h` : "—"}
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums text-gray-700">{issue.totalHours}h</td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${
+                        issue.originalEstimateHours != null && issue.totalHours > issue.originalEstimateHours
+                          ? "text-red-600 font-semibold"
+                          : "text-gray-700"
+                      }`}>{issue.totalHours}h</td>
                     </tr>
 
                     {issue.worklogs.map((wl, wi) => (
@@ -308,7 +312,11 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
             <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
               {data.totalEstimateHours > 0 ? `${data.totalEstimateHours}h` : "—"}
             </td>
-            <td className="px-4 pt-3 pb-3 text-right tabular-nums font-semibold text-gray-900">{data.totalHours}h</td>
+            <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${
+              data.totalEstimateHours > 0 && data.totalHours > data.totalEstimateHours
+                ? "text-red-600"
+                : "text-gray-900"
+            }`}>{data.totalHours}h</td>
           </tr>
         </tbody>
       </table>
