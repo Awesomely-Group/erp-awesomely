@@ -23,23 +23,44 @@ interface Props {
   companies: string[];
 }
 
-// ─── Month grouping ───────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function dueDayOf(dueDate: string): number {
+  return parseInt(dueDate.slice(8, 10), 10);
+}
+
+function isOverdue(dueDate: string | null): boolean {
+  if (!dueDate) return false;
+  return new Date(dueDate) < new Date();
+}
+
+function toMonthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number) as [number, number];
+  const d = new Date(year, month - 1, 1);
+  const label = d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+// ─── Month + half-month grouping ──────────────────────────────────────────────
 
 interface MonthGroup<T> {
   key: string;
   label: string;
   isPast: boolean;
   isCurrent: boolean;
-  items: T[];
+  firstHalf: T[];
+  secondHalf: T[];
   subtotal: number;
 }
 
 function groupByDueMonth<T extends { dueDate: string | null; effectivePending: number }>(
   items: T[],
+  currentKey: string,
 ): MonthGroup<T>[] {
-  const now = new Date();
-  const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
   const map = new Map<string, T[]>();
   for (const item of items) {
     const key = item.dueDate ? item.dueDate.slice(0, 7) : "sin-fecha";
@@ -51,15 +72,13 @@ function groupByDueMonth<T extends { dueDate: string | null; effectivePending: n
   const groups: MonthGroup<T>[] = [];
   for (const [key, groupItems] of map.entries()) {
     if (key === "sin-fecha") continue;
-    const [year, month] = key.split("-").map(Number) as [number, number];
-    const d = new Date(year, month - 1, 1);
-    const label = d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
     groups.push({
       key,
-      label: label.charAt(0).toUpperCase() + label.slice(1),
+      label: monthLabel(key),
       isPast: key < currentKey,
       isCurrent: key === currentKey,
-      items: groupItems,
+      firstHalf: groupItems.filter((i) => !i.dueDate || dueDayOf(i.dueDate) <= 15),
+      secondHalf: groupItems.filter((i) => !!i.dueDate && dueDayOf(i.dueDate) > 15),
       subtotal: groupItems.reduce((s, i) => s + i.effectivePending, 0),
     });
   }
@@ -73,7 +92,8 @@ function groupByDueMonth<T extends { dueDate: string | null; effectivePending: n
       label: "Sin fecha",
       isPast: false,
       isCurrent: false,
-      items: groupItems,
+      firstHalf: groupItems,
+      secondHalf: [],
       subtotal: groupItems.reduce((s, i) => s + i.effectivePending, 0),
     });
   }
@@ -81,7 +101,7 @@ function groupByDueMonth<T extends { dueDate: string | null; effectivePending: n
   return groups;
 }
 
-// ─── Month section header ─────────────────────────────────────────────────────
+// ─── Section headers ──────────────────────────────────────────────────────────
 
 interface MonthSectionHeaderProps {
   label: string;
@@ -119,12 +139,68 @@ function MonthSectionHeader({ label, count, subtotal, isPast, isCurrent }: Month
   );
 }
 
-function isOverdue(dueDate: string | null): boolean {
-  if (!dueDate) return false;
-  return new Date(dueDate) < new Date();
+interface HalfSectionHeaderProps {
+  label: string;
+  count: number;
+  subtotal: number;
+}
+
+function HalfSectionHeader({ label, count, subtotal }: HalfSectionHeaderProps): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-white text-xs text-gray-400">
+      <span className="font-medium text-gray-500">
+        {label}
+        <span className="ml-1.5 font-normal">
+          · {count} {count === 1 ? "factura" : "facturas"}
+        </span>
+      </span>
+      <span>{formatCurrency(subtotal)}</span>
+    </div>
+  );
+}
+
+// ─── Collection row ───────────────────────────────────────────────────────────
+
+function CollectionRow({ row }: { row: PendingInvoice }): React.JSX.Element {
+  const overdue = isOverdue(row.dueDate);
+  return (
+    <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 items-center px-4 py-3 border-b border-gray-100 last:border-0 text-sm">
+      <div className="truncate text-gray-900">{row.counterparty ?? "—"}</div>
+      <div className="truncate text-gray-600">{row.number ?? row.holdedId.slice(0, 8)}</div>
+      <div className="truncate text-gray-600">{row.companyName}</div>
+      <div className="text-right flex items-center justify-end gap-2">
+        {overdue && (
+          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-600">
+            Vencido
+          </span>
+        )}
+        <span className={overdue ? "text-red-600 font-medium" : "text-gray-600"}>
+          {row.dueDate ? formatDate(row.dueDate) : "Sin fecha"}
+        </span>
+      </div>
+      <div className="text-right font-semibold text-amber-600">
+        {formatCurrency(row.effectivePending)}
+      </div>
+      <div className="text-right flex items-center justify-end gap-2">
+        <Link href={`/invoices/${row.id}`} className="text-xs text-indigo-600 hover:text-indigo-700">
+          ERP
+        </Link>
+        <span className="text-gray-300">·</span>
+        <Link
+          href={holdedInvoiceUrl(row.holdedId, row.type)}
+          target="_blank"
+          className="text-xs text-indigo-600 hover:text-indigo-700"
+        >
+          Holded
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 // ─── Main view ────────────────────────────────────────────────────────────────
+
+const CURRENT_MONTH = toMonthKey(new Date());
 
 export function PaymentsView({
   pendingPayments,
@@ -133,43 +209,49 @@ export function PaymentsView({
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<"pagos" | "cobros">("pagos");
   const [company, setCompany] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
 
-  const hasFilters = company !== "all" || fromDate !== "" || toDate !== "";
+  const hasFilters = company !== "all" || selectedMonth !== CURRENT_MONTH;
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    for (const inv of pendingPayments) {
+      if (inv.dueDate) months.add(inv.dueDate.slice(0, 7));
+    }
+    for (const inv of pendingCollections) {
+      if (inv.dueDate) months.add(inv.dueDate.slice(0, 7));
+    }
+    return Array.from(months).sort();
+  }, [pendingPayments, pendingCollections]);
 
   const filteredPayments = useMemo(
     () =>
       pendingPayments.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
-        if (fromDate || toDate) {
-          if (!row.dueDate) return false;
-          const due = new Date(row.dueDate);
-          if (fromDate && due < new Date(fromDate)) return false;
-          if (toDate && due > new Date(toDate)) return false;
-        }
+        if (selectedMonth !== "all" && row.dueDate?.slice(0, 7) !== selectedMonth) return false;
         return true;
       }),
-    [pendingPayments, company, fromDate, toDate],
+    [pendingPayments, company, selectedMonth],
   );
 
   const filteredCollections = useMemo(
     () =>
       pendingCollections.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
-        if (fromDate || toDate) {
-          if (!row.dueDate) return false;
-          const due = new Date(row.dueDate);
-          if (fromDate && due < new Date(fromDate)) return false;
-          if (toDate && due > new Date(toDate)) return false;
-        }
+        if (selectedMonth !== "all" && row.dueDate?.slice(0, 7) !== selectedMonth) return false;
         return true;
       }),
-    [pendingCollections, company, fromDate, toDate],
+    [pendingCollections, company, selectedMonth],
   );
 
-  const paymentsGroups = useMemo(() => groupByDueMonth(filteredPayments), [filteredPayments]);
-  const collectionsGroups = useMemo(() => groupByDueMonth(filteredCollections), [filteredCollections]);
+  const paymentsGroups = useMemo(
+    () => groupByDueMonth(filteredPayments, CURRENT_MONTH),
+    [filteredPayments],
+  );
+  const collectionsGroups = useMemo(
+    () => groupByDueMonth(filteredCollections, CURRENT_MONTH),
+    [filteredCollections],
+  );
 
   const totalPendingPayments = filteredPayments.reduce((s, r) => s + r.effectivePending, 0);
   const totalPendingCollections = filteredCollections.reduce((s, r) => s + r.effectivePending, 0);
@@ -197,26 +279,21 @@ export function PaymentsView({
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Desde</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+            <label className="text-xs text-gray-500 font-medium">Mes</label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Hasta</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            >
+              <option value="all">Todos los meses</option>
+              {availableMonths.map((m) => (
+                <option key={m} value={m}>{monthLabel(m)}</option>
+              ))}
+            </select>
           </div>
           {hasFilters && (
             <button
-              onClick={() => { setCompany("all"); setFromDate(""); setToDate(""); }}
+              onClick={() => { setCompany("all"); setSelectedMonth(CURRENT_MONTH); }}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
             >
               Limpiar
@@ -290,12 +367,36 @@ export function PaymentsView({
               <div key={group.key}>
                 <MonthSectionHeader
                   label={group.label}
-                  count={group.items.length}
+                  count={group.firstHalf.length + group.secondHalf.length}
                   subtotal={group.subtotal}
                   isPast={group.isPast}
                   isCurrent={group.isCurrent}
                 />
-                {group.items.map((inv) => (
+                {group.key !== "sin-fecha" && group.firstHalf.length > 0 && (
+                  <>
+                    <HalfSectionHeader
+                      label="1 – 15"
+                      count={group.firstHalf.length}
+                      subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                    />
+                    {group.firstHalf.map((inv) => (
+                      <PaymentRow key={inv.id} invoice={inv} />
+                    ))}
+                  </>
+                )}
+                {group.key !== "sin-fecha" && group.secondHalf.length > 0 && (
+                  <>
+                    <HalfSectionHeader
+                      label="16 – fin de mes"
+                      count={group.secondHalf.length}
+                      subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                    />
+                    {group.secondHalf.map((inv) => (
+                      <PaymentRow key={inv.id} invoice={inv} />
+                    ))}
+                  </>
+                )}
+                {group.key === "sin-fecha" && group.firstHalf.map((inv) => (
                   <PaymentRow key={inv.id} invoice={inv} />
                 ))}
               </div>
@@ -307,7 +408,6 @@ export function PaymentsView({
       {/* Cobros tab */}
       {tab === "cobros" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {/* Column header */}
           <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 bg-gray-50 border-b border-gray-200 px-4 py-2 text-xs font-medium text-gray-500">
             <div>Cliente</div>
             <div>Factura</div>
@@ -326,53 +426,34 @@ export function PaymentsView({
               <div key={group.key}>
                 <MonthSectionHeader
                   label={group.label}
-                  count={group.items.length}
+                  count={group.firstHalf.length + group.secondHalf.length}
                   subtotal={group.subtotal}
                   isPast={group.isPast}
                   isCurrent={group.isCurrent}
                 />
-                {group.items.map((row) => {
-                  const overdue = isOverdue(row.dueDate);
-                  return (
-                    <div
-                      key={row.id}
-                      className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 items-center px-4 py-3 border-b border-gray-100 last:border-0 text-sm"
-                    >
-                      <div className="truncate text-gray-900">{row.counterparty ?? "—"}</div>
-                      <div className="truncate text-gray-600">{row.number ?? row.holdedId.slice(0, 8)}</div>
-                      <div className="truncate text-gray-600">{row.companyName}</div>
-                      <div className="text-right flex items-center justify-end gap-2">
-                        {overdue && (
-                          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-600">
-                            Vencido
-                          </span>
-                        )}
-                        <span className={overdue ? "text-red-600 font-medium" : "text-gray-600"}>
-                          {row.dueDate ? formatDate(row.dueDate) : "Sin fecha"}
-                        </span>
-                      </div>
-                      <div className="text-right font-semibold text-amber-600">
-                        {formatCurrency(row.effectivePending)}
-                      </div>
-                      <div className="text-right flex items-center justify-end gap-2">
-                        <Link
-                          href={`/invoices/${row.id}`}
-                          className="text-xs text-indigo-600 hover:text-indigo-700"
-                        >
-                          ERP
-                        </Link>
-                        <span className="text-gray-300">·</span>
-                        <Link
-                          href={holdedInvoiceUrl(row.holdedId, row.type)}
-                          target="_blank"
-                          className="text-xs text-indigo-600 hover:text-indigo-700"
-                        >
-                          Holded
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })}
+                {group.key !== "sin-fecha" && group.firstHalf.length > 0 && (
+                  <>
+                    <HalfSectionHeader
+                      label="1 – 15"
+                      count={group.firstHalf.length}
+                      subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                    />
+                    {group.firstHalf.map((row) => <CollectionRow key={row.id} row={row} />)}
+                  </>
+                )}
+                {group.key !== "sin-fecha" && group.secondHalf.length > 0 && (
+                  <>
+                    <HalfSectionHeader
+                      label="16 – fin de mes"
+                      count={group.secondHalf.length}
+                      subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                    />
+                    {group.secondHalf.map((row) => <CollectionRow key={row.id} row={row} />)}
+                  </>
+                )}
+                {group.key === "sin-fecha" && group.firstHalf.map((row) => (
+                  <CollectionRow key={row.id} row={row} />
+                ))}
               </div>
             ))
           )}
