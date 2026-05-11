@@ -33,6 +33,13 @@ export async function syncJiraWorkspace(workspaceId: string, triggeredBy?: strin
       });
       projectsSynced++;
     }
+
+    // Deactivate projects that no longer exist in Jira (deleted, not just archived)
+    const returnedJiraIds = new Set(projects.map((p) => p.id));
+    await prisma.jiraProject.updateMany({
+      where: { workspaceId, jiraId: { notIn: [...returnedJiraIds] }, active: true },
+      data: { active: false },
+    });
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
   }
