@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import Link from "next/link";
+import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +75,23 @@ export function PaymentRow({ invoice }: Props): React.JSX.Element {
           <p className={cn("text-sm font-semibold", isPaid ? "text-green-600" : "text-red-600")}>
             {isPaid ? "Pagado" : formatCurrency(invoice.effectivePending)}
           </p>
+        </div>
+
+        <div className="shrink-0 flex items-center gap-2">
+          <Link
+            href={`/invoices/${invoice.id}`}
+            className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
+          >
+            ERP
+          </Link>
+          <span className="text-gray-300">·</span>
+          <Link
+            href={holdedInvoiceUrl(invoice.holdedId, "PURCHASE")}
+            target="_blank"
+            className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
+          >
+            Holded
+          </Link>
         </div>
       </div>
 

@@ -308,13 +308,13 @@ export function PaymentsView({
       {tab === "cobros" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Column header */}
-          <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_90px] gap-3 bg-gray-50 border-b border-gray-200 px-4 py-2 text-xs font-medium text-gray-500">
+          <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 bg-gray-50 border-b border-gray-200 px-4 py-2 text-xs font-medium text-gray-500">
             <div>Cliente</div>
             <div>Factura</div>
             <div>Empresa</div>
             <div className="text-right">Vencimiento</div>
             <div className="text-right">Pendiente</div>
-            <div className="text-right">Holded</div>
+            <div className="text-right">Links</div>
           </div>
 
           {filteredCollections.length === 0 ? (
@@ -336,7 +336,7 @@ export function PaymentsView({
                   return (
                     <div
                       key={row.id}
-                      className="grid grid-cols-[1fr_1fr_1fr_140px_130px_90px] gap-3 items-center px-4 py-3 border-b border-gray-100 last:border-0 text-sm"
+                      className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 items-center px-4 py-3 border-b border-gray-100 last:border-0 text-sm"
                     >
                       <div className="truncate text-gray-900">{row.counterparty ?? "—"}</div>
                       <div className="truncate text-gray-600">{row.number ?? row.holdedId.slice(0, 8)}</div>
@@ -354,13 +354,20 @@ export function PaymentsView({
                       <div className="text-right font-semibold text-amber-600">
                         {formatCurrency(row.effectivePending)}
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex items-center justify-end gap-2">
+                        <Link
+                          href={`/invoices/${row.id}`}
+                          className="text-xs text-indigo-600 hover:text-indigo-700"
+                        >
+                          ERP
+                        </Link>
+                        <span className="text-gray-300">·</span>
                         <Link
                           href={holdedInvoiceUrl(row.holdedId, row.type)}
                           target="_blank"
                           className="text-xs text-indigo-600 hover:text-indigo-700"
                         >
-                          Abrir
+                          Holded
                         </Link>
                       </div>
                     </div>
