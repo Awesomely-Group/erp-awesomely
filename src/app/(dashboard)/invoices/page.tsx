@@ -166,7 +166,7 @@ export default async function InvoicesPage({
     where: { active: true },
     select: { id: true, jiraKey: true, name: true },
     orderBy: { name: "asc" },
-  });
+  }).catch(() => []);
   let data: Awaited<ReturnType<typeof loadInvoicesPageData>>;
   try {
     data = await loadInvoicesPageData(params);

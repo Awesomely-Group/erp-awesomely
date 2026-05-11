@@ -62,7 +62,7 @@ export async function InvoiceLinePanel({
           counterparty: invoice.counterparty,
           lineName: line.name,
           lineDescription: line.description,
-        });
+        }).catch(() => []);
         return [line.id, suggestions] as const;
       })
   ).then((entries) => new Map(entries));
