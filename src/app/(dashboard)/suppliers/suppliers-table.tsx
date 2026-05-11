@@ -28,6 +28,7 @@ export interface SupplierRow {
   companyName: string | null;
   tipo: SupplierTipo | null;
   jiraAccountId: string | null;
+  jiraDisplayName: string | null;
   lastVerification: { status: VerificationStatus } | null;
   roles: SupplierRole[];
 }
@@ -130,7 +131,7 @@ function SupplierDrawer({
                 <JiraUserPicker
                   supplierId={supplier.id}
                   currentAccountId={supplier.jiraAccountId}
-                  currentDisplayName={null}
+                  currentDisplayName={supplier.jiraDisplayName}
                   workspaceId={workspaceId}
                 />
               </div>
@@ -197,6 +198,18 @@ function SupplierTableRow({
       <td className="px-4 py-3 text-sm text-gray-700">
         {supplier.companyName ?? <span className="text-gray-400">—</span>}
       </td>
+      <td className="px-4 py-3 text-sm text-gray-700">
+        {supplier.jiraDisplayName
+          ? (
+            <span className="flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+              </svg>
+              {supplier.jiraDisplayName}
+            </span>
+          )
+          : <span className="text-gray-400">—</span>}
+      </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
       </td>
@@ -248,6 +261,7 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuario Jira</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
               <th className="px-4 py-3" />

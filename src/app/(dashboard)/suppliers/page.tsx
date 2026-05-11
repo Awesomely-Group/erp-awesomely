@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { type SupplierTipo, Prisma } from "@prisma/client";
+import { JiraClient } from "@/lib/jira";
 import { SuppliersFilters } from "./suppliers-filters";
 import { SuppliersTable } from "./suppliers-table";
 
@@ -39,10 +40,17 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
       orderBy: { name: "asc" },
     }),
     prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.jiraWorkspace.findFirst({ where: { active: true }, select: { id: true } }),
+    prisma.jiraWorkspace.findFirst({ where: { active: true }, select: { id: true, domain: true, email: true, apiToken: true } }),
   ]);
 
   const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
+
+  const accountIds = suppliers.map((s) => s.jiraAccountId).filter((id): id is string => id !== null);
+  let jiraNameMap = new Map<string, string>();
+  if (accountIds.length > 0 && firstWorkspace) {
+    const jira = new JiraClient(firstWorkspace.domain, firstWorkspace.email, firstWorkspace.apiToken);
+    jiraNameMap = await jira.getUsersByAccountIds(accountIds).catch(() => new Map());
+  }
 
   const suppliersData = suppliers.map((s) => ({
     id: s.id,
@@ -51,6 +59,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     companyName: s.company?.name ?? null,
     tipo: s.tipo,
     jiraAccountId: s.jiraAccountId,
+    jiraDisplayName: s.jiraAccountId ? (jiraNameMap.get(s.jiraAccountId) ?? null) : null,
     lastVerification: s.verifications[0] ? { status: s.verifications[0].status } : null,
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),
   }));
