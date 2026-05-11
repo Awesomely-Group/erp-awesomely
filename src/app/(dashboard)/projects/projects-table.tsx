@@ -294,10 +294,10 @@ function useMonthCostData(
   useEffect(() => {
     if (!hasTempoToken) return;
     let cancelled = false;
-    setLoading(true);
-    setData(null);
 
     async function load(): Promise<void> {
+      setLoading(true);
+      setData(null);
       try {
         const res = await fetch(
           `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month-cost`
