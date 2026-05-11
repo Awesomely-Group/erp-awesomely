@@ -67,6 +67,7 @@ type InvoicePageParams = {
   status?: string;
   type?: string;
   marca?: string;
+  project?: string;
   period?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -107,6 +108,7 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
   }
   if (Object.keys(statusWhere).length > 0) andConditions.push(statusWhere);
   if (marcaFilter) andConditions.push(marcaFilter);
+  if (params.project) andConditions.push({ lines: { some: { classification: { projectId: params.project } } } });
   if (dateRange.gte || dateRange.lte) andConditions.push({ date: dateRange });
 
   const baseWhere: Prisma.InvoiceWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
@@ -160,6 +162,11 @@ export default async function InvoicesPage({
   searchParams: Promise<InvoicePageParams>;
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
+  const activeProjects = await prisma.jiraProject.findMany({
+    where: { active: true },
+    select: { id: true, jiraKey: true, name: true },
+    orderBy: { name: "asc" },
+  });
   let data: Awaited<ReturnType<typeof loadInvoicesPageData>>;
   try {
     data = await loadInvoicesPageData(params);
@@ -198,6 +205,7 @@ export default async function InvoicesPage({
       status: q.status,
       type: q.type,
       marca: q.marca,
+      project: q.project,
       period: q.period,
       dateFrom: q.dateFrom,
       dateTo: q.dateTo,
@@ -278,7 +286,7 @@ export default async function InvoicesPage({
           </p>
         </div>
         <div className="overflow-x-auto pb-1">
-          <InvoicesFilters />
+          <InvoicesFilters projects={activeProjects} />
         </div>
       </div>
 

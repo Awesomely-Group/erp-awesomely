@@ -24,7 +24,9 @@ const MARCA_ALL_OPTIONS = [
   ...MARCA_OPTIONS,
 ];
 
-export function InvoicesFilters(): React.JSX.Element {
+interface Project { id: string; jiraKey: string; name: string }
+
+export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -34,15 +36,17 @@ export function InvoicesFilters(): React.JSX.Element {
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
+  const [selectedProject, setSelectedProject] = useState(sp.get("project") ?? "");
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
-    status: string; marca: string;
+    status: string; marca: string; project: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
       type: sp.get("type") ?? "",
       marca: selectedMarca,
+      project: selectedProject,
       ...overrides,
     };
     const params = new URLSearchParams();
@@ -50,6 +54,7 @@ export function InvoicesFilters(): React.JSX.Element {
     if (m.status) params.set("status", m.status);
     if (m.type) params.set("type", m.type);
     if (m.marca) params.set("marca", m.marca);
+    if (m.project) params.set("project", m.project);
     if (m.period) {
       params.set("period", m.period);
       if (m.period === "custom") {
@@ -67,6 +72,7 @@ export function InvoicesFilters(): React.JSX.Element {
     setDateTo("");
     setStatus("");
     setSelectedMarca("");
+    setSelectedProject("");
     const currentType = sp.get("type") ?? "";
     const params = new URLSearchParams();
     if (currentType) params.set("type", currentType);
@@ -161,6 +167,22 @@ export function InvoicesFilters(): React.JSX.Element {
           ))}
         </select>
       </div>
+
+      {projects.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Proyecto</label>
+          <select
+            value={selectedProject}
+            onChange={(e) => { const v = e.target.value; setSelectedProject(v); applyWith({ project: v }); }}
+            className={`${selectClass} w-52`}
+          >
+            <option value="">Todos</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.jiraKey} — {p.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <button
         type="button"
