@@ -3,7 +3,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { ProjectDateFilters } from "./project-date-filters";
-import { ProjectTimesheetSection } from "./project-timesheet-section";
+import { ProjectOverviewCharts } from "./project-overview-charts";
 import { ProjectInvoicesSection } from "./project-invoices-section";
 import { StatusBadge } from "./status-badge";
 
@@ -82,8 +82,27 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             {project.workspace.name}
           </p>
         </div>
-        <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
+          <Link
+            href={`/projects/${projectId}/timesheet`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Ver Timesheet
+          </Link>
+        </div>
       </div>
+
+      {/* Overview charts + KPIs */}
+      <ProjectOverviewCharts
+        projectId={project.id}
+        hasTempoToken={!!project.workspace.tempoApiToken}
+        from={fromStr}
+        to={toStr}
+      />
 
       {/* Facturas relacionadas */}
       <ProjectInvoicesSection
@@ -99,16 +118,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           holdedStatus: inv.holdedStatus ?? null,
         }))}
       />
-
-      {/* Timesheet */}
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold text-gray-800">Timesheet</h2>
-        <ProjectTimesheetSection
-          projectId={project.id}
-          hasTempoToken={!!project.workspace.tempoApiToken}
-          workspaceDomain={project.workspace.domain}
-        />
-      </section>
     </div>
   );
 }
+
