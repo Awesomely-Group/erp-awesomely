@@ -4,7 +4,9 @@ import React, { useState, useMemo, useRef, useEffect, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
-import type { TempoWorklogsMonthlyResponse } from "@/app/api/tempo/worklogs/route";
+import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
+import type { ProjectUserRoleEntry } from "@/app/api/projects/[projectId]/user-roles/route";
+import { setProjectUserRole } from "./actions";
 
 export interface ProjectRow {
   id: string;
@@ -270,53 +272,46 @@ function PeriodSelector({ periodType, periodOffset, onTypeChange, onOffsetChange
   );
 }
 
-// ─── Monthly hours hook ───────────────────────────────────────────────────────
+// ─── Month cost hook ──────────────────────────────────────────────────────────
 
-interface MonthlyHoursData {
-  byMonth: Record<string, number>;
+interface MonthCostData {
+  byMonth: Record<string, { hours: number; cost: number }>;
   totalHours: number;
+  totalCost: number;
+  estimateHours: number | null;
+  estimateCost: number | null;
 }
 
-function useMonthlyHours(
+function useMonthCostData(
   projectId: string,
   hasTempoToken: boolean,
   from: string,
   to: string,
-): { data: MonthlyHoursData | null; loading: boolean; error: string | null } {
-  const [data, setData] = useState<MonthlyHoursData | null>(null);
+): { data: MonthCostData | null; loading: boolean } {
+  const [data, setData] = useState<MonthCostData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasTempoToken) return;
     let cancelled = false;
     setLoading(true);
-    setError(null);
     setData(null);
 
     async function load(): Promise<void> {
       try {
         const res = await fetch(
-          `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month`
+          `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month-cost`
         );
-        const text = await res.text();
-        let parsed: unknown;
-        try { parsed = JSON.parse(text); } catch { throw new Error(`Error ${res.status}`); }
-        if (!res.ok) throw new Error((parsed as { error?: string }).error ?? `Error ${res.status}`);
-        const monthly = parsed as TempoWorklogsMonthlyResponse;
-        const byMonth: Record<string, number> = {};
-        for (const m of monthly.months) {
-          byMonth[m.month] = m.totalHours;
-        }
+        if (!res.ok) return;
+        const d = (await res.json()) as TempoWorklogsMonthCostResponse;
+        const byMonth: Record<string, { hours: number; cost: number }> = {};
+        for (const m of d.months) byMonth[m.month] = { hours: m.totalHours, cost: m.totalCost };
         if (!cancelled) {
-          setData({ byMonth, totalHours: monthly.totalHours });
+          setData({ byMonth, totalHours: d.totalHours, totalCost: d.totalCost, estimateHours: d.estimateHours, estimateCost: d.estimateCost });
           setLoading(false);
         }
-      } catch (e: unknown) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Error desconocido");
-          setLoading(false);
-        }
+      } catch {
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -324,7 +319,79 @@ function useMonthlyHours(
     return () => { cancelled = true; };
   }, [projectId, hasTempoToken, from, to]);
 
-  return { data, loading, error };
+  return { data, loading };
+}
+
+// ─── Roles panel ─────────────────────────────────────────────────────────────
+
+function RolesPanel({
+  projectId,
+  from,
+  to,
+  onClose,
+}: {
+  projectId: string;
+  from: string;
+  to: string;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [entries, setEntries] = useState<ProjectUserRoleEntry[] | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}/user-roles?from=${from}&to=${to}`)
+      .then(async (r) => r.ok ? (await r.json()) as ProjectUserRoleEntry[] : [])
+      .then(setEntries)
+      .catch(() => setEntries([]));
+  }, [projectId, from, to]);
+
+  async function handleChange(accountId: string, roleId: string): Promise<void> {
+    setPending(accountId);
+    await setProjectUserRole(projectId, accountId, roleId === "" ? null : roleId);
+    setEntries((prev) =>
+      prev?.map((e) => e.accountId === accountId ? { ...e, effectiveRoleId: roleId || null } : e) ?? null
+    );
+    setPending(null);
+  }
+
+  return (
+    <div className="absolute right-0 top-full mt-1 z-50 w-80 bg-white rounded-lg shadow-lg border border-gray-200 text-left" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+        <span className="text-xs font-semibold text-gray-600">Tarifas del proyecto</span>
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+      </div>
+      {entries === null ? (
+        <div className="px-3 py-3 text-xs text-gray-400 animate-pulse">Cargando…</div>
+      ) : entries.length === 0 ? (
+        <div className="px-3 py-3 text-xs text-gray-400">Sin horas en este período.</div>
+      ) : (
+        <ul className="max-h-60 overflow-y-auto divide-y divide-gray-50">
+          {entries.map((e) => (
+            <li key={e.accountId} className="px-3 py-2">
+              <p className="text-xs font-medium text-gray-700 truncate mb-1">{e.displayName}</p>
+              {e.roles.length === 0 ? (
+                <span className="text-xs text-gray-400">Sin roles (configura en Proveedores)</span>
+              ) : (
+                <select
+                  value={e.effectiveRoleId ?? ""}
+                  disabled={pending === e.accountId}
+                  onChange={(ev) => void handleChange(e.accountId, ev.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-50"
+                >
+                  <option value="">— Sin tarifa —</option>
+                  {e.roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h)
+                    </option>
+                  ))}
+                </select>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // ─── Project row ──────────────────────────────────────────────────────────────
@@ -337,6 +404,10 @@ interface ProjectRowProps {
   showTotal: boolean;
 }
 
+function fmt(n: number): string {
+  return n.toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + "€";
+}
+
 function ProjectTableRow({
   project,
   months,
@@ -345,33 +416,66 @@ function ProjectTableRow({
   showTotal,
 }: ProjectRowProps): React.JSX.Element {
   const router = useRouter();
-  const { data, loading } = useMonthlyHours(project.id, project.hasTempoToken, periodFrom, periodTo);
+  const { data, loading } = useMonthCostData(project.id, project.hasTempoToken, periodFrom, periodTo);
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const rolesRef = useRef<HTMLDivElement>(null);
 
-  function renderHoursCell(monthKey: string): React.JSX.Element {
-    if (!project.hasTempoToken) {
-      return <span className="text-gray-300">—</span>;
+  useEffect(() => {
+    if (!rolesOpen) return;
+    function handleClick(e: MouseEvent): void {
+      if (rolesRef.current && !rolesRef.current.contains(e.target as Node)) setRolesOpen(false);
     }
-    if (loading) {
-      return <span className="text-gray-300 animate-pulse text-xs">…</span>;
-    }
-    if (data) {
-      const h = data.byMonth[monthKey];
-      return h != null && h > 0
-        ? <span className="text-gray-900">{h}h</span>
-        : <span className="text-gray-300">—</span>;
-    }
-    return <span className="text-gray-300">—</span>;
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [rolesOpen]);
+
+  const dash = <span className="text-gray-300">—</span>;
+  const spin = <span className="text-gray-300 animate-pulse text-xs">…</span>;
+
+  function hoursCell(key: string): React.JSX.Element {
+    if (!project.hasTempoToken) return dash;
+    if (loading) return spin;
+    const h = data?.byMonth[key]?.hours;
+    return h != null && h > 0 ? <span className="text-gray-900">{h}h</span> : dash;
   }
 
-  function renderTotalCell(): React.JSX.Element {
-    if (!project.hasTempoToken) return <span className="text-gray-300">—</span>;
-    if (loading) return <span className="text-gray-300 animate-pulse text-xs">…</span>;
-    if (data) {
-      return data.totalHours > 0
-        ? <span className="text-gray-900 font-semibold">{data.totalHours}h</span>
-        : <span className="text-gray-300">—</span>;
-    }
-    return <span className="text-gray-300">—</span>;
+  function costCell(key: string): React.JSX.Element {
+    if (!project.hasTempoToken) return dash;
+    if (loading) return spin;
+    const c = data?.byMonth[key]?.cost;
+    return c != null && c > 0 ? <span className="text-indigo-600 tabular-nums">{fmt(c)}</span> : dash;
+  }
+
+  function totalHoursCell(): React.JSX.Element {
+    if (!project.hasTempoToken) return dash;
+    if (loading) return spin;
+    return data && data.totalHours > 0
+      ? <span className="font-semibold text-gray-900">{data.totalHours}h</span>
+      : dash;
+  }
+
+  function totalCostCell(): React.JSX.Element {
+    if (!project.hasTempoToken) return dash;
+    if (loading) return spin;
+    return data && data.totalCost > 0
+      ? <span className="font-semibold text-indigo-600 tabular-nums">{fmt(data.totalCost)}</span>
+      : dash;
+  }
+
+  function estHoursCell(): React.JSX.Element {
+    if (!project.hasTempoToken) return dash;
+    if (loading) return spin;
+    return data?.estimateHours != null && data.estimateHours > 0
+      ? <span className="text-gray-500">{data.estimateHours}h</span>
+      : dash;
+  }
+
+  function estCostCell(): React.JSX.Element {
+    if (!project.hasTempoToken) return dash;
+    if (loading) return spin;
+    return data?.estimateCost != null && data.estimateCost > 0
+      ? <span className="text-gray-400 tabular-nums">{fmt(data.estimateCost)}</span>
+      : dash;
   }
 
   return (
@@ -390,16 +494,45 @@ function ProjectTableRow({
       </td>
 
       {months.map((m) => (
-        <td key={m.key} className="px-3 py-3 text-right tabular-nums text-sm">
-          {renderHoursCell(m.key)}
-        </td>
+        <React.Fragment key={m.key}>
+          <td className="px-3 py-3 text-right tabular-nums text-sm">{hoursCell(m.key)}</td>
+          <td className="px-2 py-3 text-right tabular-nums text-sm">{costCell(m.key)}</td>
+        </React.Fragment>
       ))}
 
       {showTotal && (
-        <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">
-          {renderTotalCell()}
-        </td>
+        <>
+          <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">{totalHoursCell()}</td>
+          <td className="px-2 py-3 text-right tabular-nums text-sm">{totalCostCell()}</td>
+        </>
       )}
+
+      <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">{estHoursCell()}</td>
+      <td className="px-2 py-3 text-right tabular-nums text-sm">{estCostCell()}</td>
+
+      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+        <div ref={rolesRef} className="relative inline-block">
+          <button
+            type="button"
+            title="Configurar tarifas"
+            onClick={() => setRolesOpen((v) => !v)}
+            className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-500 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          {rolesOpen && (
+            <RolesPanel
+              projectId={project.id}
+              from={periodFrom}
+              to={periodTo}
+              onClose={() => setRolesOpen(false)}
+            />
+          )}
+        </div>
+      </td>
 
       <td className="px-4 py-3">
         <svg
@@ -434,8 +567,8 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
     [periodType, periodOffset],
   );
   const showTotal = months.length > 1;
-  // 3 fixed + month cols + optional Total + arrow
-  const totalCols = 3 + months.length + (showTotal ? 1 : 0) + 1;
+  // 3 fixed + month cols×2 (h+€) + optional Total×2 + Est×2 + gear + arrow
+  const totalCols = 3 + months.length * 2 + (showTotal ? 2 : 0) + 2 + 1 + 1;
 
   const workspaceTabs = useMemo(() => {
     const seen = new Set<string>();
@@ -553,15 +686,24 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
               <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Proyecto</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
               {months.map((m) => (
-                <th key={m.key} className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap capitalize">
-                  {m.label}
-                </th>
+                <React.Fragment key={m.key}>
+                  <th className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap capitalize">
+                    {m.label}
+                  </th>
+                  <th className="px-2 py-3 text-right font-medium text-indigo-400 whitespace-nowrap text-xs">
+                    €
+                  </th>
+                </React.Fragment>
               ))}
               {showTotal && (
-                <th className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap border-l border-gray-100">
-                  Total
-                </th>
+                <>
+                  <th className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap border-l border-gray-100">Total</th>
+                  <th className="px-2 py-3 text-right font-medium text-indigo-400 whitespace-nowrap text-xs">€</th>
+                </>
               )}
+              <th className="px-3 py-3 text-right font-medium text-gray-400 whitespace-nowrap text-xs border-l border-gray-100">Est. h</th>
+              <th className="px-2 py-3 text-right font-medium text-gray-400 whitespace-nowrap text-xs">Est. €</th>
+              <th className="px-3 py-3" />
               <th className="px-4 py-3" />
             </tr>
           </thead>

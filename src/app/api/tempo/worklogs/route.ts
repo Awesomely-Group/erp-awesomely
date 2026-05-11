@@ -25,6 +25,20 @@ export interface TempoWorklogsMonthlyResponse {
   totalHours: number;
 }
 
+export interface TempoMonthCost {
+  month: string;
+  totalHours: number;
+  totalCost: number;
+}
+
+export interface TempoWorklogsMonthCostResponse {
+  months: TempoMonthCost[];
+  totalHours: number;
+  totalCost: number;
+  estimateHours: number | null;
+  estimateCost: number | null;
+}
+
 export interface TempoWorklogEntry {
   accountId: string;
   displayName: string;
@@ -247,6 +261,66 @@ export async function GET(request: Request): Promise<NextResponse> {
         .sort((a, b) => b.startDate.localeCompare(a.startDate));
       const totalHours = Math.round(entries.reduce((sum, e) => sum + e.hours, 0) * 100) / 100;
       return NextResponse.json({ worklogs: entries, totalHours } satisfies TempoWorklogsDetailResponse);
+    }
+
+    if (groupBy === "month-cost") {
+      const accountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
+      const issueIds = [...new Set(worklogs.map((w) => w.issue.id))];
+
+      const [suppliers, projectOverrides, jiraIssues] = await Promise.all([
+        prisma.supplier.findMany({
+          where: { jiraAccountId: { in: accountIds } },
+          select: { jiraAccountId: true, hourlyRate: true, defaultRoleId: true, defaultRole: { select: { ratePerHour: true } } },
+        }),
+        prisma.projectUserRole.findMany({
+          where: { projectId: project.id, jiraAccountId: { in: accountIds } },
+          select: { jiraAccountId: true, role: { select: { ratePerHour: true } } },
+        }),
+        new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken)
+          .getIssuesByIds(issueIds).catch(() => []),
+      ]);
+
+      const supplierByAccount = new Map(suppliers.map((s) => [s.jiraAccountId!, s]));
+      const overrideByAccount = new Map(projectOverrides.map((o) => [o.jiraAccountId, Number(o.role.ratePerHour)]));
+
+      function getRate(accountId: string): number {
+        const override = overrideByAccount.get(accountId);
+        if (override != null) return override;
+        const s = supplierByAccount.get(accountId);
+        if (s?.defaultRole) return Number(s.defaultRole.ratePerHour);
+        if (s?.hourlyRate) return Number(s.hourlyRate);
+        return 0;
+      }
+
+      const monthData = new Map<string, { seconds: number; cost: number }>();
+      for (const w of worklogs) {
+        const month = w.startDate.slice(0, 7);
+        const rate = getRate(w.author.accountId);
+        const existing = monthData.get(month) ?? { seconds: 0, cost: 0 };
+        const hours = w.timeSpentSeconds / 3600;
+        monthData.set(month, { seconds: existing.seconds + w.timeSpentSeconds, cost: existing.cost + hours * rate });
+      }
+
+      const months: TempoMonthCost[] = [...monthData.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, d]) => ({
+          month,
+          totalHours: Math.round((d.seconds / 3600) * 100) / 100,
+          totalCost: Math.round(d.cost * 100) / 100,
+        }));
+
+      const totalHours = Math.round(months.reduce((s, m) => s + m.totalHours, 0) * 100) / 100;
+      const totalCost = Math.round(months.reduce((s, m) => s + m.totalCost, 0) * 100) / 100;
+
+      const totalEstimateSeconds = jiraIssues.reduce((s, i) => s + (i.originalEstimateSeconds ?? 0), 0);
+      const estimateHours = totalEstimateSeconds > 0
+        ? Math.round((totalEstimateSeconds / 3600) * 100) / 100
+        : null;
+      const estimateCost = estimateHours != null && totalHours > 0
+        ? Math.round(estimateHours * (totalCost / totalHours) * 100) / 100
+        : null;
+
+      return NextResponse.json({ months, totalHours, totalCost, estimateHours, estimateCost } satisfies TempoWorklogsMonthCostResponse);
     }
 
     if (groupBy === "month") {

@@ -149,6 +149,7 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
         supplierId={supplier.id}
         roles={supplier.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) }))}
         templates={roleTemplates}
+        defaultRoleId={supplier.defaultRoleId}
       />
 
       {/* Tabla de verificaciones */}

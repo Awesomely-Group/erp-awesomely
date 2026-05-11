@@ -125,6 +125,7 @@ model JiraProject {
   status      ProjectStatus @default(NOT_STARTED)
 
   classifications Classification[]
+  userRoles       ProjectUserRole[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -344,6 +345,9 @@ model Supplier {
   hourlyRate    Decimal?
   tipo          SupplierTipo?
 
+  defaultRoleId String?
+  defaultRole   SupplierRole? @relation("SupplierDefaultRole", fields: [defaultRoleId], references: [id], onDelete: SetNull)
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -366,10 +370,27 @@ model SupplierRole {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  verifications SupplierVerification[]
+  verifications       SupplierVerification[]
+  defaultForSuppliers Supplier[]             @relation("SupplierDefaultRole")
+  projectUserRoles    ProjectUserRole[]
 
   @@index([supplierId])
   @@map("supplier_roles")
+}
+
+model ProjectUserRole {
+  id            String       @id @default(cuid())
+  projectId     String
+  project       JiraProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jiraAccountId String
+  roleId        String
+  role          SupplierRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([projectId, jiraAccountId])
+  @@index([projectId])
+  @@map("project_user_roles")
 }
 
 /// Catálogo global de roles de proveedor, gestionable desde Configuración.

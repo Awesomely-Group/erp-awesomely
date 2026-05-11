@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createRole, updateRole, deleteRole } from "./actions";
+import { setDefaultRole } from "../actions";
 
 type Role = { id: string; name: string; ratePerHour: number };
 type Template = { id: string; name: string; color: string };
@@ -10,10 +11,14 @@ function RoleRow({
   role,
   supplierId,
   templates,
+  isDefault,
+  onSetDefault,
 }: {
   role: Role;
   supplierId: string;
   templates: Template[];
+  isDefault: boolean;
+  onSetDefault: (roleId: string | null) => void;
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(role.name);
@@ -81,8 +86,20 @@ function RoleRow({
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 last:border-0">
-      <span className="flex-1 text-sm font-medium text-gray-800">{role.name}</span>
+    <div className={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 last:border-0 ${isDefault ? "bg-indigo-50" : ""}`}>
+      <button
+        type="button"
+        title={isDefault ? "Quitar rol por defecto" : "Usar como rol por defecto"}
+        onClick={() => onSetDefault(isDefault ? null : role.id)}
+        disabled={isPending}
+        className={`shrink-0 text-base leading-none disabled:opacity-40 transition-colors ${isDefault ? "text-indigo-500" : "text-gray-300 hover:text-indigo-400"}`}
+      >
+        ★
+      </button>
+      <span className="flex-1 text-sm font-medium text-gray-800">
+        {role.name}
+        {isDefault && <span className="ml-1.5 text-xs text-indigo-400 font-normal">por defecto</span>}
+      </span>
       <span className="text-sm text-gray-600 tabular-nums">
         {role.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/h
       </span>
@@ -189,11 +206,23 @@ export function RolesSection({
   supplierId,
   roles,
   templates = [],
+  defaultRoleId: initialDefaultRoleId = null,
 }: {
   supplierId: string;
   roles: Role[];
   templates?: Template[];
+  defaultRoleId?: string | null;
 }): React.JSX.Element {
+  const [defaultRoleId, setDefaultRoleId] = useState<string | null>(initialDefaultRoleId);
+  const [, startTransition] = useTransition();
+
+  function handleSetDefault(roleId: string | null): void {
+    setDefaultRoleId(roleId);
+    startTransition(async () => {
+      await setDefaultRole(supplierId, roleId);
+    });
+  }
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 mb-6">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -211,7 +240,14 @@ export function RolesSection({
       ) : (
         <div>
           {roles.map((role) => (
-            <RoleRow key={role.id} role={role} supplierId={supplierId} templates={templates} />
+            <RoleRow
+              key={role.id}
+              role={role}
+              supplierId={supplierId}
+              templates={templates}
+              isDefault={role.id === defaultRoleId}
+              onSetDefault={handleSetDefault}
+            />
           ))}
           <div className="px-4 pb-3">
             <AddRoleForm supplierId={supplierId} templates={templates} />

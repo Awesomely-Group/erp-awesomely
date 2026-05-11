@@ -14,3 +14,22 @@ export async function updateProjectStatus(
   await prisma.jiraProject.update({ where: { id: projectId }, data: { status } });
   revalidatePath("/projects", "layout");
 }
+
+export async function setProjectUserRole(
+  projectId: string,
+  jiraAccountId: string,
+  roleId: string | null,
+): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  if (roleId === null) {
+    await prisma.projectUserRole.deleteMany({ where: { projectId, jiraAccountId } });
+  } else {
+    await prisma.projectUserRole.upsert({
+      where: { projectId_jiraAccountId: { projectId, jiraAccountId } },
+      create: { projectId, jiraAccountId, roleId },
+      update: { roleId },
+    });
+  }
+}
