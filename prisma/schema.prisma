@@ -159,8 +159,10 @@ model Invoice {
   holdedStatus Int?
   status       InvoiceStatus @default(PENDING)
 
-  number       String?
-  counterparty String?
+  number          String?
+  counterparty    String?
+  holdedContactId String?
+
   date         DateTime
   dueDate      DateTime?
 
@@ -192,6 +194,7 @@ model Invoice {
   @@unique([holdedId, companyId])
   @@index([companyId])
   @@index([companyId, date])
+  @@index([companyId, holdedContactId])
   @@index([date])
   @@index([accountingMonth])
   @@index([marca])

@@ -317,12 +317,37 @@ export class HoldedClient {
     // The Contacts API v1 returns HTML instead of JSON when called with an API key.
     // The invoicing contacts endpoint works correctly and includes a string `type` field
     // ("client", "supplier", "both") — filter on that to exclude pure clients.
-    const data = await this.fetch<Array<{ id: string; name: string; type?: string }>>(
-      "/contacts"
-    );
-    return data
-      .filter((c) => c.type === "supplier" || c.type === "both")
-      .map((c) => ({ id: c.id, name: c.name }));
+    //
+    // Holded may return only a subset of contacts per request (observed limit ~100).
+    // Paginate page-by-page until we get an empty batch. If Holded ignores ?page= and
+    // always returns the same first page, prevFirstId detection stops the loop early.
+    const PAGE_SIZE = 500;
+    const MAX_PAGES = 20;
+    const all = new Map<string, HoldedSupplierContact>();
+    let prevFirstId: string | undefined;
+
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const batch = await this.fetch<Array<{ id: string; name: string; type?: string }>>(
+        "/contacts",
+        { page: String(page), limit: String(PAGE_SIZE) }
+      );
+
+      if (batch.length === 0) break;
+
+      const firstId = batch[0]?.id;
+      if (page > 1 && firstId !== undefined && firstId === prevFirstId) break;
+      prevFirstId = firstId;
+
+      for (const c of batch) {
+        if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
+          all.set(c.id, { id: c.id, name: c.name });
+        }
+      }
+
+      if (batch.length < PAGE_SIZE) break;
+    }
+
+    return [...all.values()];
   }
 
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {

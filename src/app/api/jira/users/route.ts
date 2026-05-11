@@ -38,11 +38,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json([]);
   }
 
-  const perWorkspace = await Promise.all(clients.map((c) => c.searchUsers(query!)));
+  // Use allSettled so a single failing workspace doesn't suppress all results
+  const searchResults = await Promise.allSettled(clients.map((c) => c.searchUsers(query!)));
   const seen = new Set<string>();
   const users: JiraUser[] = [];
-  for (const batch of perWorkspace) {
-    for (const u of batch) {
+  for (const result of searchResults) {
+    if (result.status !== "fulfilled") continue;
+    for (const u of result.value) {
       if (!seen.has(u.accountId)) {
         seen.add(u.accountId);
         users.push(u);
@@ -50,39 +52,48 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
   }
 
-  // Complementar con usuarios de Tempo que no aparecen en Jira (eliminados)
+  // Complementar con usuarios de Tempo que no aparecen en Jira (eliminados/inactivos).
+  // Wrapped in a race against a 2.5s timeout so a slow Tempo response never blocks
+  // the Jira results — the picker stays usable even without Tempo data.
   const tempoWorkspace = workspaces.find((w) => w.tempoApiToken);
   if (tempoWorkspace?.tempoApiToken) {
-    const yearAgo = new Date();
-    yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-    const from = yearAgo.toISOString().slice(0, 10);
-    const to = new Date().toISOString().slice(0, 10);
-
-    const tempoClient = new TempoClient(tempoWorkspace.tempoApiToken);
-    const tempoIds = await tempoClient.getUniqueAuthorAccountIds(from, to);
-    const unknownIds = [...tempoIds].filter((id) => !seen.has(id));
-
     const q = query!.toLowerCase();
-    const resolved = await Promise.all(
-      unknownIds.map(async (accountId) => {
-        for (const client of clients) {
-          const u = await client.getUserByAccountId(accountId);
-          if (u) return u;
-        }
-        return null;
-      })
-    );
+    const tempoToken = tempoWorkspace.tempoApiToken;
 
-    for (const u of resolved) {
-      if (!u) continue;
-      const matches =
-        u.displayName.toLowerCase().includes(q) ||
-        u.emailAddress.toLowerCase().includes(q);
-      if (matches && !seen.has(u.accountId)) {
-        seen.add(u.accountId);
-        users.push(u);
+    const tempoLookup = async (): Promise<void> => {
+      const yearAgo = new Date();
+      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+      const from = yearAgo.toISOString().slice(0, 10);
+      const to = new Date().toISOString().slice(0, 10);
+
+      const tempoClient = new TempoClient(tempoToken);
+      const tempoIds = await tempoClient.getUniqueAuthorAccountIds(from, to);
+      const unknownIds = [...tempoIds].filter((id) => !seen.has(id));
+
+      const resolved = await Promise.all(
+        unknownIds.map(async (accountId) => {
+          for (const client of clients) {
+            const u = await client.getUserByAccountId(accountId);
+            if (u) return u;
+          }
+          return null;
+        })
+      );
+
+      for (const u of resolved) {
+        if (!u) continue;
+        const matches =
+          u.displayName.toLowerCase().includes(q) ||
+          u.emailAddress.toLowerCase().includes(q);
+        if (matches && !seen.has(u.accountId)) {
+          seen.add(u.accountId);
+          users.push(u);
+        }
       }
-    }
+    };
+
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2500));
+    await Promise.race([tempoLookup(), timeout]).catch(() => {});
   }
 
   return NextResponse.json(users);

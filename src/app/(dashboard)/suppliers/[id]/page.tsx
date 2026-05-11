@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { JiraClient } from "@/lib/jira";
 import { VerificationRow, type SerializedVerification, type AvailableInvoice } from "./verification-row";
 import { NewVerificationForm } from "./new-verification-form";
@@ -51,12 +52,20 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
     jiraDisplayName = resolved !== supplier.jiraAccountId ? (resolved ?? null) : null;
   }
 
-  const availableInvoicesRaw = supplier.name
+  const invoiceOrConditions: Prisma.InvoiceWhereInput[] = [];
+  if (supplier.holdedContactId) {
+    invoiceOrConditions.push({ holdedContactId: supplier.holdedContactId });
+  }
+  if (supplier.name) {
+    invoiceOrConditions.push({
+      holdedContactId: null,
+      counterparty: { contains: supplier.name, mode: "insensitive" },
+    });
+  }
+
+  const availableInvoicesRaw = invoiceOrConditions.length > 0
     ? await prisma.invoice.findMany({
-        where: {
-          type: "PURCHASE",
-          counterparty: { contains: supplier.name, mode: "insensitive" },
-        },
+        where: { type: "PURCHASE", OR: invoiceOrConditions },
         orderBy: { date: "desc" },
         take: 50,
         select: { id: true, number: true, counterparty: true, totalEur: true, date: true },
