@@ -73,6 +73,44 @@ export class TempoClient {
     return all;
   }
 
+  /**
+   * Returns accountIds for all users registered in this Tempo workspace.
+   * Uses GET /4/users which is a single paginated request — much faster than
+   * scanning worklogs. Throws if the endpoint is unavailable (caller should fall back).
+   */
+  async getUserAccountIds(): Promise<Set<string>> {
+    const ids = new Set<string>();
+    let offset = 0;
+    const limit = 200;
+
+    while (true) {
+      const url = new URL(`${this.baseUrl}/users`);
+      url.searchParams.set("limit", limit.toString());
+      url.searchParams.set("offset", offset.toString());
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: this.authHeader, Accept: "application/json" },
+        next: { revalidate: 0 },
+      });
+
+      if (!res.ok) throw new Error(`Tempo /users returned ${res.status}`);
+
+      const data = (await res.json()) as {
+        results: Array<{ accountId: string }>;
+        metadata: { count: number; offset: number; limit: number; next?: string };
+      };
+
+      for (const u of data.results) {
+        if (u.accountId) ids.add(u.accountId);
+      }
+
+      if (data.results.length < limit || !data.metadata.next) break;
+      offset += limit;
+    }
+
+    return ids;
+  }
+
   async getUniqueAuthorAccountIds(from: string, to: string): Promise<Set<string>> {
     const ids = new Set<string>();
     let offset = 0;

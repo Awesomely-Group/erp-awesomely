@@ -52,22 +52,27 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
   }
 
-  // Complementar con usuarios de Tempo que no aparecen en Jira (eliminados/inactivos).
-  // Wrapped in a race against a 2.5s timeout so a slow Tempo response never blocks
-  // the Jira results — the picker stays usable even without Tempo data.
+  // Complementar con usuarios de Tempo que no aparecen en Jira search (suspended/eliminated).
+  // Uses GET /4/users (fast) with fallback to scanning worklogs from the last year.
   const tempoWorkspace = workspaces.find((w) => w.tempoApiToken);
   if (tempoWorkspace?.tempoApiToken) {
     const q = query!.toLowerCase();
-    const tempoToken = tempoWorkspace.tempoApiToken;
+    const tempoClient = new TempoClient(tempoWorkspace.tempoApiToken);
 
-    const tempoLookup = async (): Promise<void> => {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-      const from = yearAgo.toISOString().slice(0, 10);
-      const to = new Date().toISOString().slice(0, 10);
+    try {
+      let tempoIds: Set<string>;
+      try {
+        tempoIds = await tempoClient.getUserAccountIds();
+      } catch {
+        // /4/users not available — fall back to scanning worklogs
+        const yearAgo = new Date();
+        yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+        tempoIds = await tempoClient.getUniqueAuthorAccountIds(
+          yearAgo.toISOString().slice(0, 10),
+          new Date().toISOString().slice(0, 10)
+        );
+      }
 
-      const tempoClient = new TempoClient(tempoToken);
-      const tempoIds = await tempoClient.getUniqueAuthorAccountIds(from, to);
       const unknownIds = [...tempoIds].filter((id) => !seen.has(id));
 
       const resolved = await Promise.all(
@@ -90,10 +95,9 @@ export async function GET(request: Request): Promise<NextResponse> {
           users.push(u);
         }
       }
-    };
-
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2500));
-    await Promise.race([tempoLookup(), timeout]).catch(() => {});
+    } catch {
+      // Tempo lookup failed entirely — return Jira-only results
+    }
   }
 
   return NextResponse.json(users);
