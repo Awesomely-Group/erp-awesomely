@@ -106,9 +106,13 @@ function PeriodSelector({ periodType, periodOffset, onTypeChange, onOffsetChange
 // ─── Hierarchical timesheet ───────────────────────────────────────────────────
 
 interface WorklogDetail { description: string; issueKey: string; hours: number; }
-interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; }
-interface UserWithIssues { accountId: string; displayName: string; totalHours: number; issues: IssueWithWorklogs[]; }
-interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; }
+interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; actualCostEur: number; estimatedCostEur: number | null; }
+interface UserWithIssues { accountId: string; displayName: string; totalHours: number; ratePerHour: number; actualCostEur: number; estimatedCostEur: number | null; issues: IssueWithWorklogs[]; }
+interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; totalActualCostEur: number; totalEstimatedCostEur: number; }
+
+function formatEur(amount: number): string {
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(amount);
+}
 
 function IssueIcon(): React.JSX.Element {
   return (
@@ -217,8 +221,10 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
           <tr className="border-b border-gray-100 bg-gray-50">
             <th className="px-4 py-3 text-left font-medium text-gray-600">Usuario / Tarea / Worklog</th>
             <th className="px-4 py-3 text-left font-medium text-gray-600 w-28">Key</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600 w-24">Estimado</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600 w-20">Realizado</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600 w-24">Est. h</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600 w-20">Real h</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600 w-28">Coste Est.</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600 w-28">Coste Real</th>
           </tr>
         </thead>
         <tbody>
@@ -247,6 +253,16 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                   <td className="px-4 py-2.5" />
                   <td className="px-4 py-2.5" />
                   <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-gray-900">{user.totalHours}h</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-gray-400 font-semibold">
+                    {user.estimatedCostEur != null ? formatEur(user.estimatedCostEur) : "—"}
+                  </td>
+                  <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${
+                    user.estimatedCostEur != null && user.actualCostEur > user.estimatedCostEur
+                      ? "text-red-600"
+                      : "text-gray-900"
+                  }`}>
+                    {user.ratePerHour > 0 ? formatEur(user.actualCostEur) : "—"}
+                  </td>
                 </tr>
 
                 {!collapsed && user.issues.map((issue) => (
@@ -276,6 +292,16 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                           ? "text-red-600 font-semibold"
                           : "text-gray-700"
                       }`}>{issue.totalHours}h</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-400">
+                        {issue.estimatedCostEur != null ? formatEur(issue.estimatedCostEur) : "—"}
+                      </td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${
+                        issue.estimatedCostEur != null && issue.actualCostEur > issue.estimatedCostEur
+                          ? "text-red-600 font-semibold"
+                          : "text-gray-700"
+                      }`}>
+                        {issue.actualCostEur > 0 ? formatEur(issue.actualCostEur) : "—"}
+                      </td>
                     </tr>
 
                     {issue.worklogs.map((wl, wi) => (
@@ -298,6 +324,8 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                         </td>
                         <td className="px-4 py-1.5" />
                         <td className="px-4 py-1.5 text-right tabular-nums text-gray-500">{wl.hours}h</td>
+                        <td className="px-4 py-1.5" />
+                        <td className="px-4 py-1.5" />
                       </tr>
                     ))}
                   </React.Fragment>
@@ -317,6 +345,16 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                 ? "text-red-600"
                 : "text-gray-900"
             }`}>{data.totalHours}h</td>
+            <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
+              {data.totalEstimatedCostEur > 0 ? formatEur(data.totalEstimatedCostEur) : "—"}
+            </td>
+            <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${
+              data.totalEstimatedCostEur > 0 && data.totalActualCostEur > data.totalEstimatedCostEur
+                ? "text-red-600"
+                : "text-gray-900"
+            }`}>
+              {data.totalActualCostEur > 0 ? formatEur(data.totalActualCostEur) : "—"}
+            </td>
           </tr>
         </tbody>
       </table>

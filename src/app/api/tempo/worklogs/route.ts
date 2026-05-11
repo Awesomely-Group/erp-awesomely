@@ -78,12 +78,17 @@ export interface IssueWithWorklogs {
   totalHours: number;
   originalEstimateHours: number | null;
   worklogs: WorklogDetail[];
+  actualCostEur: number;
+  estimatedCostEur: number | null;
 }
 
 export interface UserWithIssues {
   accountId: string;
   displayName: string;
   totalHours: number;
+  ratePerHour: number;
+  actualCostEur: number;
+  estimatedCostEur: number | null;
   issues: IssueWithWorklogs[];
 }
 
@@ -91,6 +96,8 @@ export interface HierarchicalHoursResponse {
   users: UserWithIssues[];
   totalHours: number;
   totalEstimateHours: number;
+  totalActualCostEur: number;
+  totalEstimatedCostEur: number;
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -190,13 +197,33 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     if (groupBy === "hierarchical") {
+      const allAccountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
       const allIssueIds = [...new Set(worklogs.map((w) => w.issue.id))];
       const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-      const [jiraIssues, nameMap] = await Promise.all([
+      const [jiraIssues, nameMap, suppliers, projectOverrides] = await Promise.all([
         jira.getIssuesByIds(allIssueIds),
-        jira.getUsersByAccountIds([...new Set(worklogs.map((w) => w.author.accountId))]),
+        jira.getUsersByAccountIds(allAccountIds),
+        prisma.supplier.findMany({
+          where: { jiraAccountId: { in: allAccountIds } },
+          select: { jiraAccountId: true, hourlyRate: true, defaultRole: { select: { ratePerHour: true } } },
+        }),
+        prisma.projectUserRole.findMany({
+          where: { projectId: project.id, jiraAccountId: { in: allAccountIds } },
+          select: { jiraAccountId: true, role: { select: { ratePerHour: true } } },
+        }),
       ]);
       const issueMap = new Map(jiraIssues.map((i) => [i.numericId, i]));
+      const supplierByAccount = new Map(suppliers.map((s) => [s.jiraAccountId!, s]));
+      const overrideByAccount = new Map(projectOverrides.map((o) => [o.jiraAccountId, Number(o.role.ratePerHour)]));
+
+      function getRate(accountId: string): number {
+        const override = overrideByAccount.get(accountId);
+        if (override != null) return override;
+        const s = supplierByAccount.get(accountId);
+        if (s?.defaultRole) return Number(s.defaultRole.ratePerHour);
+        if (s?.hourlyRate) return Number(s.hourlyRate);
+        return 0;
+      }
 
       // user → issue → worklogs
       const userMap = new Map<string, Map<number, { seconds: number; entries: Array<{ desc: string; seconds: number }> }>>();
@@ -211,25 +238,45 @@ export async function GET(request: Request): Promise<NextResponse> {
 
       const users: UserWithIssues[] = [...userMap.entries()]
         .map(([accountId, issueGroups]) => {
+          const rate = getRate(accountId);
           const issues: IssueWithWorklogs[] = [...issueGroups.entries()].map(([issueId, ig]) => {
             const jiraData = issueMap.get(issueId);
             const issueKey = jiraData?.key ?? String(issueId);
+            const totalHours = Math.round((ig.seconds / 3600) * 100) / 100;
+            const originalEstimateHours = jiraData?.originalEstimateSeconds != null
+              ? Math.round((jiraData.originalEstimateSeconds / 3600) * 100) / 100
+              : null;
             return {
               issueKey,
               summary: jiraData?.summary ?? issueKey,
-              totalHours: Math.round((ig.seconds / 3600) * 100) / 100,
-              originalEstimateHours: jiraData?.originalEstimateSeconds != null
-                ? Math.round((jiraData.originalEstimateSeconds / 3600) * 100) / 100
-                : null,
+              totalHours,
+              originalEstimateHours,
               worklogs: ig.entries.map((e) => ({
                 description: e.desc || "—",
                 issueKey,
                 hours: Math.round((e.seconds / 3600) * 100) / 100,
               })),
+              actualCostEur: Math.round(totalHours * rate * 100) / 100,
+              estimatedCostEur: originalEstimateHours != null
+                ? Math.round(originalEstimateHours * rate * 100) / 100
+                : null,
             };
           }).sort((a, b) => a.issueKey.localeCompare(b.issueKey));
           const totalHours = Math.round(issues.reduce((s, i) => s + i.totalHours, 0) * 100) / 100;
-          return { accountId, displayName: nameMap.get(accountId) ?? accountId, totalHours, issues };
+          const actualCostEur = Math.round(issues.reduce((s, i) => s + i.actualCostEur, 0) * 100) / 100;
+          const estimatedIssues = issues.filter((i) => i.estimatedCostEur != null);
+          const estimatedCostEur = estimatedIssues.length > 0
+            ? Math.round(estimatedIssues.reduce((s, i) => s + (i.estimatedCostEur ?? 0), 0) * 100) / 100
+            : null;
+          return {
+            accountId,
+            displayName: nameMap.get(accountId) ?? accountId,
+            totalHours,
+            ratePerHour: rate,
+            actualCostEur,
+            estimatedCostEur,
+            issues,
+          };
         })
         .sort((a, b) => b.totalHours - a.totalHours);
 
@@ -239,7 +286,18 @@ export async function GET(request: Request): Promise<NextResponse> {
           .map((key) => users.flatMap((u) => u.issues).find((i) => i.issueKey === key)?.originalEstimateHours ?? 0)
           .reduce((s, h) => s + h, 0) * 100
       ) / 100;
-      return NextResponse.json({ users, totalHours, totalEstimateHours } satisfies HierarchicalHoursResponse);
+      const totalActualCostEur = Math.round(users.reduce((s, u) => s + u.actualCostEur, 0) * 100) / 100;
+      const totalEstimatedCostEur = Math.round(
+        users.reduce((s, u) => s + (u.estimatedCostEur ?? 0), 0) * 100
+      ) / 100;
+
+      return NextResponse.json({
+        users,
+        totalHours,
+        totalEstimateHours,
+        totalActualCostEur,
+        totalEstimatedCostEur,
+      } satisfies HierarchicalHoursResponse);
     }
 
     if (groupBy === "worklog") {
