@@ -92,11 +92,11 @@ export class JiraClient {
           const user = await this.fetch<{ displayName: string }>("/user", { accountId });
           return [accountId, user.displayName] as [string, string];
         } catch {
-          return [accountId, accountId] as [string, string];
+          return null;
         }
       })
     );
-    return new Map(entries);
+    return new Map(entries.filter((e): e is [string, string] => e !== null));
   }
 
   async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {
