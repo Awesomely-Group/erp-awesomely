@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Prisma, InvoiceType } from "@prisma/client";
+import { Prisma, InvoiceType, ForecastType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
@@ -18,6 +18,7 @@ type CashflowParams = {
   account?: string;
   l1?: string;
   selectedMonth?: string;
+  scenario?: string;
 };
 
 type CashflowKpis = {
@@ -25,6 +26,8 @@ type CashflowKpis = {
   totalOutflows: number;
   netCashflow: number;
   monthCount: number;
+  totalForecastInflows: number;
+  totalForecastOutflows: number;
 };
 
 type RawMonthlyRow = {
@@ -53,6 +56,9 @@ function resolveDateRange(params: CashflowParams): { gte?: Date; lte?: Date } {
       return { gte: new Date(y, m - 12, 1) };
   }
 }
+
+type ProformaMonthRow = { month: Date; total_eur: unknown };
+type ForecastMonthRow = { month: Date; type: string; pessimistic: unknown; optimistic: unknown };
 
 async function getCashflowData(params: CashflowParams): Promise<{
   monthly: CashflowMonthlyPoint[];
@@ -137,23 +143,51 @@ async function getCashflowData(params: CashflowParams): Promise<{
     `;
   }
 
+  // Fetch proformas and forecasts for the same date range
+  const scenario = params.scenario === "optimistic" ? "optimistic" : "pessimistic";
+
+  const [proformaRows, forecastRows] = await Promise.all([
+    prisma.$queryRaw<ProformaMonthRow[]>`
+      SELECT DATE_TRUNC('month', date) AS month, SUM("totalEur") AS total_eur
+      FROM proformas
+      WHERE "holdedStatus" IN (0, 1)
+      ${dateRange.gte ? Prisma.sql`AND date >= ${dateRange.gte}` : Prisma.empty}
+      ${dateRange.lte ? Prisma.sql`AND date <= ${dateRange.lte}` : Prisma.empty}
+      GROUP BY DATE_TRUNC('month', date)
+      ORDER BY month ASC
+    `,
+    prisma.$queryRaw<ForecastMonthRow[]>`
+      SELECT DATE_TRUNC('month', month) AS month, type,
+        SUM("amountPessimistic") AS pessimistic,
+        SUM("amountOptimistic") AS optimistic
+      FROM forecasts
+      ${dateRange.gte ? Prisma.sql`WHERE month >= ${dateRange.gte}` : Prisma.empty}
+      ${dateRange.lte ? (dateRange.gte ? Prisma.sql`AND month <= ${dateRange.lte}` : Prisma.sql`WHERE month <= ${dateRange.lte}`) : Prisma.empty}
+      GROUP BY DATE_TRUNC('month', month), type
+      ORDER BY month ASC
+    `,
+  ]);
+
   const pointMap = new Map<string, CashflowMonthlyPoint>();
 
-  for (const row of rows) {
-    const d = new Date(row.month);
+  const ensurePoint = (d: Date): CashflowMonthlyPoint => {
     const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const monthLabel = d.toLocaleDateString("es-ES", { month: "short", year: "numeric" });
-
     if (!pointMap.has(monthKey)) {
       pointMap.set(monthKey, {
         monthKey, monthLabel,
         inflowsBase: 0, inflowsTax: 0, inflows: 0,
         outflowsBase: 0, outflowsTax: 0, outflows: 0,
         net: 0,
+        forecastInflows: 0, forecastOutflows: 0,
       });
     }
+    return pointMap.get(monthKey)!;
+  };
 
-    const point = pointMap.get(monthKey)!;
+  for (const row of rows) {
+    const d = new Date(row.month);
+    const point = ensurePoint(d);
     const subtotalAmt = Number(row.subtotal_eur);
     const totalAmt = Number(row.total_eur);
     const taxAmt = totalAmt - subtotalAmt;
@@ -170,12 +204,33 @@ async function getCashflowData(params: CashflowParams): Promise<{
     point.net = point.inflows - point.outflows;
   }
 
-  const monthly = Array.from(pointMap.values());
+  for (const row of proformaRows) {
+    const d = new Date(row.month);
+    const point = ensurePoint(d);
+    point.forecastInflows += Number(row.total_eur);
+  }
+
+  for (const row of forecastRows) {
+    const d = new Date(row.month);
+    const point = ensurePoint(d);
+    const amount = Number(scenario === "optimistic" ? row.optimistic : row.pessimistic);
+    if (row.type === ForecastType.INCOME) {
+      point.forecastInflows += amount;
+    } else {
+      point.forecastOutflows += amount;
+    }
+  }
+
+  const monthly = Array.from(pointMap.values()).sort((a, b) =>
+    a.monthKey.localeCompare(b.monthKey)
+  );
   const kpis: CashflowKpis = {
     totalInflows: monthly.reduce((s, p) => s + p.inflows, 0),
     totalOutflows: monthly.reduce((s, p) => s + p.outflows, 0),
     netCashflow: monthly.reduce((s, p) => s + p.net, 0),
     monthCount: monthly.length,
+    totalForecastInflows: monthly.reduce((s, p) => s + p.forecastInflows, 0),
+    totalForecastOutflows: monthly.reduce((s, p) => s + p.forecastOutflows, 0),
   };
 
   return { monthly, kpis };
@@ -336,7 +391,7 @@ export default async function CashflowPage({
         </Suspense>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Entradas totales</p>
           <p className="mt-2 text-2xl font-bold text-green-600">{formatCurrency(kpis.totalInflows)}</p>
@@ -351,11 +406,26 @@ export default async function CashflowPage({
             {formatCurrency(kpis.netCashflow)}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Meses analizados</p>
-          <p className="mt-2 text-2xl font-bold text-gray-700">{kpis.monthCount}</p>
-        </div>
       </div>
+
+      {(kpis.totalForecastInflows > 0 || kpis.totalForecastOutflows > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+            <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">
+              Previsión entradas
+              <span className="ml-1.5 font-normal capitalize">({params.scenario === "optimistic" ? "optimista" : "pesimista"})</span>
+            </p>
+            <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(kpis.totalForecastInflows)}</p>
+          </div>
+          <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+            <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">
+              Previsión salidas
+              <span className="ml-1.5 font-normal capitalize">({params.scenario === "optimistic" ? "optimista" : "pesimista"})</span>
+            </p>
+            <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(kpis.totalForecastOutflows)}</p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Entradas vs. Salidas por mes</h2>

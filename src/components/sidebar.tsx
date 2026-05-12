@@ -12,6 +12,8 @@ import {
   LogOut,
   CreditCard,
   Users,
+  ClipboardList,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
@@ -19,9 +21,11 @@ import { signOutAction } from "@/app/actions";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Facturas", href: "/invoices", icon: FileText },
+  { name: "Proformas", href: "/proformas", icon: ClipboardList },
   { name: "Proyectos", href: "/projects", icon: FolderKanban },
   { name: "Proveedores", href: "/suppliers", icon: Users },
   { name: "Flujo de Caja", href: "/cashflow", icon: TrendingUp },
+  { name: "Previsiones", href: "/forecasts", icon: CalendarDays },
   { name: "Pagos y Cobros", href: "/payments", icon: CreditCard },
   { name: "Sincronización", href: "/sync", icon: RefreshCw },
   { name: "Configuración", href: "/settings", icon: Settings },

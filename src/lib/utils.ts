@@ -29,6 +29,10 @@ export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): s
   return `https://app.holded.com/expenses/list#open:purchase-${holdedId}`;
 }
 
+export function holdedProformaUrl(holdedId: string): string {
+  return `https://app.holded.com/sales/proform#open:proform-${holdedId}`;
+}
+
 const TAG_TO_BRAND: Record<string, string> = {
   gsolutions:     "Gigson Solutions",
   gigson:         "Gigson",

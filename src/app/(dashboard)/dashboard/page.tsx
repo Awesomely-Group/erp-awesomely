@@ -89,6 +89,7 @@ async function getDashboardCashflow(
         inflowsBase: 0, inflowsTax: 0, inflows: 0,
         outflowsBase: 0, outflowsTax: 0, outflows: 0,
         net: 0,
+        forecastInflows: 0, forecastOutflows: 0,
       });
     }
     const point = pointMap.get(monthKey)!;

@@ -201,6 +201,10 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     console.error("[sync] Error syncing suppliers:", err);
   });
 
+  await syncProformas(companyId).catch((err: unknown) => {
+    console.error("[sync] Error syncing proformas:", err);
+  });
+
   if (errorMessage) throw new Error(errorMessage);
 }
 
@@ -478,6 +482,105 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
     where: { id: invoiceId },
     data: { status },
   });
+}
+
+// ─── Proforma Sync ─────────────────────────────────────────────────────────────
+
+export async function syncProformas(companyId: string): Promise<void> {
+  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const client = new HoldedClient(company.holdedApiKey);
+  const proformas = await client.getAllProformasPaginated();
+
+  const seenHoldedIds = new Set<string>();
+
+  for (const pf of proformas) {
+    seenHoldedIds.add(pf.id);
+    const date = new Date(pf.date * 1000);
+    const currency = (pf.currency ?? "EUR").toUpperCase();
+
+    const holdedRate = pf.currencyChange && pf.currencyChange !== 0 ? pf.currencyChange : null;
+
+    let fxRateToEur: number;
+    let totalEur: number;
+    let subtotalForeign: number;
+    let taxForeign: number;
+    let totalForeign: number;
+
+    if (currency === "EUR") {
+      fxRateToEur = 1;
+      totalEur = pf.total ?? 0;
+      subtotalForeign = pf.subtotal ?? 0;
+      taxForeign = pf.tax ?? 0;
+      totalForeign = pf.total ?? 0;
+    } else if (holdedRate !== null) {
+      fxRateToEur = 1 / holdedRate;
+      totalEur = pf.total ?? 0;
+      subtotalForeign = (pf.subtotal ?? 0) * holdedRate;
+      taxForeign = (pf.tax ?? 0) * holdedRate;
+      totalForeign = (pf.total ?? 0) * holdedRate;
+    } else {
+      const { rate } = await convertToEur(1, currency, date);
+      fxRateToEur = rate;
+      totalEur = (pf.total ?? 0) * rate;
+      subtotalForeign = pf.subtotal ?? 0;
+      taxForeign = pf.tax ?? 0;
+      totalForeign = pf.total ?? 0;
+    }
+
+    // Preserve existing classification (marca/projectId) if already set
+    const existing = await prisma.proforma.findUnique({
+      where: { holdedId_companyId: { holdedId: pf.id, companyId } },
+      select: { marca: true, projectId: true, notes: true },
+    });
+
+    await prisma.proforma.upsert({
+      where: { holdedId_companyId: { holdedId: pf.id, companyId } },
+      update: {
+        holdedStatus: pf.status,
+        number: pf.docNumber || null,
+        counterparty: pf.contactName || null,
+        holdedContactId: pf.contactId ?? null,
+        date,
+        dueDate: pf.dueDate ? new Date(pf.dueDate * 1000) : null,
+        currency,
+        fxRateToEur,
+        subtotal: subtotalForeign,
+        tax: taxForeign,
+        total: totalForeign,
+        totalEur,
+        // Only overwrite classification fields if not yet set
+        ...(existing?.marca == null && existing?.projectId == null ? {} : {}),
+      },
+      create: {
+        holdedId: pf.id,
+        companyId,
+        holdedStatus: pf.status,
+        number: pf.docNumber || null,
+        counterparty: pf.contactName || null,
+        holdedContactId: pf.contactId ?? null,
+        date,
+        dueDate: pf.dueDate ? new Date(pf.dueDate * 1000) : null,
+        currency,
+        fxRateToEur,
+        subtotal: subtotalForeign,
+        tax: taxForeign,
+        total: totalForeign,
+        totalEur,
+      },
+    });
+  }
+
+  // Remove proformas no longer in Holded (no user data to preserve)
+  const dbProformas = await prisma.proforma.findMany({
+    where: { companyId },
+    select: { id: true, holdedId: true },
+  });
+  const orphanedIds = dbProformas
+    .filter((p) => !seenHoldedIds.has(p.holdedId))
+    .map((p) => p.id);
+  if (orphanedIds.length > 0) {
+    await prisma.proforma.deleteMany({ where: { id: { in: orphanedIds } } });
+  }
 }
 
 // ─── Full sync ─────────────────────────────────────────────────────────────────

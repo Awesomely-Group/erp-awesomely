@@ -361,6 +361,43 @@ export class HoldedClient {
     return { iban };
   }
 
+  async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
+    const seenIds = new Set<string>();
+    const all: HoldedInvoice[] = [];
+
+    const now = new Date();
+    const endYear = now.getFullYear();
+
+    for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const windowStart = new Date(year, quarter * 3, 1);
+        if (windowStart > now) break;
+
+        const windowEnd = new Date(year, (quarter + 1) * 3, 1);
+        const starttmp = Math.floor(windowStart.getTime() / 1000);
+        const endtmp   = Math.floor(windowEnd.getTime()   / 1000);
+
+        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
+          `/documents/proform`,
+          { starttmp: starttmp.toString(), endtmp: endtmp.toString() }
+        );
+
+        const batch: HoldedInvoice[] = Array.isArray(raw)
+          ? raw
+          : ((raw as HoldedListResponse).data ?? []);
+
+        for (const inv of batch) {
+          if (!seenIds.has(inv.id)) {
+            seenIds.add(inv.id);
+            all.push(inv);
+          }
+        }
+      }
+    }
+
+    return all;
+  }
+
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];

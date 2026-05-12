@@ -77,6 +77,7 @@ model Company {
   invoices     Invoice[]
   suppliers    Supplier[]
   syncLogs     SyncLog[]
+  proformas    Proforma[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -126,6 +127,8 @@ model JiraProject {
 
   classifications Classification[]
   userRoles       ProjectUserRole[]
+  proformas       Proforma[]
+  forecasts       Forecast[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -341,7 +344,6 @@ model Supplier {
   company         Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
   name            String
 
-  jiraAccountId String?
   hourlyRate    Decimal?
   tipo          SupplierTipo?
 
@@ -352,12 +354,24 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  jiraUsers     SupplierJiraUser[]
   roles         SupplierRole[]
   verifications SupplierVerification[]
 
   @@unique([holdedContactId, companyId])
   @@index([companyId])
   @@map("suppliers")
+}
+
+model SupplierJiraUser {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  accountId  String
+  createdAt  DateTime @default(now())
+
+  @@unique([supplierId, accountId])
+  @@map("supplier_jira_users")
 }
 
 model SupplierRole {
@@ -495,6 +509,76 @@ model SyncLog {
   @@index([workspaceId])
   @@index([source, startedAt])
   @@map("sync_logs")
+}
+
+// ─── Proformas (Holded) ───────────────────────────────────────────────────────
+
+model Proforma {
+  id              String       @id @default(cuid())
+  holdedId        String
+  companyId       String
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  number          String?
+  counterparty    String?
+  holdedContactId String?
+  holdedStatus    Int?
+
+  date            DateTime
+  dueDate         DateTime?
+
+  currency        String   @default("EUR")
+  fxRateToEur     Decimal  @default(1)
+  subtotal        Decimal  @default(0)
+  tax             Decimal  @default(0)
+  total           Decimal  @default(0)
+  totalEur        Decimal  @default(0)
+
+  marca           String?
+  projectId       String?
+  project         JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([holdedId, companyId])
+  @@index([companyId])
+  @@index([companyId, date])
+  @@index([marca])
+  @@map("proformas")
+}
+
+// ─── Previsiones ERP ─────────────────────────────────────────────────────────
+
+enum ForecastType {
+  INCOME
+  EXPENSE
+
+  @@map("forecast_type")
+}
+
+model Forecast {
+  id                String       @id @default(cuid())
+  month             DateTime
+  type              ForecastType
+  marca             String?
+  projectId         String?
+  project           JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  description       String?
+  amountOptimistic  Decimal
+  amountPessimistic Decimal
+
+  createdBy         String?
+  updatedBy         String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([month])
+  @@index([marca])
+  @@map("forecasts")
 }
 
 // ─── Account Mappings ──────────────────────────────────────────────────────────

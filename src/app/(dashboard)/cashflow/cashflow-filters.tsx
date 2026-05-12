@@ -57,6 +57,7 @@ export function CashflowFilters({
   const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
   const [company, setCompany] = useState(sp.get("company") ?? "");
+  const [scenario, setScenario] = useState(sp.get("scenario") ?? "pessimistic");
 
   const [selectedMarcas, setSelectedMarcas] = useState<string[]>(
     sp.get("marca")?.split(",").filter(Boolean) ?? []
@@ -112,10 +113,10 @@ export function CashflowFilters({
 
   function applyWith(overrides: Partial<{
     period: string; dateFrom: string; dateTo: string;
-    marca: string; company: string; account: string; l1: string;
+    marca: string; company: string; account: string; l1: string; scenario: string;
   }>): void {
     const m = {
-      period, dateFrom, dateTo, company,
+      period, dateFrom, dateTo, company, scenario,
       marca: selectedMarcas.join(","),
       account: selectedAccounts.join(","),
       l1: selectedL1.join(","),
@@ -133,6 +134,7 @@ export function CashflowFilters({
     if (m.company) params.set("company", m.company);
     if (m.account) params.set("account", m.account);
     if (m.l1) params.set("l1", m.l1);
+    if (m.scenario && m.scenario !== "pessimistic") params.set("scenario", m.scenario);
     router.push(`/cashflow?${params.toString()}`);
   }
 
@@ -169,6 +171,7 @@ export function CashflowFilters({
     setDateFrom("");
     setDateTo("");
     setCompany("");
+    setScenario("pessimistic");
     setSelectedMarcas([]);
     setMarcasOpen(false);
     setSelectedAccounts([]);
@@ -372,6 +375,34 @@ export function CashflowFilters({
           </div>
         </div>
       )}
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-gray-500 font-medium">Escenario previsión</label>
+        <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+          <button
+            type="button"
+            onClick={() => { setScenario("pessimistic"); applyWith({ scenario: "pessimistic" }); }}
+            className={`px-3 py-2 transition-colors ${
+              scenario === "pessimistic" || !scenario
+                ? "bg-blue-600 text-white font-medium"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Pesimista
+          </button>
+          <button
+            type="button"
+            onClick={() => { setScenario("optimistic"); applyWith({ scenario: "optimistic" }); }}
+            className={`px-3 py-2 border-l border-gray-300 transition-colors ${
+              scenario === "optimistic"
+                ? "bg-blue-600 text-white font-medium"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Optimista
+          </button>
+        </div>
+      </div>
 
       <button
         type="button"

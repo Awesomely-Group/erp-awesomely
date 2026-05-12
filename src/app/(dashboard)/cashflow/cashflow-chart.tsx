@@ -24,6 +24,8 @@ export type CashflowMonthlyPoint = {
   outflowsTax: number;
   outflows: number;
   net: number;
+  forecastInflows: number;
+  forecastOutflows: number;
 };
 
 type TooltipEntry = { name: string; value: number; color: string; dataKey: string };
@@ -50,6 +52,8 @@ function CustomTooltip({
   const inflowsTax = find("inflowsTax");
   const outflowsBase = find("outflowsBase");
   const outflowsTax = find("outflowsTax");
+  const forecastInflows = find("forecastInflows");
+  const forecastOutflows = find("forecastOutflows");
   const inflows = inflowsBase + inflowsTax;
   const outflows = outflowsBase + outflowsTax;
   const net = inflows - outflows;
@@ -73,6 +77,16 @@ function CustomTooltip({
           </p>
         </div>
       )}
+      {(forecastInflows > 0 || forecastOutflows > 0) && (
+        <div className="mb-1.5">
+          {forecastInflows > 0 && (
+            <p className="text-blue-600 font-medium">Prev. entradas: {formatCurrency(forecastInflows)}</p>
+          )}
+          {forecastOutflows > 0 && (
+            <p className="text-blue-500 font-medium">Prev. salidas: {formatCurrency(forecastOutflows)}</p>
+          )}
+        </div>
+      )}
       <p className={`font-medium mt-1 border-t border-gray-100 pt-1.5 ${net >= 0 ? "text-indigo-600" : "text-red-600"}`}>
         Neto: {formatCurrency(net)}
       </p>
@@ -86,6 +100,8 @@ const LEGEND_LABELS: Record<string, string> = {
   inflowsTax: "Entradas (IVA)",
   outflowsBase: "Salidas (base)",
   outflowsTax: "Salidas (IVA)",
+  forecastInflows: "Previsión entradas",
+  forecastOutflows: "Previsión salidas",
 };
 
 export function CashflowChart({
@@ -182,6 +198,28 @@ export function CashflowChart({
               key={entry.monthKey}
               fill={selectedMonth === entry.monthKey ? "#f87171" : "#fca5a5"}
               opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
+            />
+          ))}
+        </Bar>
+
+        {/* Forecast inflows (proformas + ERP income estimates) */}
+        <Bar dataKey="forecastInflows" stackId="forecast" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#3b82f6">
+          {data.map((entry) => (
+            <Cell
+              key={entry.monthKey}
+              fill={selectedMonth === entry.monthKey ? "#2563eb" : "#3b82f6"}
+              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.8}
+            />
+          ))}
+        </Bar>
+
+        {/* Forecast outflows (ERP expense estimates) */}
+        <Bar dataKey="forecastOutflows" stackId="forecastOut" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#93c5fd">
+          {data.map((entry) => (
+            <Cell
+              key={entry.monthKey}
+              fill={selectedMonth === entry.monthKey ? "#60a5fa" : "#93c5fd"}
+              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.8}
             />
           ))}
         </Bar>
