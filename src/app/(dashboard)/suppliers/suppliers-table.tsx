@@ -29,6 +29,7 @@ export interface SupplierRow {
   tipo: SupplierTipo | null;
   jiraAccountId: string | null;
   jiraDisplayName: string | null;
+  defaultRoleId: string | null;
   lastVerification: { status: VerificationStatus } | null;
   roles: SupplierRole[];
 }
@@ -60,11 +61,15 @@ function SupplierDrawer({
   roleTemplates,
   workspaceId,
   onClose,
+  onJiraUserChange,
+  onDefaultRoleChange,
 }: {
   supplier: SupplierRow | null;
   roleTemplates: RoleTemplate[];
   workspaceId: string | null;
   onClose: () => void;
+  onJiraUserChange: (supplierId: string, accountId: string | null, displayName: string | null) => void;
+  onDefaultRoleChange: (supplierId: string, roleId: string | null) => void;
 }): React.JSX.Element {
   const isOpen = supplier !== null;
 
@@ -133,6 +138,7 @@ function SupplierDrawer({
                   currentAccountId={supplier.jiraAccountId}
                   currentDisplayName={supplier.jiraDisplayName}
                   workspaceId={workspaceId}
+                  onUserChange={(accountId, displayName) => onJiraUserChange(supplier.id, accountId, displayName)}
                 />
               </div>
 
@@ -142,6 +148,8 @@ function SupplierDrawer({
                   supplierId={supplier.id}
                   roles={supplier.roles}
                   templates={roleTemplates}
+                  defaultRoleId={supplier.defaultRoleId}
+                  onDefaultRoleChange={(roleId) => onDefaultRoleChange(supplier.id, roleId)}
                 />
               </div>
             </div>
@@ -242,8 +250,19 @@ interface Props {
   emptyMessage?: string;
 }
 
-export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = null, emptyMessage }: Props): React.JSX.Element {
+export function SuppliersTable({ suppliers: initialSuppliers, roleTemplates = [], workspaceId = null, emptyMessage }: Props): React.JSX.Element {
+  const [suppliers, setSuppliers] = useState<SupplierRow[]>(initialSuppliers);
   const [activeSupplier, setActiveSupplier] = useState<SupplierRow | null>(null);
+
+  function handleJiraUserChange(supplierId: string, accountId: string | null, displayName: string | null): void {
+    setSuppliers((prev) => prev.map((s) => s.id === supplierId ? { ...s, jiraAccountId: accountId, jiraDisplayName: displayName } : s));
+    setActiveSupplier((prev) => prev?.id === supplierId ? { ...prev, jiraAccountId: accountId, jiraDisplayName: displayName } : prev);
+  }
+
+  function handleDefaultRoleChange(supplierId: string, roleId: string | null): void {
+    setSuppliers((prev) => prev.map((s) => s.id === supplierId ? { ...s, defaultRoleId: roleId } : s));
+    setActiveSupplier((prev) => prev?.id === supplierId ? { ...prev, defaultRoleId: roleId } : prev);
+  }
 
   if (suppliers.length === 0) {
     return (
@@ -284,6 +303,8 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
         roleTemplates={roleTemplates}
         workspaceId={workspaceId}
         onClose={() => setActiveSupplier(null)}
+        onJiraUserChange={handleJiraUserChange}
+        onDefaultRoleChange={handleDefaultRoleChange}
       />
     </>
   );

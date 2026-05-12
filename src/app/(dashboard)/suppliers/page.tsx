@@ -60,6 +60,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     tipo: s.tipo,
     jiraAccountId: s.jiraAccountId,
     jiraDisplayName: s.jiraAccountId ? (jiraNameMap.get(s.jiraAccountId) ?? null) : null,
+    defaultRoleId: s.defaultRoleId,
     lastVerification: s.verifications[0] ? { status: s.verifications[0].status } : null,
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),
   }));

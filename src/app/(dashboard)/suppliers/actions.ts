@@ -6,27 +6,29 @@ import { type SupplierTipo } from "@prisma/client";
 
 export async function updateSupplierData(
   supplierId: string,
-  jiraAccountId: string,
   hourlyRate: string,
 ): Promise<void> {
   await prisma.supplier.update({
     where: { id: supplierId },
     data: {
-      jiraAccountId: jiraAccountId.trim() !== "" ? jiraAccountId.trim() : null,
       hourlyRate: hourlyRate !== "" ? parseFloat(hourlyRate) : null,
     },
   });
   revalidatePath("/suppliers");
 }
 
-export async function updateJiraAccountId(
-  supplierId: string,
-  jiraAccountId: string | null,
-): Promise<void> {
-  await prisma.supplier.update({
-    where: { id: supplierId },
-    data: { jiraAccountId },
+export async function addJiraUser(supplierId: string, accountId: string): Promise<void> {
+  await prisma.supplierJiraUser.upsert({
+    where: { supplierId_accountId: { supplierId, accountId } },
+    create: { supplierId, accountId },
+    update: {},
   });
+  revalidatePath("/suppliers");
+  revalidatePath(`/suppliers/${supplierId}`);
+}
+
+export async function removeJiraUser(supplierId: string, accountId: string): Promise<void> {
+  await prisma.supplierJiraUser.deleteMany({ where: { supplierId, accountId } });
   revalidatePath("/suppliers");
   revalidatePath(`/suppliers/${supplierId}`);
 }
@@ -50,6 +52,6 @@ export async function setDefaultRole(
     where: { id: supplierId },
     data: { defaultRoleId: roleId },
   });
+  revalidatePath("/suppliers");
   revalidatePath(`/suppliers/${supplierId}`);
 }
-

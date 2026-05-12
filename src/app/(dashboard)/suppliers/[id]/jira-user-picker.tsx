@@ -9,6 +9,7 @@ interface Props {
   currentAccountId: string | null;
   currentDisplayName: string | null;
   workspaceId: string | null;
+  onUserChange?: (accountId: string | null, displayName: string | null) => void;
 }
 
 export function JiraUserPicker({
@@ -16,6 +17,7 @@ export function JiraUserPicker({
   currentAccountId,
   currentDisplayName,
   workspaceId,
+  onUserChange,
 }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -33,7 +35,11 @@ export function JiraUserPicker({
       .then(async (res) => {
         if (!res.ok) return;
         const data = (await res.json()) as JiraUser[];
-        if (data[0]?.displayName) setSelectedDisplayName(data[0].displayName);
+        const name = data[0]?.displayName ?? null;
+        if (name) {
+          setSelectedDisplayName(name);
+          onUserChange?.(currentAccountId, name);
+        }
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,6 +90,7 @@ export function JiraUserPicker({
       await updateJiraAccountId(supplierId, user.accountId);
       setSelectedAccountId(user.accountId);
       setSelectedDisplayName(user.displayName);
+      onUserChange?.(user.accountId, user.displayName);
     });
   }
 
@@ -93,6 +100,7 @@ export function JiraUserPicker({
       await updateJiraAccountId(supplierId, null);
       setSelectedAccountId(null);
       setSelectedDisplayName(null);
+      onUserChange?.(null, null);
     });
   }
 

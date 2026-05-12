@@ -207,17 +207,20 @@ export function RolesSection({
   roles,
   templates = [],
   defaultRoleId: initialDefaultRoleId = null,
+  onDefaultRoleChange,
 }: {
   supplierId: string;
   roles: Role[];
   templates?: Template[];
   defaultRoleId?: string | null;
+  onDefaultRoleChange?: (roleId: string | null) => void;
 }): React.JSX.Element {
   const [defaultRoleId, setDefaultRoleId] = useState<string | null>(initialDefaultRoleId);
   const [, startTransition] = useTransition();
 
   function handleSetDefault(roleId: string | null): void {
     setDefaultRoleId(roleId);
+    onDefaultRoleChange?.(roleId);
     startTransition(async () => {
       await setDefaultRole(supplierId, roleId);
     });
