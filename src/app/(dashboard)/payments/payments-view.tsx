@@ -413,7 +413,7 @@ export function PaymentsView({
             <div>Factura</div>
             <div>Empresa</div>
             <div className="text-right">Vencimiento</div>
-            <div className="text-right">Pendiente</div>
+            <div className="text-right">Pendiente conciliar</div>
             <div className="text-right">Links</div>
           </div>
 

@@ -350,6 +350,17 @@ export class HoldedClient {
     return [...all.values()];
   }
 
+  async getContactWithBankData(id: string): Promise<{ iban: string | null }> {
+    const data = await this.fetch<Record<string, unknown>>(`/contacts/${id}`);
+    const bankData = data["bankData"] as Record<string, unknown> | undefined;
+    const iban =
+      (typeof data["iban"] === "string" ? data["iban"] : null) ??
+      (typeof bankData?.["iban"] === "string" ? bankData["iban"] as string : null) ??
+      (typeof bankData?.["bankAccount"] === "string" ? bankData["bankAccount"] as string : null) ??
+      null;
+    return { iban };
+  }
+
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];

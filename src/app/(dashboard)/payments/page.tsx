@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { HoldedClient } from "@/lib/holded";
 import { PaymentsView } from "./payments-view";
 import { type PaymentInvoice } from "./payment-row";
 import { type PendingInvoice } from "./payments-view";
@@ -17,6 +18,40 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     },
     orderBy: { dueDate: "asc" },
   });
+
+  // Collect unique (companyId → Set<holdedContactId>) for PURCHASE invoices
+  const contactsByCompany = new Map<string, { apiKey: string; contactIds: Set<string> }>();
+  for (const inv of invoices) {
+    if (inv.type === "PURCHASE" && inv.holdedContactId) {
+      const existing = contactsByCompany.get(inv.companyId);
+      if (existing) {
+        existing.contactIds.add(inv.holdedContactId);
+      } else {
+        contactsByCompany.set(inv.companyId, {
+          apiKey: inv.company.holdedApiKey,
+          contactIds: new Set([inv.holdedContactId]),
+        });
+      }
+    }
+  }
+
+  // Batch-fetch IBAN for each unique contact (parallel per company)
+  const ibanMap = new Map<string, string | null>();
+  await Promise.all(
+    [...contactsByCompany.values()].map(async ({ apiKey, contactIds }) => {
+      const client = new HoldedClient(apiKey);
+      await Promise.all(
+        [...contactIds].map(async (contactId) => {
+          try {
+            const { iban } = await client.getContactWithBankData(contactId);
+            ibanMap.set(contactId, iban);
+          } catch {
+            ibanMap.set(contactId, null);
+          }
+        }),
+      );
+    }),
+  );
 
   const pendingPayments: PaymentInvoice[] = [];
   const pendingCollections: PendingInvoice[] = [];
@@ -54,6 +89,10 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
           paidBy: p.paidBy,
           notes: p.notes,
         })),
+        contactIban: inv.holdedContactId ? (ibanMap.get(inv.holdedContactId) ?? null) : null,
+        contactHoldedUrl: inv.holdedContactId
+          ? `https://app.holded.com/contacts/${inv.holdedContactId}`
+          : null,
       });
     } else {
       pendingCollections.push({
