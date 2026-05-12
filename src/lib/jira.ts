@@ -1,4 +1,5 @@
 // Jira REST API v3 client
+import type { TempoClient } from "./tempo";
 
 export interface JiraProjectData {
   id: string;
@@ -84,11 +85,15 @@ export class JiraClient {
     };
   }
 
-  async getUsersByAccountIds(accountIds: string[]): Promise<Map<string, string>> {
+  async getUsersByAccountIds(
+    accountIds: string[],
+    tempoFallback?: TempoClient,
+  ): Promise<Map<string, string>> {
     if (accountIds.length === 0) return new Map();
     const unique = [...new Set(accountIds)];
 
-    // Bulk endpoint handles inactive/deactivated users and is more efficient
+    // 1. Try Jira bulk endpoint (handles inactive users, one request)
+    let jiraMap = new Map<string, string>();
     try {
       const url = new URL(`${this.baseUrl}/user/bulk`);
       unique.forEach((id) => url.searchParams.append("accountId", id));
@@ -99,7 +104,7 @@ export class JiraClient {
       });
       if (!res.ok) throw new Error(`bulk ${res.status}`);
       const data = await res.json() as { values: Array<{ accountId: string; displayName: string }> };
-      return new Map(data.values.map((u) => [u.accountId, u.displayName]));
+      jiraMap = new Map(data.values.map((u) => [u.accountId, u.displayName]));
     } catch {
       // Fallback: individual calls
       const entries = await Promise.all(
@@ -112,8 +117,24 @@ export class JiraClient {
           }
         })
       );
-      return new Map(entries.filter((e): e is [string, string] => e !== null));
+      for (const e of entries) { if (e) jiraMap.set(e[0], e[1]); }
     }
+
+    // 2. For IDs not resolved by Jira (deleted users), try Tempo's user cache
+    const unresolved = unique.filter((id) => !jiraMap.has(id));
+    if (unresolved.length > 0 && tempoFallback) {
+      try {
+        const tempoMap = await tempoFallback.getUserDisplayNames();
+        for (const id of unresolved) {
+          const name = tempoMap.get(id);
+          if (name) jiraMap.set(id, name);
+        }
+      } catch {
+        // Tempo not available — keep what we have
+      }
+    }
+
+    return jiraMap;
   }
 
   async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {

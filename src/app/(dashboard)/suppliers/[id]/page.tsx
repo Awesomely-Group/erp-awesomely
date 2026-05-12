@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { JiraClient } from "@/lib/jira";
+import { TempoClient } from "@/lib/tempo";
 import { VerificationRow, type SerializedVerification, type AvailableInvoice } from "./verification-row";
 import { NewVerificationForm } from "./new-verification-form";
 import { RolesSection } from "./roles-section";
@@ -49,7 +50,9 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
   let jiraNameMap = new Map<string, string>();
   if (jiraAccountIds.length > 0 && firstWorkspace) {
     const jira = new JiraClient(firstWorkspace.domain, firstWorkspace.email, firstWorkspace.apiToken);
-    jiraNameMap = await jira.getUsersByAccountIds(jiraAccountIds).catch(() => new Map());
+    const tempoWorkspace = await prisma.jiraWorkspace.findFirst({ where: { active: true, tempoApiToken: { not: null } }, select: { tempoApiToken: true } });
+    const tempo = tempoWorkspace?.tempoApiToken ? new TempoClient(tempoWorkspace.tempoApiToken) : undefined;
+    jiraNameMap = await jira.getUsersByAccountIds(jiraAccountIds, tempo).catch(() => new Map());
   }
   const jiraUsers = supplier.jiraUsers.map((u) => ({
     accountId: u.accountId,

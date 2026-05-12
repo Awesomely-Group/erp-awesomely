@@ -27,10 +27,12 @@ export async function GET(request: Request): Promise<NextResponse> {
   const clients = workspaces.map((w) => new JiraClient(w.domain, w.email, w.apiToken));
 
   if (accountId) {
-    const results = await Promise.all(clients.map((c) => c.getUsersByAccountIds([accountId])));
+    const tempoWorkspace = workspaces.find((w) => w.tempoApiToken);
+    const tempo = tempoWorkspace?.tempoApiToken ? new TempoClient(tempoWorkspace.tempoApiToken) : undefined;
+    const results = await Promise.all(clients.map((c) => c.getUsersByAccountIds([accountId], tempo)));
     for (const names of results) {
       const displayName = names.get(accountId);
-      if (displayName && displayName !== accountId) {
+      if (displayName) {
         const user: JiraUser = { accountId, displayName, emailAddress: "", avatarUrl: null };
         return NextResponse.json([user]);
       }

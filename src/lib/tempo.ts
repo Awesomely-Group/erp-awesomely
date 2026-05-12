@@ -79,7 +79,17 @@ export class TempoClient {
    * scanning worklogs. Throws if the endpoint is unavailable (caller should fall back).
    */
   async getUserAccountIds(): Promise<Set<string>> {
-    const ids = new Set<string>();
+    const map = await this.getUserDisplayNames();
+    return new Set(map.keys());
+  }
+
+  /**
+   * Returns a map of accountId → displayName for all users in Tempo.
+   * Tempo caches user data independently of Jira, so this works even for
+   * users that have been deleted from Jira.
+   */
+  async getUserDisplayNames(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
     let offset = 0;
     const limit = 200;
 
@@ -96,19 +106,19 @@ export class TempoClient {
       if (!res.ok) throw new Error(`Tempo /users returned ${res.status}`);
 
       const data = (await res.json()) as {
-        results: Array<{ accountId: string }>;
+        results: Array<{ accountId: string; displayName?: string }>;
         metadata: { count: number; offset: number; limit: number; next?: string };
       };
 
       for (const u of data.results) {
-        if (u.accountId) ids.add(u.accountId);
+        if (u.accountId && u.displayName) map.set(u.accountId, u.displayName);
       }
 
       if (data.results.length < limit || !data.metadata.next) break;
       offset += limit;
     }
 
-    return ids;
+    return map;
   }
 
   async getUniqueAuthorAccountIds(from: string, to: string): Promise<Set<string>> {

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { type SupplierTipo, Prisma } from "@prisma/client";
 import { JiraClient } from "@/lib/jira";
+import { TempoClient } from "@/lib/tempo";
 import { SuppliersFilters } from "./suppliers-filters";
 import { SuppliersTable } from "./suppliers-table";
 
@@ -50,7 +51,9 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
   let jiraNameMap = new Map<string, string>();
   if (allAccountIds.length > 0 && firstWorkspace) {
     const jira = new JiraClient(firstWorkspace.domain, firstWorkspace.email, firstWorkspace.apiToken);
-    jiraNameMap = await jira.getUsersByAccountIds(allAccountIds).catch(() => new Map());
+    const tempoWorkspace = await prisma.jiraWorkspace.findFirst({ where: { active: true, tempoApiToken: { not: null } }, select: { tempoApiToken: true } });
+    const tempo = tempoWorkspace?.tempoApiToken ? new TempoClient(tempoWorkspace.tempoApiToken) : undefined;
+    jiraNameMap = await jira.getUsersByAccountIds(allAccountIds, tempo).catch(() => new Map());
   }
 
   const suppliersData = suppliers.map((s) => ({
