@@ -167,33 +167,40 @@ export default async function ProformasPage({
 
       {/* KPI: por convertir en los próximos 5 días */}
       {expiring.count > 0 && (
-        <Link
-          href={`/proformas?alert=expiring`}
-          className={`flex items-center gap-3 rounded-xl border px-5 py-4 transition-colors ${
-            params.alert === "expiring"
-              ? "border-orange-400 bg-orange-50"
-              : "border-orange-200 bg-orange-50 hover:border-orange-400"
-          }`}
-        >
-          <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-orange-800">
-              {expiring.count} proforma{expiring.count !== 1 ? "s" : ""} por convertir a factura en los próximos 5 días
-            </p>
-            <p className="text-xs text-orange-600 mt-0.5">
-              Total: {formatCurrency(expiring.totalEur)} · Haz clic para filtrar
-            </p>
-          </div>
-          {params.alert === "expiring" && (
+        params.alert === "expiring" ? (
+          <div className="flex items-center gap-3 rounded-xl border border-orange-400 bg-orange-50 px-5 py-4">
+            <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-800">
+                {expiring.count} proforma{expiring.count !== 1 ? "s" : ""} por convertir a factura en los próximos 5 días
+              </p>
+              <p className="text-xs text-orange-600 mt-0.5">
+                Total: {formatCurrency(expiring.totalEur)}
+              </p>
+            </div>
             <Link
               href="/proformas"
-              onClick={(e) => e.stopPropagation()}
               className="text-xs text-orange-600 hover:text-orange-800 underline flex-shrink-0"
             >
               Ver todas
             </Link>
-          )}
-        </Link>
+          </div>
+        ) : (
+          <Link
+            href="/proformas?alert=expiring"
+            className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 hover:border-orange-400 px-5 py-4 transition-colors"
+          >
+            <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-800">
+                {expiring.count} proforma{expiring.count !== 1 ? "s" : ""} por convertir a factura en los próximos 5 días
+              </p>
+              <p className="text-xs text-orange-600 mt-0.5">
+                Total: {formatCurrency(expiring.totalEur)} · Haz clic para filtrar
+              </p>
+            </div>
+          </Link>
+        )
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
