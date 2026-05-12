@@ -3,6 +3,7 @@ import { HoldedClient } from "./holded";
 import { JiraClient } from "./jira";
 import { convertToEur } from "./exchange-rates";
 import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
+import { tagToBrand } from "./utils";
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
 
@@ -527,11 +528,15 @@ export async function syncProformas(companyId: string): Promise<void> {
       totalForeign = pf.total ?? 0;
     }
 
-    // Preserve existing classification (marca/projectId) if already set
+    const tags = pf.tags ?? [];
+    const description = pf.products?.[0]?.name ?? null;
+
+    // Preserve existing classification; auto-map marca from Holded tags on create
     const existing = await prisma.proforma.findUnique({
       where: { holdedId_companyId: { holdedId: pf.id, companyId } },
       select: { marca: true, projectId: true, notes: true },
     });
+    const marcaFromTags = tagToBrand(tags);
 
     await prisma.proforma.upsert({
       where: { holdedId_companyId: { holdedId: pf.id, companyId } },
@@ -548,8 +553,10 @@ export async function syncProformas(companyId: string): Promise<void> {
         tax: taxForeign,
         total: totalForeign,
         totalEur,
-        // Only overwrite classification fields if not yet set
-        ...(existing?.marca == null && existing?.projectId == null ? {} : {}),
+        description,
+        tags,
+        // Preserve manual marca; update auto-mapped marca only if never manually set
+        ...(existing?.marca == null && marcaFromTags ? { marca: marcaFromTags } : {}),
       },
       create: {
         holdedId: pf.id,
@@ -566,6 +573,9 @@ export async function syncProformas(companyId: string): Promise<void> {
         tax: taxForeign,
         total: totalForeign,
         totalEur,
+        description,
+        tags,
+        marca: marcaFromTags,
       },
     });
   }

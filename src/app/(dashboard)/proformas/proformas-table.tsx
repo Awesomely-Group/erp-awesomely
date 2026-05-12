@@ -12,9 +12,13 @@ type ProformaRow = {
   holdedId: string;
   number: string | null;
   counterparty: string | null;
+  description: string | null;
+  tags: string[];
   date: Date;
   dueDate: Date | null;
   holdedStatus: number | null;
+  currency: string;
+  subtotal: unknown;
   totalEur: unknown;
   marca: string | null;
   projectId: string | null;
@@ -49,7 +53,7 @@ function MarcaCell({
 
   function save(value: string | null): void {
     startTransition(async () => {
-      await classifyProforma(proformaId, { marca: value, projectId: null, notes: null });
+      await classifyProforma(proformaId, { marca: value });
     });
     setEditing(false);
   }
@@ -103,7 +107,7 @@ function ProjectCell({
 
   function save(value: string | null): void {
     startTransition(async () => {
-      await classifyProforma(proformaId, { marca: null, projectId: value, notes: null });
+      await classifyProforma(proformaId, { projectId: value });
     });
     setEditing(false);
   }
@@ -161,14 +165,16 @@ export function ProformasTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Número</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap">Fecha</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap">Número</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Cliente</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Fecha</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Vencimiento</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Estado</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Descripción</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Tags</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap">Estado</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Marca</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Proyecto</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-600">Total (EUR)</th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 whitespace-nowrap">Subtotal</th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 whitespace-nowrap">Total (EUR)</th>
             <th className="px-4 py-3 text-center text-xs font-medium text-gray-600">Holded</th>
           </tr>
         </thead>
@@ -178,17 +184,33 @@ export function ProformasTable({
               key={pf.id}
               className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
             >
-              <td className="px-4 py-3 font-medium text-gray-900">
+              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                {formatDate(pf.date.toISOString())}
+              </td>
+              <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                 {pf.number ?? <span className="italic text-gray-400 font-normal">Borrador</span>}
               </td>
               <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
                 {pf.counterparty ?? "—"}
               </td>
-              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                {formatDate(pf.date.toISOString())}
+              <td className="px-4 py-3 text-gray-500 max-w-[180px] truncate text-xs">
+                {pf.description ?? "—"}
               </td>
-              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                {pf.dueDate ? formatDate(pf.dueDate.toISOString()) : "—"}
+              <td className="px-4 py-3">
+                {pf.tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {pf.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-violet-100 text-violet-700"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-gray-300 text-xs">—</span>
+                )}
               </td>
               <td className="px-4 py-3">
                 {statusBadge(pf.holdedStatus)}
@@ -204,7 +226,13 @@ export function ProformasTable({
                   projects={projects}
                 />
               </td>
-              <td className="px-4 py-3 text-right font-medium text-green-700">
+              <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">
+                {pf.currency !== "EUR" ? (
+                  <span className="text-xs text-gray-400">{pf.currency} </span>
+                ) : null}
+                {formatCurrency(Number(pf.subtotal))}
+              </td>
+              <td className="px-4 py-3 text-right font-medium text-green-700 whitespace-nowrap">
                 {formatCurrency(Number(pf.totalEur))}
               </td>
               <td className="px-4 py-3 text-center">

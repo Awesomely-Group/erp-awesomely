@@ -534,6 +534,9 @@ model Proforma {
   total           Decimal  @default(0)
   totalEur        Decimal  @default(0)
 
+  description     String?
+  tags            String[]
+
   marca           String?
   projectId       String?
   project         JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
