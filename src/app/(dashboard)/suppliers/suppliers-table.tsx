@@ -6,6 +6,7 @@ import { type VerificationStatus, type SupplierTipo } from "@prisma/client";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
 import { RolesSection } from "./[id]/roles-section";
 import { JiraUserList, type JiraUserEntry } from "./[id]/jira-user-list";
+import { JiraUserChip } from "./jira-user-chip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,9 +167,11 @@ function SupplierDrawer({
 
 function SupplierTableRow({
   supplier,
+  workspaceId,
   onOpen,
 }: {
   supplier: SupplierRow;
+  workspaceId: string | null;
   onOpen: (s: SupplierRow) => void;
 }): React.JSX.Element {
   return (
@@ -203,12 +206,7 @@ function SupplierTableRow({
         ) : (
           <div className="flex flex-col gap-0.5">
             {supplier.jiraUsers.map((u) => (
-              <span key={u.accountId} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 rounded px-1.5 py-0.5 w-fit">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                </svg>
-                {u.displayName ?? u.accountId}
-              </span>
+              <JiraUserChip key={u.accountId} accountId={u.accountId} displayName={u.displayName} workspaceId={workspaceId} />
             ))}
           </div>
         )}
@@ -275,6 +273,7 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
               <SupplierTableRow
                 key={supplier.id}
                 supplier={supplier}
+                workspaceId={workspaceId}
                 onOpen={setActiveSupplier}
               />
             ))}

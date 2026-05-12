@@ -85,18 +85,35 @@ export class JiraClient {
   }
 
   async getUsersByAccountIds(accountIds: string[]): Promise<Map<string, string>> {
+    if (accountIds.length === 0) return new Map();
     const unique = [...new Set(accountIds)];
-    const entries = await Promise.all(
-      unique.map(async (accountId) => {
-        try {
-          const user = await this.fetch<{ displayName: string }>("/user", { accountId });
-          return [accountId, user.displayName] as [string, string];
-        } catch {
-          return null;
-        }
-      })
-    );
-    return new Map(entries.filter((e): e is [string, string] => e !== null));
+
+    // Bulk endpoint handles inactive/deactivated users and is more efficient
+    try {
+      const url = new URL(`${this.baseUrl}/user/bulk`);
+      unique.forEach((id) => url.searchParams.append("accountId", id));
+      url.searchParams.set("maxResults", "100");
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: this.authHeader, Accept: "application/json" },
+        next: { revalidate: 0 },
+      });
+      if (!res.ok) throw new Error(`bulk ${res.status}`);
+      const data = await res.json() as { values: Array<{ accountId: string; displayName: string }> };
+      return new Map(data.values.map((u) => [u.accountId, u.displayName]));
+    } catch {
+      // Fallback: individual calls
+      const entries = await Promise.all(
+        unique.map(async (accountId) => {
+          try {
+            const user = await this.fetch<{ displayName: string }>("/user", { accountId });
+            return [accountId, user.displayName] as [string, string];
+          } catch {
+            return null;
+          }
+        })
+      );
+      return new Map(entries.filter((e): e is [string, string] => e !== null));
+    }
   }
 
   async getIssuesByKeys(keys: string[]): Promise<JiraIssueData[]> {

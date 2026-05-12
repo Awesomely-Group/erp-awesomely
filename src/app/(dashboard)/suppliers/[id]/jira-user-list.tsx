@@ -18,6 +18,27 @@ interface Props {
 export function JiraUserList({ supplierId, initialUsers, workspaceId }: Props): React.JSX.Element {
   const [users, setUsers] = useState<JiraUserEntry[]>(initialUsers);
   const [open, setOpen] = useState(false);
+
+  // Resolve display names client-side for any users that arrived without one
+  useEffect(() => {
+    const unresolved = initialUsers.filter((u) => !u.displayName);
+    if (unresolved.length === 0 || !workspaceId) return;
+    for (const u of unresolved) {
+      const params = new URLSearchParams({ accountId: u.accountId, workspaceId });
+      fetch(`/api/jira/users?${params.toString()}`)
+        .then(async (res) => {
+          if (!res.ok) return;
+          const data = (await res.json()) as JiraUser[];
+          if (data[0]?.displayName) {
+            setUsers((prev) =>
+              prev.map((p) => p.accountId === u.accountId ? { ...p, displayName: data[0].displayName } : p)
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<JiraUser[]>([]);
   const [isPending, startTransition] = useTransition();
