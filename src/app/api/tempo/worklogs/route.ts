@@ -204,8 +204,8 @@ export async function GET(request: Request): Promise<NextResponse> {
         jira.getIssuesByIds(allIssueIds),
         jira.getUsersByAccountIds(allAccountIds),
         prisma.supplier.findMany({
-          where: { jiraAccountId: { in: allAccountIds } },
-          select: { jiraAccountId: true, hourlyRate: true, defaultRole: { select: { ratePerHour: true } } },
+          where: { jiraUsers: { some: { accountId: { in: allAccountIds } } } },
+          select: { jiraUsers: { select: { accountId: true } }, hourlyRate: true, defaultRole: { select: { ratePerHour: true } } },
         }),
         prisma.projectUserRole.findMany({
           where: { projectId: project.id, jiraAccountId: { in: allAccountIds } },
@@ -213,7 +213,8 @@ export async function GET(request: Request): Promise<NextResponse> {
         }),
       ]);
       const issueMap = new Map(jiraIssues.map((i) => [i.numericId, i]));
-      const supplierByAccount = new Map(suppliers.map((s) => [s.jiraAccountId!, s]));
+      const supplierByAccount = new Map<string, typeof suppliers[0]>();
+      for (const s of suppliers) { for (const u of s.jiraUsers) { supplierByAccount.set(u.accountId, s); } }
       const overrideByAccount = new Map(projectOverrides.map((o) => [o.jiraAccountId, Number(o.role.ratePerHour)]));
 
       function getRate(accountId: string): number {
@@ -327,8 +328,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 
       const [suppliers, projectOverrides, jiraIssues] = await Promise.all([
         prisma.supplier.findMany({
-          where: { jiraAccountId: { in: accountIds } },
-          select: { jiraAccountId: true, hourlyRate: true, defaultRoleId: true, defaultRole: { select: { ratePerHour: true } } },
+          where: { jiraUsers: { some: { accountId: { in: accountIds } } } },
+          select: { jiraUsers: { select: { accountId: true } }, hourlyRate: true, defaultRoleId: true, defaultRole: { select: { ratePerHour: true } } },
         }),
         prisma.projectUserRole.findMany({
           where: { projectId: project.id, jiraAccountId: { in: accountIds } },
@@ -338,7 +339,12 @@ export async function GET(request: Request): Promise<NextResponse> {
           .getIssuesByIds(issueIds).catch(() => []),
       ]);
 
-      const supplierByAccount = new Map(suppliers.map((s) => [s.jiraAccountId!, s]));
+      const supplierByAccount = new Map<string, typeof suppliers[number]>();
+      for (const s of suppliers) {
+        for (const u of s.jiraUsers) {
+          supplierByAccount.set(u.accountId, s);
+        }
+      }
       const overrideByAccount = new Map(projectOverrides.map((o) => [o.jiraAccountId, Number(o.role.ratePerHour)]));
 
       function getRate(accountId: string): number {

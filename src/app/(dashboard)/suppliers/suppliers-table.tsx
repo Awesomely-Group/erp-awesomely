@@ -5,7 +5,7 @@ import Link from "next/link";
 import { type VerificationStatus, type SupplierTipo } from "@prisma/client";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
 import { RolesSection } from "./[id]/roles-section";
-import { JiraUserPicker } from "./[id]/jira-user-picker";
+import { JiraUserList, type JiraUserEntry } from "./[id]/jira-user-list";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,8 +27,7 @@ export interface SupplierRow {
   holdedContactId: string;
   companyName: string | null;
   tipo: SupplierTipo | null;
-  jiraAccountId: string | null;
-  jiraDisplayName: string | null;
+  jiraUsers: JiraUserEntry[];
   defaultRoleId: string | null;
   lastVerification: { status: VerificationStatus } | null;
   roles: SupplierRole[];
@@ -61,15 +60,11 @@ function SupplierDrawer({
   roleTemplates,
   workspaceId,
   onClose,
-  onJiraUserChange,
-  onDefaultRoleChange,
 }: {
   supplier: SupplierRow | null;
   roleTemplates: RoleTemplate[];
   workspaceId: string | null;
   onClose: () => void;
-  onJiraUserChange: (supplierId: string, accountId: string | null, displayName: string | null) => void;
-  onDefaultRoleChange: (supplierId: string, roleId: string | null) => void;
 }): React.JSX.Element {
   const isOpen = supplier !== null;
 
@@ -130,15 +125,13 @@ function SupplierDrawer({
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
-              {/* Jira user */}
+              {/* Jira users */}
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Usuario de Jira</p>
-                <JiraUserPicker
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Usuarios de Jira</p>
+                <JiraUserList
                   supplierId={supplier.id}
-                  currentAccountId={supplier.jiraAccountId}
-                  currentDisplayName={supplier.jiraDisplayName}
+                  initialUsers={supplier.jiraUsers}
                   workspaceId={workspaceId}
-                  onUserChange={(accountId, displayName) => onJiraUserChange(supplier.id, accountId, displayName)}
                 />
               </div>
 
@@ -148,8 +141,6 @@ function SupplierDrawer({
                   supplierId={supplier.id}
                   roles={supplier.roles}
                   templates={roleTemplates}
-                  defaultRoleId={supplier.defaultRoleId}
-                  onDefaultRoleChange={(roleId) => onDefaultRoleChange(supplier.id, roleId)}
                 />
               </div>
             </div>
@@ -206,17 +197,21 @@ function SupplierTableRow({
       <td className="px-4 py-3 text-sm text-gray-700">
         {supplier.companyName ?? <span className="text-gray-400">—</span>}
       </td>
-      <td className="px-4 py-3 text-sm text-gray-700">
-        {supplier.jiraDisplayName
-          ? (
-            <span className="flex items-center gap-1.5">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-              </svg>
-              {supplier.jiraDisplayName}
-            </span>
-          )
-          : <span className="text-gray-400">—</span>}
+      <td className="px-4 py-3">
+        {supplier.jiraUsers.length === 0 ? (
+          <span className="text-gray-400 text-sm">—</span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {supplier.jiraUsers.map((u) => (
+              <span key={u.accountId} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 rounded px-1.5 py-0.5 w-fit">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                </svg>
+                {u.displayName ?? u.accountId}
+              </span>
+            ))}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
@@ -250,19 +245,8 @@ interface Props {
   emptyMessage?: string;
 }
 
-export function SuppliersTable({ suppliers: initialSuppliers, roleTemplates = [], workspaceId = null, emptyMessage }: Props): React.JSX.Element {
-  const [suppliers, setSuppliers] = useState<SupplierRow[]>(initialSuppliers);
+export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = null, emptyMessage }: Props): React.JSX.Element {
   const [activeSupplier, setActiveSupplier] = useState<SupplierRow | null>(null);
-
-  function handleJiraUserChange(supplierId: string, accountId: string | null, displayName: string | null): void {
-    setSuppliers((prev) => prev.map((s) => s.id === supplierId ? { ...s, jiraAccountId: accountId, jiraDisplayName: displayName } : s));
-    setActiveSupplier((prev) => prev?.id === supplierId ? { ...prev, jiraAccountId: accountId, jiraDisplayName: displayName } : prev);
-  }
-
-  function handleDefaultRoleChange(supplierId: string, roleId: string | null): void {
-    setSuppliers((prev) => prev.map((s) => s.id === supplierId ? { ...s, defaultRoleId: roleId } : s));
-    setActiveSupplier((prev) => prev?.id === supplierId ? { ...prev, defaultRoleId: roleId } : prev);
-  }
 
   if (suppliers.length === 0) {
     return (
@@ -280,7 +264,7 @@ export function SuppliersTable({ suppliers: initialSuppliers, roleTemplates = []
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuario Jira</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuarios Jira</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
               <th className="px-4 py-3" />
@@ -303,8 +287,6 @@ export function SuppliersTable({ suppliers: initialSuppliers, roleTemplates = []
         roleTemplates={roleTemplates}
         workspaceId={workspaceId}
         onClose={() => setActiveSupplier(null)}
-        onJiraUserChange={handleJiraUserChange}
-        onDefaultRoleChange={handleDefaultRoleChange}
       />
     </>
   );

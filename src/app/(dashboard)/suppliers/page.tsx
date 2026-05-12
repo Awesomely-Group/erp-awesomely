@@ -28,6 +28,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
       where,
       include: {
         company: { select: { name: true } },
+        jiraUsers: { select: { accountId: true }, orderBy: { createdAt: "asc" } },
         verifications: {
           orderBy: { periodEnd: "desc" },
           take: 1,
@@ -45,11 +46,11 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
 
   const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
 
-  const accountIds = suppliers.map((s) => s.jiraAccountId).filter((id): id is string => id !== null);
+  const allAccountIds = [...new Set(suppliers.flatMap((s) => s.jiraUsers.map((u) => u.accountId)))];
   let jiraNameMap = new Map<string, string>();
-  if (accountIds.length > 0 && firstWorkspace) {
+  if (allAccountIds.length > 0 && firstWorkspace) {
     const jira = new JiraClient(firstWorkspace.domain, firstWorkspace.email, firstWorkspace.apiToken);
-    jiraNameMap = await jira.getUsersByAccountIds(accountIds).catch(() => new Map());
+    jiraNameMap = await jira.getUsersByAccountIds(allAccountIds).catch(() => new Map());
   }
 
   const suppliersData = suppliers.map((s) => ({
@@ -58,8 +59,10 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     holdedContactId: s.holdedContactId,
     companyName: s.company?.name ?? null,
     tipo: s.tipo,
-    jiraAccountId: s.jiraAccountId,
-    jiraDisplayName: s.jiraAccountId ? (jiraNameMap.get(s.jiraAccountId) ?? null) : null,
+    jiraUsers: s.jiraUsers.map((u) => ({
+      accountId: u.accountId,
+      displayName: jiraNameMap.get(u.accountId) ?? null,
+    })),
     defaultRoleId: s.defaultRoleId,
     lastVerification: s.verifications[0] ? { status: s.verifications[0].status } : null,
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),

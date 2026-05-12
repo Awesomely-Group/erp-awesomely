@@ -25,11 +25,14 @@ export async function createVerification(
 export async function captureTempoHours(verificationId: string): Promise<void> {
   const verification = await prisma.supplierVerification.findUniqueOrThrow({
     where: { id: verificationId },
-    include: { supplier: true, role: true },
+    include: {
+      supplier: { include: { jiraUsers: { select: { accountId: true } } } },
+      role: true,
+    },
   });
 
   const { supplier } = verification;
-  if (!supplier.jiraAccountId) throw new Error("El proveedor no tiene Jira Account ID configurado");
+  if (supplier.jiraUsers.length === 0) throw new Error("El proveedor no tiene usuarios de Jira configurados");
 
   const workspace = await prisma.jiraWorkspace.findFirst({
     where: { tempoApiToken: { not: null } },
@@ -40,7 +43,11 @@ export async function captureTempoHours(verificationId: string): Promise<void> {
   const from = verification.periodStart.toISOString().slice(0, 10);
   const to = verification.periodEnd.toISOString().slice(0, 10);
 
-  const result = await tempoClient.getApprovedHours(supplier.jiraAccountId, from, to);
+  const results = await Promise.all(
+    supplier.jiraUsers.map((u) => tempoClient.getApprovedHours(u.accountId, from, to))
+  );
+  const totalApprovedHours = Math.round(results.reduce((sum, r) => sum + r.approvedHours, 0) * 100) / 100;
+  const usedFallback = results.some((r) => r.usedFallback);
 
   const rate = verification.role?.ratePerHour != null
     ? Number(verification.role.ratePerHour)
@@ -49,17 +56,17 @@ export async function captureTempoHours(verificationId: string): Promise<void> {
       : null;
 
   const expectedAmount = rate != null
-    ? Math.round(result.approvedHours * rate * 100) / 100
+    ? Math.round(totalApprovedHours * rate * 100) / 100
     : null;
 
   await prisma.supplierVerification.update({
     where: { id: verificationId },
     data: {
-      tempoHours: result.approvedHours,
+      tempoHours: totalApprovedHours,
       expectedAmount,
       capturedAt: new Date(),
       status: "HOURS_CAPTURED",
-      notes: result.usedFallback
+      notes: usedFallback
         ? "Aviso: la API de Approvals de Tempo no está disponible; se han usado todos los worklogs del período sin filtrar por aprobación."
         : null,
     },

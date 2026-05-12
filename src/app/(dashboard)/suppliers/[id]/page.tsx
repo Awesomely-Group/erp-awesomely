@@ -6,7 +6,7 @@ import { JiraClient } from "@/lib/jira";
 import { VerificationRow, type SerializedVerification, type AvailableInvoice } from "./verification-row";
 import { NewVerificationForm } from "./new-verification-form";
 import { RolesSection } from "./roles-section";
-import { JiraUserPicker } from "./jira-user-picker";
+import { JiraUserList } from "./jira-user-list";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -19,6 +19,7 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
     prisma.supplier.findUnique({
       where: { id },
       include: {
+        jiraUsers: { select: { accountId: true }, orderBy: { createdAt: "asc" } },
         roles: {
           where: { active: true },
           orderBy: { name: "asc" },
@@ -44,13 +45,16 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
 
   const roleTemplates = roleTemplatesRaw.map((t) => ({ id: t.id, name: t.name, color: t.color }));
 
-  let jiraDisplayName: string | null = null;
-  if (supplier.jiraAccountId && firstWorkspace) {
+  const jiraAccountIds = supplier.jiraUsers.map((u) => u.accountId);
+  let jiraNameMap = new Map<string, string>();
+  if (jiraAccountIds.length > 0 && firstWorkspace) {
     const jira = new JiraClient(firstWorkspace.domain, firstWorkspace.email, firstWorkspace.apiToken);
-    const names = await jira.getUsersByAccountIds([supplier.jiraAccountId]);
-    const resolved = names.get(supplier.jiraAccountId);
-    jiraDisplayName = resolved !== supplier.jiraAccountId ? (resolved ?? null) : null;
+    jiraNameMap = await jira.getUsersByAccountIds(jiraAccountIds).catch(() => new Map());
   }
+  const jiraUsers = supplier.jiraUsers.map((u) => ({
+    accountId: u.accountId,
+    displayName: jiraNameMap.get(u.accountId) ?? null,
+  }));
 
   const invoiceOrConditions: Prisma.InvoiceWhereInput[] = [];
   if (supplier.holdedContactId) {
@@ -133,10 +137,9 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
               <span>
                 Tarifa: {supplier.hourlyRate != null ? `${supplier.hourlyRate.toFixed(2)} €/h` : <span className="text-gray-400">no configurada</span>}
               </span>
-              <JiraUserPicker
+              <JiraUserList
                 supplierId={supplier.id}
-                currentAccountId={supplier.jiraAccountId}
-                currentDisplayName={jiraDisplayName}
+                initialUsers={jiraUsers}
                 workspaceId={firstWorkspace?.id ?? null}
               />
             </div>

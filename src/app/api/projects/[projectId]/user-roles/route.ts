@@ -52,13 +52,21 @@ export async function GET(
   // Supplier data + project overrides
   const [suppliers, projectOverrides] = await Promise.all([
     prisma.supplier.findMany({
-      where: { jiraAccountId: { in: accountIds } },
-      include: { roles: { where: { active: true }, orderBy: { name: "asc" } } },
+      where: { jiraUsers: { some: { accountId: { in: accountIds } } } },
+      include: {
+        jiraUsers: { select: { accountId: true } },
+        roles: { where: { active: true }, orderBy: { name: "asc" } },
+      },
     }),
     prisma.projectUserRole.findMany({ where: { projectId, jiraAccountId: { in: accountIds } } }),
   ]);
 
-  const supplierByAccountId = new Map(suppliers.map((s) => [s.jiraAccountId!, s]));
+  const supplierByAccountId = new Map<string, typeof suppliers[0]>();
+  for (const s of suppliers) {
+    for (const u of s.jiraUsers) {
+      supplierByAccountId.set(u.accountId, s);
+    }
+  }
   const overrideByAccountId = new Map(projectOverrides.map((o) => [o.jiraAccountId, o.roleId]));
 
   const entries: ProjectUserRoleEntry[] = accountIds.map((accountId) => {
