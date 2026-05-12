@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedProformaUrl } from "@/lib/utils";
 import { MARCA_OPTIONS } from "@/lib/org";
 import { classifyProforma } from "./actions";
@@ -148,10 +149,25 @@ function ProjectCell({
 export function ProformasTable({
   proformas,
   projects,
+  selectedId,
 }: {
   proformas: ProformaRow[];
   projects: Project[];
+  selectedId?: string;
 }): React.JSX.Element {
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  function handleRowClick(id: string): void {
+    const params = new URLSearchParams(sp.toString());
+    if (params.get("proformaId") === id) {
+      params.delete("proformaId");
+    } else {
+      params.set("proformaId", id);
+    }
+    router.push(`/proformas?${params.toString()}`);
+  }
+
   if (proformas.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-gray-400">
@@ -179,10 +195,18 @@ export function ProformasTable({
           </tr>
         </thead>
         <tbody>
-          {proformas.map((pf) => (
+          {proformas.map((pf) => {
+            const isSelected = pf.id === selectedId;
+            return (
             <tr
               key={pf.id}
-              className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest("a, button, select")) return;
+                handleRowClick(pf.id);
+              }}
+              className={`cursor-pointer border-b border-gray-100 last:border-0 transition-colors ${
+                isSelected ? "bg-indigo-50 hover:bg-indigo-100" : "hover:bg-gray-50"
+              }`}
             >
               <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                 {formatDate(pf.date.toISOString())}
@@ -247,7 +271,8 @@ export function ProformasTable({
                 </a>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -6,6 +6,8 @@ import { getDateRange } from "@/lib/date-range";
 import { MARCA_FILTER_UNASSIGNED } from "@/lib/org";
 import { ProformasFilters } from "./proformas-filters";
 import { ProformasTable } from "./proformas-table";
+import { ProformaDrawer } from "./proforma-drawer";
+import { ProformaPanel } from "./proforma-panel";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 
@@ -19,6 +21,7 @@ type ProformaPageParams = {
   project?: string;
   page?: string;
   alert?: string;
+  proformaId?: string;
 };
 
 const PAGE_SIZE = 50;
@@ -205,9 +208,22 @@ export default async function ProformasPage({
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <Suspense>
-          <ProformasTable proformas={proformas} projects={projects} />
+          <ProformasTable proformas={proformas} projects={projects} selectedId={params.proformaId} />
         </Suspense>
       </div>
+
+      <ProformaDrawer open={!!params.proformaId}>
+        {params.proformaId && (
+          <Suspense
+            key={params.proformaId}
+            fallback={
+              <div className="text-sm text-gray-400 animate-pulse">Cargando…</div>
+            }
+          >
+            <ProformaPanel proformaId={params.proformaId} />
+          </Suspense>
+        )}
+      </ProformaDrawer>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-gray-600">
