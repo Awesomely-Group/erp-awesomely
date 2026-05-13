@@ -48,21 +48,25 @@ export async function GET(): Promise<NextResponse> {
 
   const key = company.holdedApiKey;
 
-  // Try different URL combinations to find which one works
-  const candidates = [
-    "https://api.holded.com/api/contacts/v1/contacts",
-    "https://api.holded.com/api/contacts/v1/contacts?type=supplier",
-    "https://api.holded.com/api/contacts/v1/contacts?type=proveedor",
-    "https://api.holded.com/api/contacts/v2/contacts",
-    "https://api.holded.com/api/contacts/v2/contacts?type=supplier",
-    "https://api.holded.com/api/invoicing/v1/contacts",
-    "https://api.holded.com/api/invoicing/v1/contacts?type=supplier",
-  ];
+  // Find a real PURCHASE invoice with a holdedContactId to test with
+  const sampleInvoice = await prisma.invoice.findFirst({
+    where: { type: "PURCHASE", companyId: company.id, holdedContactId: { not: null } },
+    select: { holdedContactId: true, counterparty: true },
+  });
 
-  const results = await Promise.all(candidates.map((url) => tryFetch(url, key)));
+  const contactId = sampleInvoice?.holdedContactId ?? null;
+
+  // Test individual contact endpoints with a real contactId
+  const singleContactResults = contactId
+    ? await Promise.all([
+        tryFetch(`https://api.holded.com/api/invoicing/v1/contacts/${contactId}`, key),
+        tryFetch(`https://api.holded.com/api/contacts/v1/contacts/${contactId}`, key),
+      ])
+    : [];
 
   return NextResponse.json({
     company: company.name,
-    results,
+    sampleContact: sampleInvoice ? { id: contactId, name: sampleInvoice.counterparty } : null,
+    singleContactResults,
   });
 }
