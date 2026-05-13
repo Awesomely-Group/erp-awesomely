@@ -20,7 +20,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }): Rea
             <PanelLeftOpen className="h-5 w-5" />
           </button>
         )}
-        <div className="px-8 py-6">{children}</div>
+        <div className={`px-8 py-6${open ? "" : " pl-14"}`}>{children}</div>
       </main>
     </div>
   );
