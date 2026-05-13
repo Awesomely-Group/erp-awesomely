@@ -2,9 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { MARCA_OPTIONS } from "@/lib/org";
+import { filterProjectsByMarca } from "@/lib/org";
 import { classifyProforma } from "./actions";
+import { ProjectCombobox } from "./project-combobox";
 
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; workspaceName: string };
 
 interface Props {
   proformaId: string;
@@ -27,6 +29,28 @@ export function ProformaClassifyForm({
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  const availableProjects = filterProjectsByMarca(projects, marca || null);
+
+  function handleMarcaChange(value: string): void {
+    setMarca(value);
+    setSaved(false);
+    if (projectId) {
+      const stillAvailable = filterProjectsByMarca(projects, value || null).some((p) => p.id === projectId);
+      if (!stillAvailable) setProjectId("");
+    }
+  }
+
+  function handleProjectChange(id: string): void {
+    setProjectId(id);
+    setSaved(false);
+    if (id) {
+      const proj = projects.find((p) => p.id === id);
+      if (proj?.workspaceName && proj.workspaceName !== marca) {
+        setMarca(proj.workspaceName);
+      }
+    }
+  }
+
   function handleSave(): void {
     setSaved(false);
     startTransition(async () => {
@@ -48,7 +72,7 @@ export function ProformaClassifyForm({
           <label className="block text-xs font-medium text-gray-700 mb-1">Marca</label>
           <select
             value={marca}
-            onChange={(e) => { setMarca(e.target.value); setSaved(false); }}
+            onChange={(e) => handleMarcaChange(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
           >
             <option value="">Sin asignar</option>
@@ -60,16 +84,12 @@ export function ProformaClassifyForm({
 
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Proyecto</label>
-          <select
+          <ProjectCombobox
+            projects={availableProjects}
             value={projectId}
-            onChange={(e) => { setProjectId(e.target.value); setSaved(false); }}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
-          >
-            <option value="">Sin proyecto</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+            onChange={handleProjectChange}
+            disabled={isPending}
+          />
         </div>
 
         <div>

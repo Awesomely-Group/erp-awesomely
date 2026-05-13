@@ -16,6 +16,15 @@ export const STATUS_FILTER_UNASSIGNED = "__status_unassigned__";
 
 const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
 
+/** Filtra proyectos según la marca seleccionada (workspace.name === marca). */
+export function filterProjectsByMarca<T extends { workspaceName: string }>(
+  projects: T[],
+  marca: string | null
+): T[] {
+  if (!marca) return projects;
+  return projects.filter((p) => p.workspaceName === marca);
+}
+
 /**
  * Filtro Prisma por invoice.marca.
  * Acepta un string con uno o varios valores separados por coma

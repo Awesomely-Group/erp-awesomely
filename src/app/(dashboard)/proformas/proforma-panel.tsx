@@ -44,9 +44,9 @@ export async function ProformaPanel({
     }),
     prisma.jiraProject.findMany({
       where: { active: true },
-      select: { id: true, name: true },
+      select: { id: true, name: true, workspace: { select: { name: true } } },
       orderBy: { name: "asc" },
-    }),
+    }).then((ps) => ps.map((p) => ({ id: p.id, name: p.name, workspaceName: p.workspace.name }))),
   ]);
 
   if (!proforma) {

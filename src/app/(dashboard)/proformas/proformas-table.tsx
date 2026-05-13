@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedProformaUrl } from "@/lib/utils";
-import { MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_OPTIONS, filterProjectsByMarca } from "@/lib/org";
 import { classifyProforma } from "./actions";
+import { ProjectCombobox } from "./project-combobox";
 
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; workspaceName: string };
 
 type ProformaRow = {
   id: string;
@@ -97,51 +98,55 @@ function ProjectCell({
   projectId,
   project,
   projects,
+  marca,
 }: {
   proformaId: string;
   projectId: string | null;
   project: { id: string; name: string } | null;
   projects: Project[];
+  marca: string | null;
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [currentId, setCurrentId] = useState(projectId ?? "");
 
-  function save(value: string | null): void {
+  const available = filterProjectsByMarca(projects, marca);
+
+  function save(id: string): void {
+    setCurrentId(id);
     startTransition(async () => {
-      await classifyProforma(proformaId, { projectId: value });
+      await classifyProforma(proformaId, { projectId: id || null });
     });
-    setEditing(false);
   }
 
   if (editing) {
     return (
-      <select
-        autoFocus
-        defaultValue={projectId ?? ""}
-        onBlur={(e) => save(e.target.value || null)}
-        onChange={(e) => save(e.target.value || null)}
-        className="text-xs rounded border border-indigo-300 px-1.5 py-0.5 bg-white max-w-[180px]"
-        disabled={pending}
-      >
-        <option value="">Sin proyecto</option>
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </select>
+      <div className="min-w-[180px]" onClick={(e) => e.stopPropagation()}>
+        <ProjectCombobox
+          projects={available}
+          value={currentId}
+          onChange={(id) => { save(id); setEditing(false); }}
+          disabled={pending}
+        />
+      </div>
     );
   }
+
+  const displayProject = currentId
+    ? (projects.find((p) => p.id === currentId) ?? project)
+    : project;
 
   return (
     <button
       type="button"
       onClick={() => setEditing(true)}
       className={`text-xs rounded-full px-2 py-0.5 font-medium transition-colors hover:opacity-80 truncate max-w-[160px] ${
-        project
+        displayProject
           ? "bg-blue-100 text-blue-700"
           : "bg-gray-100 text-gray-400 hover:bg-gray-200"
       }`}
     >
-      {project?.name ?? "Sin proyecto"}
+      {displayProject?.name ?? "Sin proyecto"}
     </button>
   );
 }
@@ -201,7 +206,7 @@ export function ProformasTable({
             <tr
               key={pf.id}
               onClick={(e) => {
-                if ((e.target as HTMLElement).closest("a, button, select")) return;
+                if ((e.target as HTMLElement).closest("a, button, select, input")) return;
                 handleRowClick(pf.id);
               }}
               className={`cursor-pointer border-b border-gray-100 last:border-0 transition-colors ${
@@ -248,6 +253,7 @@ export function ProformasTable({
                   projectId={pf.projectId}
                   project={pf.project}
                   projects={projects}
+                  marca={pf.marca}
                 />
               </td>
               <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">
