@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
+import { filterProjectsByMarca } from "@/lib/org";
 import { classifyLine, saveDraftLineNote } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ProjectCombobox } from "@/components/project-combobox";
 
 interface Suggestion {
   projectId: string;
@@ -320,21 +322,7 @@ function UnifiedClassifier({
   onMarcaChange: (marca: string) => void;
   isPending: boolean;
 }): React.JSX.Element {
-  const [workspaceFilter, setWorkspaceFilter] = useState(
-    selectedProject
-      ? (projects.find((p) => p.id === selectedProject)?.workspaceName ?? "")
-      : (MARCAS.includes(selectedMarca as (typeof MARCAS)[number]) ? selectedMarca : "")
-  );
-  const [projectSearch, setProjectSearch] = useState("");
-
-  const filteredProjects = projects.filter((p) => {
-    if (workspaceFilter && p.workspaceName !== workspaceFilter) return false;
-    if (projectSearch) {
-      const q = projectSearch.toLowerCase();
-      return p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const availableProjects = filterProjectsByMarca(projects, selectedMarca || null);
 
   return (
     <>
@@ -348,11 +336,7 @@ function UnifiedClassifier({
             {line.suggestions.map((s) => (
               <button
                 key={s.projectId}
-                onClick={() => {
-                  onProjectChange(s.projectId);
-                  const ws = projects.find((p) => p.id === s.projectId)?.workspaceName ?? "";
-                  setWorkspaceFilter(ws);
-                }}
+                onClick={() => onProjectChange(s.projectId)}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors",
                   selectedProject === s.projectId
@@ -374,67 +358,6 @@ function UnifiedClassifier({
       )}
 
       <div className="space-y-2">
-        <label className="block text-xs font-medium text-gray-600">Proyecto Jira (opcional)</label>
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setWorkspaceFilter("")}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-              workspaceFilter === ""
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
-            )}
-          >
-            Todas
-          </button>
-          {MARCAS.map((marca) => (
-            <button
-              key={marca}
-              type="button"
-              onClick={() => setWorkspaceFilter(marca)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-                workspaceFilter === marca
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
-              )}
-            >
-              {marca}
-            </button>
-          ))}
-        </div>
-        <input
-          type="text"
-          value={projectSearch}
-          onChange={(e) => setProjectSearch(e.target.value)}
-          placeholder="Buscar proyecto…"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-          disabled={isPending}
-        />
-        <select
-          value={selectedProject}
-          onChange={(e) => {
-            onProjectChange(e.target.value);
-            if (e.target.value) {
-              const ws = projects.find((p) => p.id === e.target.value)?.workspaceName ?? "";
-              setWorkspaceFilter(ws);
-            }
-          }}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-          disabled={isPending}
-          size={Math.min(filteredProjects.length + 1, 7)}
-        >
-          <option value="">Sin proyecto</option>
-          {filteredProjects.map((p) => (
-            <option key={p.id} value={p.id}>
-              [{p.key}] {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-2">
         <label className="block text-xs font-medium text-gray-600">Marca</label>
         <div className="flex flex-wrap gap-1.5">
           {MARCAS.map((marca) => (
@@ -442,7 +365,7 @@ function UnifiedClassifier({
               key={marca}
               type="button"
               disabled={isPending}
-              onClick={() => { onMarcaChange(marca); setWorkspaceFilter(marca); }}
+              onClick={() => onMarcaChange(marca)}
               className={cn(
                 "rounded-full px-3 py-1.5 text-sm font-medium border transition-colors",
                 selectedMarca === marca
@@ -454,6 +377,16 @@ function UnifiedClassifier({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-gray-600">Proyecto Jira (opcional)</label>
+        <ProjectCombobox
+          projects={availableProjects}
+          value={selectedProject}
+          onChange={onProjectChange}
+          disabled={isPending}
+        />
       </div>
     </>
   );

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { MARCA_OPTIONS } from "@/lib/org";
 import { filterProjectsByMarca } from "@/lib/org";
 import { classifyProforma } from "./actions";
-import { ProjectCombobox } from "./project-combobox";
+import { ProjectCombobox } from "@/components/project-combobox";
 
 type Project = { id: string; name: string; workspaceName: string };
 

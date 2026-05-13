@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedProformaUrl } from "@/lib/utils";
 import { MARCA_OPTIONS, filterProjectsByMarca } from "@/lib/org";
 import { classifyProforma } from "./actions";
-import { ProjectCombobox } from "./project-combobox";
+import { ProjectCombobox } from "@/components/project-combobox";
 
 type Project = { id: string; name: string; workspaceName: string };
 
