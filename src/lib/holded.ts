@@ -3,6 +3,7 @@
 
 const HOLDED_BASE_URL = "https://api.holded.com/api/invoicing/v1";
 const HOLDED_ACCOUNTING_BASE_URL = "https://api.holded.com/api/accounting/v1";
+const HOLDED_CONTACTS_BASE_URL = "https://api.holded.com/api/contacts/v1";
 
 const HOLDED_SYNC_FROM_YEAR = process.env.HOLDED_SYNC_FROM_YEAR
   ? parseInt(process.env.HOLDED_SYNC_FROM_YEAR, 10)
@@ -351,7 +352,7 @@ export class HoldedClient {
   }
 
   async getContactWithBankData(id: string): Promise<{ iban: string | null }> {
-    const data = await this.fetch<Record<string, unknown>>(`/contacts/${id}`);
+    const data = await this.fetchFromBase<Record<string, unknown>>(HOLDED_CONTACTS_BASE_URL, `/contacts/${id}`);
     const bankData = data["bankData"] as Record<string, unknown> | undefined;
     const iban =
       (typeof data["iban"] === "string" ? data["iban"] : null) ??
