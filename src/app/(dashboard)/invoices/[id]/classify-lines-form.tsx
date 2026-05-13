@@ -323,7 +323,7 @@ function UnifiedClassifier({
   const [workspaceFilter, setWorkspaceFilter] = useState(
     selectedProject
       ? (projects.find((p) => p.id === selectedProject)?.workspaceName ?? "")
-      : ""
+      : (MARCAS.includes(selectedMarca as (typeof MARCAS)[number]) ? selectedMarca : "")
   );
   const [projectSearch, setProjectSearch] = useState("");
 
@@ -442,7 +442,7 @@ function UnifiedClassifier({
               key={marca}
               type="button"
               disabled={isPending}
-              onClick={() => onMarcaChange(marca)}
+              onClick={() => { onMarcaChange(marca); setWorkspaceFilter(marca); }}
               className={cn(
                 "rounded-full px-3 py-1.5 text-sm font-medium border transition-colors",
                 selectedMarca === marca
