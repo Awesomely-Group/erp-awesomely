@@ -91,7 +91,7 @@ export function ForecastsTable({
     return (
       <div className="flex flex-col items-center justify-center h-40 text-sm text-gray-400 gap-2">
         <p>No hay previsiones todavía.</p>
-        <p className="text-xs">Usa el botón "Nueva previsión" para añadir la primera.</p>
+        <p className="text-xs">Usa el botón &quot;Nueva previsión&quot; para añadir la primera.</p>
       </div>
     );
   }
