@@ -450,11 +450,13 @@ export async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   });
 }
 
+const AUTO_CLASSIFIED_MARCAS = new Set(["Awesomely", "Gigson"]);
+
 export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
-  const lines = await prisma.invoiceLine.findMany({
-    where: { invoiceId },
-    include: { classification: true },
-  });
+  const [invoice, lines] = await Promise.all([
+    prisma.invoice.findUnique({ where: { id: invoiceId }, select: { marca: true } }),
+    prisma.invoiceLine.findMany({ where: { invoiceId }, include: { classification: true } }),
+  ]);
 
   if (lines.length === 0) return;
 
@@ -463,7 +465,10 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
   let status: "PENDING" | "PARTIAL" | "CLASSIFIED" | "APPROVED" = "PENDING";
 
   if (classified === 0) {
-    status = "PENDING";
+    const marcaValues = (invoice?.marca ?? "").split(",").filter(Boolean);
+    const isAutoClassified =
+      marcaValues.length > 0 && marcaValues.every((m) => AUTO_CLASSIFIED_MARCAS.has(m));
+    status = isAutoClassified ? "CLASSIFIED" : "PENDING";
   } else if (classified < lines.length) {
     status = "PARTIAL";
   } else {
