@@ -1,0 +1,32 @@
+[
+  {
+    "id": "proj_colvin",
+    "name": "Colvin E-commerce",
+    "jiraKey": "COLVIN",
+    "workspace": { "name": "Gigson Solutions" }
+  },
+  {
+    "id": "proj_giro",
+    "name": "Giro Time Tracking",
+    "jiraKey": "GIRO",
+    "workspace": { "name": "Gigson Solutions" }
+  },
+  {
+    "id": "proj_latroupe",
+    "name": "LaTroupe Studio Web",
+    "jiraKey": "LTWEB",
+    "workspace": { "name": "LaTroupe" }
+  },
+  {
+    "id": "proj_awesomely",
+    "name": "Awesomely Internal",
+    "jiraKey": "AWE",
+    "workspace": { "name": "Awesomely" }
+  },
+  {
+    "id": "proj_gigson",
+    "name": "Gigson Platform",
+    "jiraKey": "GIGSON",
+    "workspace": { "name": "Gigson" }
+  }
+]

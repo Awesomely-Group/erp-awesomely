@@ -1,0 +1,93 @@
+[
+  {
+    "id": "period-mismatch-service-before",
+    "input": {
+      "serviceStart": "2025-01-01",
+      "serviceEnd": "2025-01-15",
+      "periodStart": "2025-02-01",
+      "periodEnd": "2025-02-28"
+    },
+    "expected": { "periodMismatch": true }
+  },
+  {
+    "id": "period-mismatch-service-after",
+    "input": {
+      "serviceStart": "2025-03-01",
+      "serviceEnd": "2025-03-31",
+      "periodStart": "2025-02-01",
+      "periodEnd": "2025-02-28"
+    },
+    "expected": { "periodMismatch": true }
+  },
+  {
+    "id": "period-overlap-ok",
+    "input": {
+      "serviceStart": "2025-02-10",
+      "serviceEnd": "2025-02-20",
+      "periodStart": "2025-02-01",
+      "periodEnd": "2025-02-28"
+    },
+    "expected": { "periodMismatch": false }
+  },
+  {
+    "id": "period-exact-match",
+    "input": {
+      "serviceStart": "2025-02-01",
+      "serviceEnd": "2025-02-28",
+      "periodStart": "2025-02-01",
+      "periodEnd": "2025-02-28"
+    },
+    "expected": { "periodMismatch": false }
+  },
+  {
+    "id": "expected-amount-basic",
+    "input": { "hours": 40, "rate": 75 },
+    "expected": { "expectedAmount": 3000 }
+  },
+  {
+    "id": "expected-amount-rounded",
+    "input": { "hours": 33.33, "rate": 60 },
+    "expected": { "expectedAmount": 1999.8 }
+  },
+  {
+    "id": "expected-amount-null-rate",
+    "input": { "hours": 40, "rate": null },
+    "expected": { "expectedAmount": null }
+  },
+  {
+    "id": "status-verified-ok",
+    "input": {
+      "periodMismatch": false,
+      "invoicedAmount": 3000,
+      "expectedAmount": 3000
+    },
+    "expected": { "status": "VERIFIED_OK" }
+  },
+  {
+    "id": "status-verified-ok-tolerance",
+    "input": {
+      "periodMismatch": false,
+      "invoicedAmount": 3000.009,
+      "expectedAmount": 3000
+    },
+    "expected": { "status": "VERIFIED_OK" }
+  },
+  {
+    "id": "status-verified-mismatch",
+    "input": {
+      "periodMismatch": false,
+      "invoicedAmount": 3100,
+      "expectedAmount": 3000
+    },
+    "expected": { "status": "VERIFIED_MISMATCH" }
+  },
+  {
+    "id": "status-period-mismatch-priority",
+    "input": {
+      "periodMismatch": true,
+      "invoicedAmount": 3100,
+      "expectedAmount": 3000
+    },
+    "expected": { "status": "PERIOD_MISMATCH" }
+  }
+]

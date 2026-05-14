@@ -1,0 +1,82 @@
+[
+  {
+    "id": "match-jira-key",
+    "input": {
+      "lineName": "Desarrollo COLVIN",
+      "lineDescription": "Sprint marzo"
+    },
+    "expected": { "top1ProjectId": "proj_colvin", "minConfidence": 0.5 }
+  },
+  {
+    "id": "match-project-name",
+    "input": {
+      "lineName": "Horas consultoría",
+      "lineDescription": "Giro Time Tracking - febrero"
+    },
+    "expected": { "top1ProjectId": "proj_giro", "minConfidence": 0.5 }
+  },
+  {
+    "id": "match-latroupe",
+    "input": {
+      "lineName": "Diseño web",
+      "lineDescription": "LaTroupe Studio Web mantenimiento"
+    },
+    "expected": { "top1ProjectId": "proj_latroupe", "minConfidence": 0.5 }
+  },
+  {
+    "id": "match-awesomely",
+    "input": {
+      "lineName": "Awesomely Internal",
+      "lineDescription": "Administración"
+    },
+    "expected": { "top1ProjectId": "proj_awesomely", "minConfidence": 0.5 }
+  },
+  {
+    "id": "stop-words-ignored",
+    "input": {
+      "lineName": "Servicio de factura",
+      "lineDescription": "Gigson Platform desarrollo"
+    },
+    "expected": { "top1ProjectId": "proj_gigson", "minConfidence": 0.5 }
+  },
+  {
+    "id": "no-keywords",
+    "input": {
+      "lineName": "de la",
+      "lineDescription": "y en"
+    },
+    "expected": { "empty": true }
+  },
+  {
+    "id": "partial-key-match",
+    "input": {
+      "lineName": "Soporte colvin",
+      "lineDescription": null
+    },
+    "expected": { "top1ProjectId": "proj_colvin", "minConfidence": 0.5 }
+  },
+  {
+    "id": "tie-normalized-confidence",
+    "input": {
+      "lineName": "Gigson Platform",
+      "lineDescription": "Gigson Solutions Colvin"
+    },
+    "expected": { "top1ProjectId": "proj_gigson", "minConfidence": 1 }
+  },
+  {
+    "id": "no-match",
+    "input": {
+      "lineName": "Material oficina",
+      "lineDescription": "Papelería general"
+    },
+    "expected": { "empty": true }
+  },
+  {
+    "id": "match-gigson-key",
+    "input": {
+      "lineName": "Licencias",
+      "lineDescription": "GIGSON infraestructura"
+    },
+    "expected": { "top1ProjectId": "proj_gigson", "minConfidence": 0.5 }
+  }
+]

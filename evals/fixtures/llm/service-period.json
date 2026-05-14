@@ -1,0 +1,32 @@
+[
+  {
+    "id": "period-february",
+    "input": {
+      "invoiceDescription": "Servicios profesionales correspondientes al período 01/02/2025 - 28/02/2025"
+    },
+    "expected": {
+      "serviceStart": "2025-02-01",
+      "serviceEnd": "2025-02-28"
+    }
+  },
+  {
+    "id": "period-mid-month",
+    "input": {
+      "invoiceDescription": "Horas aprobadas del 15 de enero al 15 de febrero de 2025"
+    },
+    "expected": {
+      "serviceStart": "2025-01-15",
+      "serviceEnd": "2025-02-15"
+    }
+  },
+  {
+    "id": "period-iso-format",
+    "input": {
+      "invoiceDescription": "Billing period: 2025-03-01 to 2025-03-15"
+    },
+    "expected": {
+      "serviceStart": "2025-03-01",
+      "serviceEnd": "2025-03-15"
+    }
+  }
+]

@@ -1,6 +1,11 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import {
+  computeExpectedAmount,
+  computePeriodMismatch,
+  resolveVerificationStatus,
+} from "@/lib/supplier-verification";
 import { TempoClient } from "@/lib/tempo";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
@@ -55,9 +60,7 @@ export async function captureTempoHours(verificationId: string): Promise<void> {
       ? Number(supplier.hourlyRate)
       : null;
 
-  const expectedAmount = rate != null
-    ? Math.round(totalApprovedHours * rate * 100) / 100
-    : null;
+  const expectedAmount = computeExpectedAmount(totalApprovedHours, rate);
 
   await prisma.supplierVerification.update({
     where: { id: verificationId },
@@ -89,8 +92,12 @@ export async function linkInvoice(
   const serviceStartDate = new Date(serviceStart);
   const serviceEndDate = new Date(serviceEnd);
 
-  const periodMismatch =
-    serviceEndDate < verification.periodStart || serviceStartDate > verification.periodEnd;
+  const periodMismatch = computePeriodMismatch(
+    serviceStartDate,
+    serviceEndDate,
+    verification.periodStart,
+    verification.periodEnd,
+  );
 
   await prisma.supplierVerification.update({
     where: { id: verificationId },
@@ -113,19 +120,17 @@ export async function verifyPeriod(verificationId: string): Promise<void> {
     where: { id: verificationId },
   });
 
-  let status: "PERIOD_MISMATCH" | "VERIFIED_MISMATCH" | "VERIFIED_OK";
-
-  if (verification.periodMismatch === true) {
-    status = "PERIOD_MISMATCH";
-  } else if (
-    verification.invoicedAmount != null &&
-    verification.expectedAmount != null &&
-    Math.abs(Number(verification.invoicedAmount) - Number(verification.expectedAmount)) > 0.01
-  ) {
-    status = "VERIFIED_MISMATCH";
-  } else {
-    status = "VERIFIED_OK";
-  }
+  const status = resolveVerificationStatus({
+    periodMismatch: verification.periodMismatch,
+    invoicedAmount:
+      verification.invoicedAmount != null
+        ? Number(verification.invoicedAmount)
+        : null,
+    expectedAmount:
+      verification.expectedAmount != null
+        ? Number(verification.expectedAmount)
+        : null,
+  });
 
   await prisma.supplierVerification.update({
     where: { id: verificationId },

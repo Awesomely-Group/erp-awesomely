@@ -1,38 +1,47 @@
 import { prisma } from "./prisma";
 
-interface SuggestedProject {
+export interface SuggestedProject {
   projectId: string;
   projectName: string;
   workspaceName: string;
-  confidence: number; // 0-1
+  confidence: number;
   reason: string;
 }
 
-// Matches keywords extracted from the invoice line against active Jira project names.
-// A line scores 1 point per keyword that appears in a project name (or vice versa).
-export async function getSuggestionsForLine(params: {
-  counterparty?: string | null;
-  lineName: string;
-  lineDescription?: string | null;
-}): Promise<SuggestedProject[]> {
-  const { lineName, lineDescription } = params;
+export interface ProjectForSuggestion {
+  id: string;
+  name: string;
+  jiraKey: string;
+  workspace: { name: string };
+}
 
-  const projects = await prisma.jiraProject.findMany({
-    where: { active: true },
-    select: {
-      id: true,
-      name: true,
-      jiraKey: true,
-      workspace: { select: { name: true } },
-    },
-  });
+export function extractKeywords(text: string): string[] {
+  const stopWords = new Set([
+    "de", "del", "la", "el", "los", "las", "un", "una", "y", "en", "a",
+    "con", "por", "para", "the", "of", "and", "for", "to", "in", "a",
+    "service", "services", "servicio", "servicios", "factura",
+  ]);
 
-  const lineKeywords = extractKeywords(lineName + " " + (lineDescription ?? ""));
+  return text
+    .toLowerCase()
+    .replace(/[^a-záéíóúüñ\s]/gi, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !stopWords.has(w))
+    .slice(0, 10);
+}
+
+export function scoreProjectSuggestions(
+  projects: ProjectForSuggestion[],
+  params: { lineName: string; lineDescription?: string | null },
+): SuggestedProject[] {
+  const lineKeywords = extractKeywords(
+    params.lineName + " " + (params.lineDescription ?? ""),
+  );
   if (lineKeywords.length === 0) return [];
 
   const scored = new Map<
     string,
-    { score: number; project: { id: string; name: string; workspace: { name: string } } }
+    { score: number; project: ProjectForSuggestion }
   >();
 
   for (const project of projects) {
@@ -69,17 +78,20 @@ export async function getSuggestionsForLine(params: {
     .slice(0, 3);
 }
 
-function extractKeywords(text: string): string[] {
-  const stopWords = new Set([
-    "de", "del", "la", "el", "los", "las", "un", "una", "y", "en", "a",
-    "con", "por", "para", "the", "of", "and", "for", "to", "in", "a",
-    "service", "services", "servicio", "servicios", "factura",
-  ]);
+export async function getSuggestionsForLine(params: {
+  counterparty?: string | null;
+  lineName: string;
+  lineDescription?: string | null;
+}): Promise<SuggestedProject[]> {
+  const projects = await prisma.jiraProject.findMany({
+    where: { active: true },
+    select: {
+      id: true,
+      name: true,
+      jiraKey: true,
+      workspace: { select: { name: true } },
+    },
+  });
 
-  return text
-    .toLowerCase()
-    .replace(/[^a-záéíóúüñ\s]/gi, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 3 && !stopWords.has(w))
-    .slice(0, 10);
+  return scoreProjectSuggestions(projects, params);
 }

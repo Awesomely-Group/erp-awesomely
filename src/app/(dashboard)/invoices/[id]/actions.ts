@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@/lib/auth";
+import { deriveMarcaFromClassifications } from "@/lib/invoice-marca";
 import { prisma } from "@/lib/prisma";
 import { updateInvoiceStatus } from "@/lib/sync";
 import { AuditAction, ClassificationStatus } from "@prisma/client";
@@ -12,17 +13,11 @@ async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
     include: { project: { include: { workspace: true } } },
   });
 
-  const marcas = [
-    ...new Set([
-      ...classifications.filter((c) => c.project).map((c) => c.project!.workspace.name),
-      ...classifications.filter((c) => !c.project && c.marca).map((c) => c.marca!),
-      ...classifications.filter((c) => !c.project && !c.marca).map(() => "Awesomely"),
-    ]),
-  ].sort();
+  const marca = deriveMarcaFromClassifications(classifications);
 
   await prisma.invoice.update({
     where: { id: invoiceId },
-    data: { marca: marcas.length > 0 ? marcas.join(",") : null },
+    data: { marca },
   });
 }
 

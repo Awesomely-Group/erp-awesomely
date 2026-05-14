@@ -1,9 +1,9 @@
 import { Suspense } from "react";
 import { Prisma, InvoiceType, ForecastType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import { formatCurrency, formatDate, holdedInvoiceUrl, holdedProformaUrl } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
-import { MARCA_FILTER_UNASSIGNED, invoiceWhereMarca } from "@/lib/org";
+import { MARCA_FILTER_UNASSIGNED, invoiceWhereMarca, proformaWhereMarca } from "@/lib/org";
 import { HoldedClient } from "@/lib/holded";
 import Link from "next/link";
 import { CashflowFilters } from "./cashflow-filters";
@@ -248,6 +248,20 @@ type MonthInvoice = {
   company: { name: string };
 };
 
+type MonthProforma = {
+  id: string;
+  holdedId: string;
+  number: string | null;
+  counterparty: string | null;
+  date: Date;
+  totalEur: unknown;
+  company: { name: string };
+};
+
+type MonthDocument =
+  | { kind: "invoice"; data: MonthInvoice }
+  | { kind: "proforma"; data: MonthProforma };
+
 async function getMonthInvoices(
   params: CashflowParams,
   monthKey: string
@@ -284,6 +298,38 @@ async function getMonthInvoices(
       company: { select: { name: true } },
     },
     orderBy: [{ type: "asc" }, { date: "asc" }],
+  });
+}
+
+async function getMonthProformas(
+  params: CashflowParams,
+  monthKey: string
+): Promise<MonthProforma[]> {
+  const [yearStr, monthStr] = monthKey.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const from = new Date(year, month - 1, 1);
+  const to = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const marcaFilter = proformaWhereMarca(params.marca);
+  const where: Prisma.ProformaWhereInput = {
+    date: { gte: from, lte: to },
+    ...(marcaFilter ?? {}),
+    ...(params.company ? { companyId: params.company } : {}),
+  };
+
+  return prisma.proforma.findMany({
+    where,
+    select: {
+      id: true,
+      holdedId: true,
+      number: true,
+      counterparty: true,
+      date: true,
+      totalEur: true,
+      company: { select: { name: true } },
+    },
+    orderBy: { date: "asc" },
   });
 }
 
@@ -347,12 +393,21 @@ export default async function CashflowPage({
     effectiveParams = { ...params, account: resolvedAccounts.join(",") || undefined };
   }
 
-  const [{ monthly, kpis }, companies, accounts, monthInvoices] = await Promise.all([
+  const [{ monthly, kpis }, companies, accounts, monthInvoices, monthProformas] = await Promise.all([
     getCashflowData(effectiveParams),
     getCompanies(),
     getAccounts(),
     effectiveParams.selectedMonth ? getMonthInvoices(effectiveParams, effectiveParams.selectedMonth) : Promise.resolve(null),
+    effectiveParams.selectedMonth ? getMonthProformas(effectiveParams, effectiveParams.selectedMonth) : Promise.resolve(null),
   ]);
+
+  const monthDocuments: MonthDocument[] | null =
+    monthInvoices !== null
+      ? [
+          ...monthInvoices.map((inv): MonthDocument => ({ kind: "invoice", data: inv })),
+          ...(monthProformas ?? []).map((p): MonthDocument => ({ kind: "proforma", data: p })),
+        ].sort((a, b) => a.data.date.getTime() - b.data.date.getTime())
+      : null;
 
   const netIsPositive = kpis.netCashflow >= 0;
 
@@ -435,15 +490,15 @@ export default async function CashflowPage({
       </div>
 
       {/* Month detail table */}
-      {params.selectedMonth && monthInvoices && (
+      {params.selectedMonth && monthDocuments && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
             <div>
               <h2 className="text-sm font-semibold text-gray-700">
-                Facturas de {selectedMonthPoint?.monthLabel ?? params.selectedMonth}
+                Documentos de {selectedMonthPoint?.monthLabel ?? params.selectedMonth}
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                {monthInvoices.length} factura{monthInvoices.length !== 1 ? "s" : ""}
+                {monthDocuments.length} documento{monthDocuments.length !== 1 ? "s" : ""}
                 {selectedMonthPoint && (
                   <>
                     {" · "}
@@ -467,9 +522,9 @@ export default async function CashflowPage({
             </Link>
           </div>
 
-          {monthInvoices.length === 0 ? (
+          {monthDocuments.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-gray-400">
-              No hay facturas con los filtros actuales para este mes.
+              No hay documentos con los filtros actuales para este mes.
             </p>
           ) : (
             <table className="w-full text-sm">
@@ -484,46 +539,61 @@ export default async function CashflowPage({
                 </tr>
               </thead>
               <tbody>
-                {monthInvoices.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">
-                          {inv.number ?? (
-                            <span className="italic text-gray-400 font-normal">Borrador</span>
-                          )}
-                        </span>
-                        <a
-                          href={holdedInvoiceUrl(inv.holdedId, inv.type)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
-                          title="Ver en Holded"
-                        >
-                          ↗
-                        </a>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-600">
-                      {inv.type === InvoiceType.SALE ? "Venta" : "Compra"}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">
-                      {inv.counterparty ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-500">{inv.company.name}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{formatDate(inv.date.toISOString())}</td>
-                    <td
-                      className={`px-4 py-2.5 text-right font-medium ${
-                        inv.type === InvoiceType.SALE ? "text-green-600" : "text-red-600"
-                      }`}
+                {monthDocuments.map((doc) => {
+                  const isProforma = doc.kind === "proforma";
+                  const isInvoiceSale = doc.kind === "invoice" && doc.data.type === InvoiceType.SALE;
+                  const href = isProforma
+                    ? holdedProformaUrl(doc.data.holdedId)
+                    : holdedInvoiceUrl(
+                        doc.data.holdedId,
+                        (doc.data as MonthInvoice).type
+                      );
+                  const tipoLabel = isProforma
+                    ? "Proforma"
+                    : isInvoiceSale
+                    ? "Venta"
+                    : "Compra";
+                  const amountColor = isProforma
+                    ? "text-blue-600"
+                    : isInvoiceSale
+                    ? "text-green-600"
+                    : "text-red-600";
+
+                  return (
+                    <tr
+                      key={`${doc.kind}-${doc.data.id}`}
+                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
                     >
-                      {formatCurrency(Number(inv.totalEur))}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">
+                            {doc.data.number ?? (
+                              <span className="italic text-gray-400 font-normal">Borrador</span>
+                            )}
+                          </span>
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                            title="Ver en Holded"
+                          >
+                            ↗
+                          </a>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600">{tipoLabel}</td>
+                      <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">
+                        {doc.data.counterparty ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500">{doc.data.company.name}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{formatDate(doc.data.date.toISOString())}</td>
+                      <td className={`px-4 py-2.5 text-right font-medium ${amountColor}`}>
+                        {formatCurrency(Number(doc.data.totalEur))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

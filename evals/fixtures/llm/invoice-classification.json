@@ -1,0 +1,37 @@
+[
+  {
+    "id": "classify-colvin-dev",
+    "input": {
+      "lineName": "Desarrollo frontend",
+      "lineDescription": "Colvin e-commerce sprint 12",
+      "counterparty": "Proveedor Dev SL"
+    },
+    "expected": {
+      "projectId": "proj_colvin",
+      "marca": "Gigson Solutions"
+    }
+  },
+  {
+    "id": "classify-latroupe-design",
+    "input": {
+      "lineName": "Diseño UI",
+      "lineDescription": "LaTroupe Studio Web",
+      "counterparty": "Diseño Creativo SA"
+    },
+    "expected": {
+      "projectId": "proj_latroupe",
+      "marca": "LaTroupe"
+    }
+  },
+  {
+    "id": "classify-internal",
+    "input": {
+      "lineName": "Administración",
+      "lineDescription": "Gastos generales Awesomely",
+      "counterparty": "Oficina Central"
+    },
+    "expected": {
+      "marca": "Awesomely"
+    }
+  }
+]

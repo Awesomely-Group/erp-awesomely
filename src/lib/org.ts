@@ -61,3 +61,33 @@ export function invoiceWhereMarca(
   if (conditions.length === 0) return undefined;
   return { OR: conditions };
 }
+
+export function proformaWhereMarca(
+  marca?: string
+): Prisma.ProformaWhereInput | undefined {
+  if (!marca) return undefined;
+
+  const values = marca.split(",").filter(Boolean);
+  if (values.length === 0) return undefined;
+
+  const includesUnassigned = values.includes(MARCA_FILTER_UNASSIGNED);
+  const marcaValues = values.filter((v) => v !== MARCA_FILTER_UNASSIGNED && MARCA_VALUES.has(v));
+
+  const conditions: Prisma.ProformaWhereInput[] = [];
+
+  if (includesUnassigned) conditions.push({ marca: null });
+
+  for (const m of marcaValues) {
+    conditions.push({
+      OR: [
+        { marca: m },
+        { marca: { startsWith: `${m},` } },
+        { marca: { contains: `,${m},` } },
+        { marca: { endsWith: `,${m}` } },
+      ],
+    });
+  }
+
+  if (conditions.length === 0) return undefined;
+  return { OR: conditions };
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "project-workspace-marca",
+    "input": {
+      "classifications": [
+        {
+          "project": { "workspace": { "name": "Gigson Solutions" } },
+          "marca": null
+        }
+      ]
+    },
+    "expected": { "marca": "Gigson Solutions" }
+  },
+  {
+    "id": "manual-marca-no-project",
+    "input": {
+      "classifications": [
+        { "project": null, "marca": "LaTroupe" }
+      ]
+    },
+    "expected": { "marca": "LaTroupe" }
+  },
+  {
+    "id": "default-awesomely",
+    "input": {
+      "classifications": [
+        { "project": null, "marca": null }
+      ]
+    },
+    "expected": { "marca": "Awesomely" }
+  },
+  {
+    "id": "multiple-marcas-sorted",
+    "input": {
+      "classifications": [
+        {
+          "project": { "workspace": { "name": "LaTroupe" } },
+          "marca": null
+        },
+        {
+          "project": { "workspace": { "name": "Gigson Solutions" } },
+          "marca": null
+        }
+      ]
+    },
+    "expected": { "marca": "Gigson Solutions,LaTroupe" }
+  },
+  {
+    "id": "mixed-project-and-manual",
+    "input": {
+      "classifications": [
+        {
+          "project": { "workspace": { "name": "Awesomely" } },
+          "marca": null
+        },
+        { "project": null, "marca": "Gigson" }
+      ]
+    },
+    "expected": { "marca": "Awesomely,Gigson" }
+  },
+  {
+    "id": "empty-classifications",
+    "input": { "classifications": [] },
+    "expected": { "marca": null }
+  }
+]

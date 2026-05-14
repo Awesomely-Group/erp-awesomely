@@ -1,0 +1,42 @@
+[
+  {
+    "id": "tag-gsolutions",
+    "input": { "tags": ["gsolutions"] },
+    "expected": { "brand": "Gigson Solutions" }
+  },
+  {
+    "id": "tag-latroupe-studio",
+    "input": { "tags": ["latroupestudio"] },
+    "expected": { "brand": "LaTroupe" }
+  },
+  {
+    "id": "tag-unknown",
+    "input": { "tags": ["unknown"] },
+    "expected": { "brand": null }
+  },
+  {
+    "id": "tag-empty",
+    "input": { "tags": [] },
+    "expected": { "brand": null }
+  },
+  {
+    "id": "invoice-where-single-marca",
+    "input": { "marca": "Gigson" },
+    "expected": { "hasOr": true, "marcaValues": ["Gigson"] }
+  },
+  {
+    "id": "invoice-where-multi-marca",
+    "input": { "marca": "Gigson,LaTroupe" },
+    "expected": { "hasOr": true, "marcaValues": ["Gigson", "LaTroupe"] }
+  },
+  {
+    "id": "invoice-where-unassigned",
+    "input": { "marca": "__unassigned__" },
+    "expected": { "includesUnassigned": true }
+  },
+  {
+    "id": "invoice-where-mixed",
+    "input": { "marca": "Gigson,__unassigned__" },
+    "expected": { "hasOr": true, "includesUnassigned": true, "marcaValues": ["Gigson"] }
+  }
+]
