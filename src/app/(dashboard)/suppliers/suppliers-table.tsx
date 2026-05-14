@@ -142,6 +142,7 @@ function SupplierDrawer({
                   supplierId={supplier.id}
                   roles={supplier.roles}
                   templates={roleTemplates}
+                  defaultRoleId={supplier.defaultRoleId}
                 />
               </div>
             </div>
