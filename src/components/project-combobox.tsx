@@ -98,7 +98,7 @@ export function ProjectCombobox({
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
+        <div className="absolute z-[9999] mt-1 min-w-full w-max max-w-sm rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
           {projects.length === 0 ? (
             <div className="px-3 py-2 text-xs text-gray-400">Sin proyectos para esta marca</div>
           ) : filtered.length === 0 ? (
