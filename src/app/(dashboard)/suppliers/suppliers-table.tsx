@@ -87,7 +87,7 @@ function SupplierDrawer({
 
       {/* Panel */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 z-50 w-1/3 min-w-80 bg-white shadow-2xl flex flex-col transform transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         {supplier && (
           <>
