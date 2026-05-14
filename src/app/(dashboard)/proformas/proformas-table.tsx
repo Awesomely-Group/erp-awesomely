@@ -6,6 +6,9 @@ import { formatCurrency, formatDate, holdedProformaUrl } from "@/lib/utils";
 import { MARCA_OPTIONS, filterProjectsByMarca } from "@/lib/org";
 import { classifyProforma } from "./actions";
 import { ProjectCombobox } from "@/components/project-combobox";
+import { SortTh } from "@/components/sort-th";
+
+type ProformaSortKey = "date" | "counterparty" | "totalEur";
 
 type Project = { id: string; name: string; workspaceName: string };
 
@@ -155,13 +158,26 @@ export function ProformasTable({
   proformas,
   projects,
   selectedId,
+  sortBy = "date",
+  sortDir = "desc",
 }: {
   proformas: ProformaRow[];
   projects: Project[];
   selectedId?: string;
+  sortBy?: ProformaSortKey;
+  sortDir?: "asc" | "desc";
 }): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
+
+  function buildSortUrl(col: ProformaSortKey): string {
+    const params = new URLSearchParams(sp.toString());
+    const newDir = sortBy === col && sortDir === "desc" ? "asc" : "desc";
+    params.set("sortBy", col);
+    params.set("sortDir", newDir);
+    params.delete("page");
+    return `/proformas?${params.toString()}`;
+  }
 
   function handleRowClick(id: string): void {
     const params = new URLSearchParams(sp.toString());
@@ -185,18 +201,18 @@ export function ProformasTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap">Fecha</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap">Número</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Cliente</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Descripción</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Tags</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap">Estado</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Marca</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Proyecto</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 whitespace-nowrap">Subtotal</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 whitespace-nowrap">Total (EUR)</th>
-            <th className="px-4 py-3 text-center text-xs font-medium text-gray-600">Holded</th>
+          <tr className="border-b border-gray-200 bg-gray-50 text-xs">
+            <SortTh label="Fecha" active={sortBy === "date"} sortDir={sortDir} href={buildSortUrl("date")} className="whitespace-nowrap text-xs" />
+            <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Número</th>
+            <SortTh label="Cliente" active={sortBy === "counterparty"} sortDir={sortDir} href={buildSortUrl("counterparty")} className="text-xs" />
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Descripción</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Tags</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600 whitespace-nowrap">Subtotal</th>
+            <SortTh label="Total (EUR)" active={sortBy === "totalEur"} sortDir={sortDir} href={buildSortUrl("totalEur")} align="right" className="whitespace-nowrap text-xs" />
+            <th className="px-4 py-3 text-center font-medium text-gray-600">Holded</th>
           </tr>
         </thead>
         <tbody>

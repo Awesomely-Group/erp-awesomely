@@ -11,6 +11,16 @@ import { ProformaPanel } from "./proforma-panel";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 
+const PROFORMA_SORT_KEYS = ["date", "counterparty", "totalEur"] as const;
+type ProformaSortKey = (typeof PROFORMA_SORT_KEYS)[number];
+
+function parseProformaSortKey(v: string | undefined): ProformaSortKey {
+  return PROFORMA_SORT_KEYS.includes(v as ProformaSortKey) ? (v as ProformaSortKey) : "date";
+}
+function parseSortDir(v: string | undefined): "asc" | "desc" {
+  return v === "asc" ? "asc" : "desc";
+}
+
 type ProformaPageParams = {
   search?: string;
   period?: string;
@@ -22,6 +32,8 @@ type ProformaPageParams = {
   page?: string;
   alert?: string;
   proformaId?: string;
+  sortBy?: string;
+  sortDir?: string;
 };
 
 const PAGE_SIZE = 50;
@@ -104,6 +116,8 @@ export default async function ProformasPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
   const page = Math.max(1, parseInt(params.page ?? "1", 10));
+  const sortBy = parseProformaSortKey(params.sortBy);
+  const sortDir = parseSortDir(params.sortDir);
 
   const where = buildWhere(params);
 
@@ -128,7 +142,7 @@ export default async function ProformasPage({
         projectId: true,
         project: { select: { id: true, name: true } },
       },
-      orderBy: { date: "desc" },
+      orderBy: { [sortBy]: sortDir },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -142,7 +156,7 @@ export default async function ProformasPage({
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  function buildPageUrl(p: number): string {
+  function buildBaseParams(): URLSearchParams {
     const sp = new URLSearchParams();
     if (params.search) sp.set("search", params.search);
     if (params.period) sp.set("period", params.period);
@@ -152,6 +166,13 @@ export default async function ProformasPage({
     if (params.marca) sp.set("marca", params.marca);
     if (params.project) sp.set("project", params.project);
     if (params.alert) sp.set("alert", params.alert);
+    if (sortBy !== "date") sp.set("sortBy", sortBy);
+    if (sortDir !== "desc") sp.set("sortDir", sortDir);
+    return sp;
+  }
+
+  function buildPageUrl(p: number): string {
+    const sp = buildBaseParams();
     sp.set("page", String(p));
     return `/proformas?${sp.toString()}`;
   }
@@ -208,7 +229,7 @@ export default async function ProformasPage({
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <Suspense>
-          <ProformasTable proformas={proformas} projects={projects} selectedId={params.proformaId} />
+          <ProformasTable proformas={proformas} projects={projects} selectedId={params.proformaId} sortBy={sortBy} sortDir={sortDir} />
         </Suspense>
       </div>
 

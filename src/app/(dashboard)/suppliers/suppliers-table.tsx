@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { type VerificationStatus, type SupplierTipo } from "@prisma/client";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
 import { RolesSection } from "./[id]/roles-section";
 import { JiraUserList, type JiraUserEntry } from "./[id]/jira-user-list";
 import { JiraUserChip } from "./jira-user-chip";
+import { SortThClick } from "@/components/sort-th";
+
+type SupplierSortKey = "name" | "companyName";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -246,6 +249,25 @@ interface Props {
 
 export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = null, emptyMessage }: Props): React.JSX.Element {
   const [activeSupplier, setActiveSupplier] = useState<SupplierRow | null>(null);
+  const [sortBy, setSortBy] = useState<SupplierSortKey>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function handleSort(col: SupplierSortKey): void {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    return [...suppliers].sort((a, b) => {
+      const av = (a[sortBy] ?? "").toLowerCase();
+      const bv = (b[sortBy] ?? "").toLowerCase();
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }, [suppliers, sortBy, sortDir]);
 
   if (suppliers.length === 0) {
     return (
@@ -260,9 +282,9 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="min-w-full divide-y divide-gray-100">
           <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entidad</th>
+            <tr className="text-xs uppercase tracking-wider">
+              <SortThClick label="Nombre" active={sortBy === "name"} sortDir={sortDir} onClick={() => handleSort("name")} className="text-xs uppercase tracking-wider" />
+              <SortThClick label="Entidad" active={sortBy === "companyName"} sortDir={sortDir} onClick={() => handleSort("companyName")} className="text-xs uppercase tracking-wider" />
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuarios Jira</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
@@ -270,7 +292,7 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {suppliers.map((supplier) => (
+            {sorted.map((supplier) => (
               <SupplierTableRow
                 key={supplier.id}
                 supplier={supplier}
