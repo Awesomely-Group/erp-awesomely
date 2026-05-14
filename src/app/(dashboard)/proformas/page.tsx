@@ -68,7 +68,7 @@ function buildWhere(params: ProformaPageParams): Prisma.ProformaWhereInput {
     in5Days.setDate(in5Days.getDate() + 5);
     in5Days.setHours(23, 59, 59, 999);
     andConditions.push({
-      dueDate: { gte: today, lte: in5Days },
+      date: { gte: today, lte: in5Days },
       holdedStatus: { in: [0, 1] },
     });
   }
@@ -85,7 +85,7 @@ async function getExpiringCount(): Promise<{ count: number; totalEur: number }> 
 
   const rows = await prisma.proforma.findMany({
     where: {
-      dueDate: { gte: today, lte: in5Days },
+      date: { gte: today, lte: in5Days },
       holdedStatus: { in: [0, 1] },
     },
     select: { totalEur: true },
