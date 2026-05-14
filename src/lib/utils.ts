@@ -30,7 +30,7 @@ export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): s
 }
 
 export function holdedProformaUrl(holdedId: string): string {
-  return `https://app.holded.com/sales/proform#open:proform-${holdedId}`;
+  return `https://app.holded.com/sales/proforms#open:proform-${holdedId}`;
 }
 
 const TAG_TO_BRAND: Record<string, string> = {
