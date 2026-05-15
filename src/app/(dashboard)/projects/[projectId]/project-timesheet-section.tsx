@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useTransition } from "react";
+import { setProjectUserRole } from "../actions";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -154,6 +155,25 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Set<string>>(new Set());
+  const [localRoleByAccount, setLocalRoleByAccount] = useState<Record<string, string>>(accountToRole ?? {});
+  const [isPending, startTransition] = useTransition();
+
+  const bucketList = bucketByRole
+    ? Object.entries(bucketByRole).map(([roleId, info]) => ({ roleId, ...info }))
+    : [];
+
+  function handleBucketAssign(accountId: string, roleId: string): void {
+    const newRoleId = roleId || null;
+    setLocalRoleByAccount((prev) => {
+      const next = { ...prev };
+      if (newRoleId) next[accountId] = newRoleId;
+      else delete next[accountId];
+      return next;
+    });
+    startTransition(async () => {
+      await setProjectUserRole(projectId, accountId, newRoleId);
+    });
+  }
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
@@ -257,19 +277,22 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                         {user.displayName[0]?.toUpperCase() ?? "?"}
                       </div>
                       <span className="font-semibold text-gray-900">{user.displayName}</span>
-                      {isBolsasHoras && accountToRole && bucketByRole && (() => {
-                        const roleId = accountToRole[user.accountId];
-                        const bucket = roleId ? bucketByRole[roleId] : undefined;
-                        if (!bucket) return null;
-                        return (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700 border border-amber-200">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                            </svg>
-                            {bucket.roleName} · {bucket.totalHours}h
-                          </span>
-                        );
-                      })()}
+                      {isBolsasHoras && bucketList.length > 0 && (
+                        <select
+                          value={localRoleByAccount[user.accountId] ?? ""}
+                          onChange={(e) => handleBucketAssign(user.accountId, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={isPending}
+                          className="ml-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 text-[11px] font-medium px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 cursor-pointer"
+                        >
+                          <option value="">Sin bolsa</option>
+                          {bucketList.map((b) => (
+                            <option key={b.roleId} value={b.roleId}>
+                              {b.roleName} · {b.totalHours}h
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-2.5" />
