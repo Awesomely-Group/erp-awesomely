@@ -132,15 +132,24 @@ function WorklogIcon(): React.JSX.Element {
   );
 }
 
+interface BucketInfo {
+  roleName: string;
+  supplierName: string;
+  totalHours: number;
+}
+
 interface HierarchicalTableProps {
   projectId: string;
   hasTempoToken: boolean;
   from: string;
   to: string;
   workspaceDomain: string;
+  isBolsasHoras?: boolean;
+  bucketByRole?: Record<string, BucketInfo>;
+  accountToRole?: Record<string, string>;
 }
 
-function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain }: HierarchicalTableProps): React.JSX.Element {
+function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole }: HierarchicalTableProps): React.JSX.Element {
   const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,6 +257,19 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                         {user.displayName[0]?.toUpperCase() ?? "?"}
                       </div>
                       <span className="font-semibold text-gray-900">{user.displayName}</span>
+                      {isBolsasHoras && accountToRole && bucketByRole && (() => {
+                        const roleId = accountToRole[user.accountId];
+                        const bucket = roleId ? bucketByRole[roleId] : undefined;
+                        if (!bucket) return null;
+                        return (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                            {bucket.roleName} · {bucket.totalHours}h
+                          </span>
+                        );
+                      })()}
                     </div>
                   </td>
                   <td className="px-4 py-2.5" />
@@ -368,9 +390,12 @@ interface Props {
   projectId: string;
   hasTempoToken: boolean;
   workspaceDomain: string;
+  isBolsasHoras?: boolean;
+  bucketByRole?: Record<string, BucketInfo>;
+  accountToRole?: Record<string, string>;
 }
 
-export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain }: Props): React.JSX.Element {
+export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -390,6 +415,9 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         from={from}
         to={to}
         workspaceDomain={workspaceDomain}
+        isBolsasHoras={isBolsasHoras}
+        bucketByRole={bucketByRole}
+        accountToRole={accountToRole}
       />
     </div>
   );

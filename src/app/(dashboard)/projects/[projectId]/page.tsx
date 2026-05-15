@@ -46,7 +46,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       include: {
         workspace: true,
         hourBuckets: {
-          where: { active: true },
           include: { role: { include: { supplier: true } } },
         },
         regularFeeEntries: {
@@ -126,6 +125,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 ratePerHour: Number(b.role.ratePerHour),
                 totalHours: b.totalHours,
                 alertThreshold: b.alertThreshold,
+                active: b.active,
               })),
               regularFeeEntries: project.regularFeeEntries.map((e) => ({
                 id: e.id,

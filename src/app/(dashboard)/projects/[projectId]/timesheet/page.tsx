@@ -12,7 +12,14 @@ export default async function ProjectTimesheetPage({ params }: Props): Promise<R
 
   const project = await prisma.jiraProject.findUnique({
     where: { id: projectId },
-    include: { workspace: true },
+    include: {
+      workspace: true,
+      hourBuckets: {
+        where: { active: true },
+        include: { role: { include: { supplier: true } } },
+      },
+      userRoles: true,
+    },
   });
 
   if (!project) notFound();
@@ -48,6 +55,14 @@ export default async function ProjectTimesheetPage({ params }: Props): Promise<R
         projectId={project.id}
         hasTempoToken={!!project.workspace.tempoApiToken}
         workspaceDomain={project.workspace.domain}
+        isBolsasHoras={project.isBolsasHoras}
+        bucketByRole={Object.fromEntries(
+          project.hourBuckets.map((b) => [
+            b.roleId,
+            { roleName: b.role.name, supplierName: b.role.supplier.name, totalHours: b.totalHours },
+          ])
+        )}
+        accountToRole={Object.fromEntries(project.userRoles.map((ur) => [ur.jiraAccountId, ur.roleId]))}
       />
     </div>
   );

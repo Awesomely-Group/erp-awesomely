@@ -93,6 +93,14 @@ export async function deleteHourBucket(bucketId: string, projectId: string): Pro
   revalidatePath(`/projects/${projectId}`);
 }
 
+export async function toggleHourBucketActive(bucketId: string, projectId: string, active: boolean): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.hourBucket.update({ where: { id: bucketId }, data: { active } });
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function upsertRegularFeeEntry(
   projectId: string,
   entry: RegularFeeEntryPayload
