@@ -159,6 +159,8 @@ model HourBucket {
   totalHours     Float
   alertThreshold Float        @default(0.8)
   active         Boolean      @default(true)
+  startDate      DateTime?
+  endDate        DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

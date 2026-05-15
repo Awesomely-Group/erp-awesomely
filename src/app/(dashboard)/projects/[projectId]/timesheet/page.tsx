@@ -5,10 +5,12 @@ import { ProjectTimesheetSection } from "../project-timesheet-section";
 
 interface Props {
   params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ bucketId?: string }>;
 }
 
-export default async function ProjectTimesheetPage({ params }: Props): Promise<React.JSX.Element> {
+export default async function ProjectTimesheetPage({ params, searchParams }: Props): Promise<React.JSX.Element> {
   const { projectId } = await params;
+  const { bucketId } = await searchParams;
 
   const project = await prisma.jiraProject.findUnique({
     where: { id: projectId },
@@ -23,6 +25,19 @@ export default async function ProjectTimesheetPage({ params }: Props): Promise<R
   });
 
   if (!project) notFound();
+
+  // Compute filter from bucketId if present
+  let filterAccountIds: string[] | undefined;
+  let filterBucketName: string | undefined;
+  if (bucketId) {
+    const bucket = project.hourBuckets.find((b) => b.id === bucketId);
+    if (bucket) {
+      filterBucketName = `${bucket.role.name} (${bucket.role.supplier.name})`;
+      filterAccountIds = project.userRoles
+        .filter((ur) => ur.roleId === bucket.roleId)
+        .map((ur) => ur.jiraAccountId);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -63,6 +78,8 @@ export default async function ProjectTimesheetPage({ params }: Props): Promise<R
           ])
         )}
         accountToRole={Object.fromEntries(project.userRoles.map((ur) => [ur.jiraAccountId, ur.roleId]))}
+        filterAccountIds={filterAccountIds}
+        filterBucketName={filterBucketName}
       />
     </div>
   );

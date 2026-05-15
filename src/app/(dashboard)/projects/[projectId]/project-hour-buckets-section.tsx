@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import type { HourBucketEntry } from "@/app/api/projects/[projectId]/hour-buckets/route";
+import { useRouter } from "next/navigation";
+import type { HourBucketEntry, HourBucketsResponse, UnassignedUser } from "@/app/api/projects/[projectId]/hour-buckets/route";
 
 interface Props {
   projectId: string;
@@ -10,7 +11,13 @@ interface Props {
   hasTempoToken: boolean;
 }
 
-function BucketCard({ bucket }: { bucket: HourBucketEntry }): React.JSX.Element {
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId: string }): React.JSX.Element {
+  const router = useRouter();
   const pct = bucket.totalHours > 0 ? (bucket.consumedHours / bucket.totalHours) * 100 : 0;
   const threshold = bucket.alertThreshold * 100;
   const isOver = pct >= 100;
@@ -19,18 +26,35 @@ function BucketCard({ bucket }: { bucket: HourBucketEntry }): React.JSX.Element 
   const barColor = isOver ? "bg-red-500" : isNear ? "bg-amber-500" : "bg-green-500";
   const thresholdColor = isOver ? "text-red-600" : isNear ? "text-amber-600" : "text-gray-400";
 
+  const statusLabel = isOver ? "⚠ Agotada" : isNear ? "⚠ Casi agotada" : "Activa";
+  const statusClass = isOver
+    ? "bg-red-100 text-red-700"
+    : isNear
+    ? "bg-amber-100 text-amber-700"
+    : "bg-green-100 text-green-700";
+
+  function handleClick(): void {
+    router.push(`/projects/${projectId}/timesheet?bucketId=${bucket.id}`);
+  }
+
   return (
-    <div className={`bg-white rounded-xl border p-4 space-y-3 ${isOver ? "border-red-200" : isNear ? "border-amber-200" : "border-gray-200"}`}>
+    <div
+      onClick={handleClick}
+      className={`bg-white rounded-xl border p-4 space-y-3 cursor-pointer hover:shadow-md transition-shadow ${isOver ? "border-red-200" : isNear ? "border-amber-200" : "border-gray-200"}`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-gray-900">{bucket.roleName}</p>
           <p className="text-xs text-gray-400">{bucket.supplierName} · {bucket.ratePerHour}€/h</p>
+          {(bucket.startDate ?? bucket.endDate) && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              {bucket.startDate ? fmtDate(bucket.startDate) : "—"} → {bucket.endDate ? fmtDate(bucket.endDate) : "—"}
+            </p>
+          )}
         </div>
-        {(isOver || isNear) && (
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${isOver ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-            {isOver ? "⚠ Agotada" : "⚠ Casi agotada"}
-          </span>
-        )}
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${statusClass}`}>
+          {statusLabel}
+        </span>
       </div>
 
       <div className="space-y-1.5">
@@ -57,19 +81,52 @@ function BucketCard({ bucket }: { bucket: HourBucketEntry }): React.JSX.Element 
   );
 }
 
+function UnassignedAlert({ users, projectId }: { users: UnassignedUser[]; projectId: string }): React.JSX.Element {
+  return (
+    <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <svg className="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
+        <p className="text-sm font-semibold text-orange-800">Usuarios con horas sin bolsa asignada</p>
+      </div>
+      <div className="space-y-2">
+        {users.map((u) => (
+          <div key={u.accountId} className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-orange-300 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                {u.displayName[0]?.toUpperCase() ?? "?"}
+              </div>
+              <span className="text-sm text-gray-800">{u.displayName}</span>
+              <span className="text-xs text-gray-500 tabular-nums">{u.hours.toFixed(1)} h</span>
+            </div>
+            <a
+              href={`/projects/${projectId}/timesheet`}
+              className="text-xs font-medium text-orange-700 hover:text-orange-900 underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Asignar bolsa →
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }: Props): React.JSX.Element {
-  const [buckets, setBuckets] = useState<HourBucketEntry[] | null>(null);
+  const [response, setResponse] = useState<HourBucketsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setBuckets(null);
+    setResponse(null);
     setError(null);
     fetch(`/api/projects/${projectId}/hour-buckets?from=${from}&to=${to}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Error cargando bolsas");
-        return res.json() as Promise<HourBucketEntry[]>;
+        return res.json() as Promise<HourBucketsResponse>;
       })
-      .then(setBuckets)
+      .then(setResponse)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Error desconocido"));
   }, [projectId, from, to]);
 
@@ -87,7 +144,7 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
         )}
       </div>
 
-      {buckets === null && !error && (
+      {response === null && !error && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[1, 2].map((i) => (
             <div key={i} className="h-32 bg-gray-100 rounded-xl animate-pulse" />
@@ -99,15 +156,21 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
         <p className="text-sm text-red-600">{error}</p>
       )}
 
-      {buckets !== null && buckets.length === 0 && (
+      {response !== null && response.buckets.length === 0 && (
         <p className="text-sm text-gray-400">No hay bolsas configuradas. Usa "Configurar" para añadirlas.</p>
       )}
 
-      {buckets !== null && buckets.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {buckets.map((b) => (
-            <BucketCard key={b.id} bucket={b} />
-          ))}
+      {response !== null && response.buckets.length > 0 && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {response.buckets.map((b) => (
+              <BucketCard key={b.id} bucket={b} projectId={projectId} />
+            ))}
+          </div>
+
+          {response.unassignedUsers.length > 0 && (
+            <UnassignedAlert users={response.unassignedUsers} projectId={projectId} />
+          )}
         </div>
       )}
     </div>

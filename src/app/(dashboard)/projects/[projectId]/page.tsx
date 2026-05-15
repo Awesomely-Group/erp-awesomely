@@ -126,6 +126,8 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 totalHours: b.totalHours,
                 alertThreshold: b.alertThreshold,
                 active: b.active,
+                startDate: b.startDate?.toISOString().slice(0, 10) ?? "",
+                endDate: b.endDate?.toISOString().slice(0, 10) ?? "",
               })),
               regularFeeEntries: project.regularFeeEntries.map((e) => ({
                 id: e.id,

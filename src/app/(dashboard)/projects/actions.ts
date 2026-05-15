@@ -17,6 +17,8 @@ interface HourBucketPayload {
   roleId: string;
   totalHours: number;
   alertThreshold: number;
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 interface RegularFeeEntryPayload {
@@ -63,6 +65,11 @@ export async function upsertHourBucket(
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
+  const dates = {
+    startDate: bucket.startDate ? new Date(bucket.startDate) : null,
+    endDate: bucket.endDate ? new Date(bucket.endDate) : null,
+  };
+
   if (bucket.id) {
     await prisma.hourBucket.update({
       where: { id: bucket.id },
@@ -70,6 +77,7 @@ export async function upsertHourBucket(
         roleId: bucket.roleId,
         totalHours: bucket.totalHours,
         alertThreshold: bucket.alertThreshold,
+        ...dates,
       },
     });
   } else {
@@ -79,6 +87,7 @@ export async function upsertHourBucket(
         roleId: bucket.roleId,
         totalHours: bucket.totalHours,
         alertThreshold: bucket.alertThreshold,
+        ...dates,
       },
     });
   }

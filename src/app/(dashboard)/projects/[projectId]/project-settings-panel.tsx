@@ -19,6 +19,8 @@ interface ExistingBucket {
   totalHours: number;
   alertThreshold: number;
   active: boolean;
+  startDate: string;
+  endDate: string;
 }
 
 export interface RegularFeeEntryData {
@@ -48,6 +50,8 @@ interface BucketFormState {
   roleId: string;
   totalHours: string;
   alertThreshold: string;
+  startDate: string;
+  endDate: string;
 }
 
 interface FeeFormState {
@@ -74,15 +78,17 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
     roleId: availableRoles[0]?.id ?? "",
     totalHours: "",
     alertThreshold: "80",
+    startDate: "",
+    endDate: "",
   });
 
   // Edit bucket inline
   const [editingBucketId, setEditingBucketId] = useState<string | null>(null);
-  const [editBucketForm, setEditBucketForm] = useState<BucketFormState>({ roleId: "", totalHours: "", alertThreshold: "80" });
+  const [editBucketForm, setEditBucketForm] = useState<BucketFormState>({ roleId: "", totalHours: "", alertThreshold: "80", startDate: "", endDate: "" });
 
   function startEditBucket(b: ExistingBucket): void {
     setEditingBucketId(b.id);
-    setEditBucketForm({ roleId: b.roleId, totalHours: String(b.totalHours), alertThreshold: String(Math.round(b.alertThreshold * 100)) });
+    setEditBucketForm({ roleId: b.roleId, totalHours: String(b.totalHours), alertThreshold: String(Math.round(b.alertThreshold * 100)), startDate: b.startDate, endDate: b.endDate });
   }
 
   function handleSaveBucketEdit(): void {
@@ -93,6 +99,8 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         roleId: editBucketForm.roleId,
         totalHours: parseFloat(editBucketForm.totalHours),
         alertThreshold: parseFloat(editBucketForm.alertThreshold) / 100,
+        startDate: editBucketForm.startDate || null,
+        endDate: editBucketForm.endDate || null,
       });
       setEditingBucketId(null);
     });
@@ -130,9 +138,11 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         roleId: bucketForm.roleId,
         totalHours: parseFloat(bucketForm.totalHours),
         alertThreshold: parseFloat(bucketForm.alertThreshold) / 100,
+        startDate: bucketForm.startDate || null,
+        endDate: bucketForm.endDate || null,
       });
       setShowBucketForm(false);
-      setBucketForm({ roleId: availableRoles[0]?.id ?? "", totalHours: "", alertThreshold: "80" });
+      setBucketForm({ roleId: availableRoles[0]?.id ?? "", totalHours: "", alertThreshold: "80", startDate: "", endDate: "" });
     });
   }
 
@@ -422,6 +432,26 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                             />
                           </div>
                         </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Fecha inicio</label>
+                            <input
+                              type="date"
+                              value={editBucketForm.startDate}
+                              onChange={(e) => setEditBucketForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Fecha fin</label>
+                            <input
+                              type="date"
+                              value={editBucketForm.endDate}
+                              onChange={(e) => setEditBucketForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             onClick={handleSaveBucketEdit}
@@ -528,6 +558,26 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                         step="5"
                         value={bucketForm.alertThreshold}
                         onChange={(e) => setBucketForm((prev) => ({ ...prev, alertThreshold: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Fecha inicio</label>
+                      <input
+                        type="date"
+                        value={bucketForm.startDate}
+                        onChange={(e) => setBucketForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Fecha fin</label>
+                      <input
+                        type="date"
+                        value={bucketForm.endDate}
+                        onChange={(e) => setBucketForm((prev) => ({ ...prev, endDate: e.target.value }))}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>

@@ -148,9 +148,10 @@ interface HierarchicalTableProps {
   isBolsasHoras?: boolean;
   bucketByRole?: Record<string, BucketInfo>;
   accountToRole?: Record<string, string>;
+  filterAccountIds?: string[];
 }
 
-function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole }: HierarchicalTableProps): React.JSX.Element {
+function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds }: HierarchicalTableProps): React.JSX.Element {
   const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,10 +236,18 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
     return <p className="text-sm text-red-500 py-4">Error: {error}</p>;
   }
 
-  if (!data || data.users.length === 0) {
+  const visibleUsers = data
+    ? filterAccountIds
+      ? data.users.filter((u) => filterAccountIds.includes(u.accountId))
+      : data.users
+    : [];
+
+  if (!data || visibleUsers.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
-        Sin horas registradas en este período
+        {filterAccountIds && data && data.users.length > 0
+          ? "Ningún usuario de esta bolsa tiene horas en este período"
+          : "Sin horas registradas en este período"}
       </div>
     );
   }
@@ -257,7 +266,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
           </tr>
         </thead>
         <tbody>
-          {data.users.map((user) => {
+          {visibleUsers.map((user) => {
             const collapsed = collapsedUsers.has(user.accountId);
             return (
               <React.Fragment key={user.accountId}>
@@ -382,24 +391,25 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
           <tr className="border-t-2 border-gray-300">
             <td className="px-4 pt-3 pb-3 font-semibold text-gray-900">Total</td>
             <td className="px-4 pt-3 pb-3" />
-            <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
-              {data.totalEstimateHours > 0 ? `${data.totalEstimateHours}h` : "—"}
-            </td>
-            <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${
-              data.totalEstimateHours > 0 && data.totalHours > data.totalEstimateHours
-                ? "text-red-600"
-                : "text-gray-900"
-            }`}>{data.totalHours}h</td>
-            <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
-              {data.totalEstimatedCostEur > 0 ? formatEur(data.totalEstimatedCostEur) : "—"}
-            </td>
-            <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${
-              data.totalEstimatedCostEur > 0 && data.totalActualCostEur > data.totalEstimatedCostEur
-                ? "text-red-600"
-                : "text-gray-900"
-            }`}>
-              {data.totalActualCostEur > 0 ? formatEur(data.totalActualCostEur) : "—"}
-            </td>
+            {(() => {
+              const filteredEstH = Math.round(visibleUsers.flatMap((u) => u.issues).reduce((s, i) => s + (i.originalEstimateHours ?? 0), 0) * 100) / 100;
+              const filteredH = Math.round(visibleUsers.reduce((s, u) => s + u.totalHours, 0) * 100) / 100;
+              const filteredEstCost = Math.round(visibleUsers.reduce((s, u) => s + (u.estimatedCostEur ?? 0), 0) * 100) / 100;
+              const filteredActCost = Math.round(visibleUsers.reduce((s, u) => s + u.actualCostEur, 0) * 100) / 100;
+              return (<>
+                <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
+                  {filteredEstH > 0 ? `${filteredEstH}h` : "—"}
+                </td>
+                <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${filteredEstH > 0 && filteredH > filteredEstH ? "text-red-600" : "text-gray-900"}`}>{filteredH}h</td>
+                <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
+                  {filteredEstCost > 0 ? formatEur(filteredEstCost) : "—"}
+                </td>
+                <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${filteredEstCost > 0 && filteredActCost > filteredEstCost ? "text-red-600"
+                  : "text-gray-900"}`}>
+                  {filteredActCost > 0 ? formatEur(filteredActCost) : "—"}
+                </td>
+              </>);
+            })()}
           </tr>
         </tbody>
       </table>
@@ -416,9 +426,11 @@ interface Props {
   isBolsasHoras?: boolean;
   bucketByRole?: Record<string, BucketInfo>;
   accountToRole?: Record<string, string>;
+  filterAccountIds?: string[];
+  filterBucketName?: string;
 }
 
-export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole }: Props): React.JSX.Element {
+export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds, filterBucketName }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -432,6 +444,22 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         onTypeChange={setPeriodType}
         onOffsetChange={setPeriodOffset}
       />
+      {filterAccountIds && filterBucketName && (
+        <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm">
+          <div className="flex items-center gap-2 text-amber-800">
+            <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+            </svg>
+            <span>Bolsa: <strong>{filterBucketName}</strong></span>
+          </div>
+          <a
+            href={`/projects/${projectId}/timesheet`}
+            className="text-xs font-medium text-amber-700 hover:text-amber-900 transition-colors"
+          >
+            Quitar filtro ×
+          </a>
+        </div>
+      )}
       <HierarchicalTable
         projectId={projectId}
         hasTempoToken={hasTempoToken}
@@ -441,6 +469,7 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         isBolsasHoras={isBolsasHoras}
         bucketByRole={bucketByRole}
         accountToRole={accountToRole}
+        filterAccountIds={filterAccountIds}
       />
     </div>
   );
