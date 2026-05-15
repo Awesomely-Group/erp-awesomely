@@ -23,6 +23,9 @@ export default async function ProjectsPage(): Promise<React.JSX.Element> {
       workspaceDomain: ws.domain.replace(/^https?:\/\//, "").replace(/\/$/, ""),
       status: project.status as ProjectStatus,
       hasTempoToken: !!ws.tempoApiToken,
+      isPrecioCerrado: project.isPrecioCerrado,
+      isBolsasHoras: project.isBolsasHoras,
+      isFeeRegular: project.isFeeRegular,
     }))
   );
 

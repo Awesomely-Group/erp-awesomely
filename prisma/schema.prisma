@@ -125,10 +125,24 @@ model JiraProject {
   active      Boolean       @default(true)
   status      ProjectStatus @default(NOT_STARTED)
 
+  // Tipos de proyecto (no exclusivos entre sí)
+  isPrecioCerrado  Boolean  @default(false)
+  isBolsasHoras    Boolean  @default(false)
+  isFeeRegular     Boolean  @default(false)
+
+  // Precio cerrado
+  fixedPrice       Decimal?
+  budgetedHours    Float?
+
+  // Fee regular
+  monthlyFee       Decimal?
+  maxHoursPerMonth Float?
+
   classifications Classification[]
   userRoles       ProjectUserRole[]
   proformas       Proforma[]
   forecasts       Forecast[]
+  hourBuckets     HourBucket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -137,6 +151,22 @@ model JiraProject {
   @@index([workspaceId])
   @@index([status])
   @@map("jira_projects")
+}
+
+model HourBucket {
+  id             String       @id @default(cuid())
+  projectId      String
+  project        JiraProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roleId         String
+  role           SupplierRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  totalHours     Float
+  alertThreshold Float        @default(0.8)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([projectId])
+  @@map("hour_buckets")
 }
 
 // ─── Invoices ──────────────────────────────────────────────────────────────────
@@ -387,6 +417,7 @@ model SupplierRole {
   verifications       SupplierVerification[]
   defaultForSuppliers Supplier[]             @relation("SupplierDefaultRole")
   projectUserRoles    ProjectUserRole[]
+  hourBuckets         HourBucket[]
 
   @@index([supplierId])
   @@map("supplier_roles")

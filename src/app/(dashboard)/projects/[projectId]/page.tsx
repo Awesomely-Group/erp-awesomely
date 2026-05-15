@@ -6,6 +6,8 @@ import { ProjectDateFilters } from "./project-date-filters";
 import { ProjectOverviewCharts } from "./project-overview-charts";
 import { ProjectInvoicesSection } from "./project-invoices-section";
 import { StatusBadge } from "./status-badge";
+import { ProjectSettingsPanel } from "./project-settings-panel";
+import { ProjectTypesDashboard } from "./project-types-dashboard";
 
 interface Props {
   params: Promise<{ projectId: string }>;
@@ -38,10 +40,16 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   const fromStr = format(from, "yyyy-MM-dd");
   const toStr = format(to, "yyyy-MM-dd");
 
-  const [project, relatedInvoices] = await Promise.all([
+  const [project, relatedInvoices, availableRoles] = await Promise.all([
     prisma.jiraProject.findUnique({
       where: { id: projectId },
-      include: { workspace: true },
+      include: {
+        workspace: true,
+        hourBuckets: {
+          where: { active: true },
+          include: { role: { include: { supplier: true } } },
+        },
+      },
     }),
     prisma.invoice.findMany({
       where: {
@@ -50,6 +58,11 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       },
       include: { company: true },
       orderBy: { date: "desc" },
+    }),
+    prisma.supplierRole.findMany({
+      where: { active: true },
+      include: { supplier: true },
+      orderBy: [{ supplier: { name: "asc" } }, { name: "asc" }],
     }),
   ]);
 
@@ -93,8 +106,52 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             </svg>
             Ver Timesheet
           </Link>
+          <ProjectSettingsPanel
+            projectId={project.id}
+            config={{
+              isPrecioCerrado: project.isPrecioCerrado,
+              isBolsasHoras: project.isBolsasHoras,
+              isFeeRegular: project.isFeeRegular,
+              fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
+              budgetedHours: project.budgetedHours,
+              monthlyFee: project.monthlyFee !== null ? Number(project.monthlyFee) : null,
+              maxHoursPerMonth: project.maxHoursPerMonth,
+              hourBuckets: project.hourBuckets.map((b) => ({
+                id: b.id,
+                roleId: b.roleId,
+                roleName: b.role.name,
+                supplierName: b.role.supplier.name,
+                ratePerHour: Number(b.role.ratePerHour),
+                totalHours: b.totalHours,
+                alertThreshold: b.alertThreshold,
+              })),
+            }}
+            availableRoles={availableRoles.map((r) => ({
+              id: r.id,
+              name: r.name,
+              supplierName: r.supplier.name,
+              ratePerHour: Number(r.ratePerHour),
+            }))}
+          />
         </div>
       </div>
+
+      {/* Type-specific sections */}
+      <ProjectTypesDashboard
+        projectId={project.id}
+        from={fromStr}
+        to={toStr}
+        hasTempoToken={!!project.workspace.tempoApiToken}
+        config={{
+          isPrecioCerrado: project.isPrecioCerrado,
+          isBolsasHoras: project.isBolsasHoras,
+          isFeeRegular: project.isFeeRegular,
+          fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
+          budgetedHours: project.budgetedHours,
+          monthlyFee: project.monthlyFee !== null ? Number(project.monthlyFee) : null,
+          maxHoursPerMonth: project.maxHoursPerMonth,
+        }}
+      />
 
       {/* Overview charts + KPIs */}
       <ProjectOverviewCharts

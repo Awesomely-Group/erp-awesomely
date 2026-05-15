@@ -16,6 +16,9 @@ export interface ProjectRow {
   workspaceDomain: string;
   status: ProjectStatus;
   hasTempoToken: boolean;
+  isPrecioCerrado: boolean;
+  isBolsasHoras: boolean;
+  isFeeRegular: boolean;
 }
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -488,7 +491,22 @@ function ProjectTableRow({
           {project.jiraKey}
         </span>
       </td>
-      <td className="px-4 py-3 font-medium text-gray-900">{project.name}</td>
+      <td className="px-4 py-3">
+        <p className="font-medium text-gray-900">{project.name}</p>
+        {(project.isPrecioCerrado || project.isBolsasHoras || project.isFeeRegular) && (
+          <div className="flex gap-1 mt-1 flex-wrap">
+            {project.isPrecioCerrado && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700">PC</span>
+            )}
+            {project.isBolsasHoras && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">BH</span>
+            )}
+            {project.isFeeRegular && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">FR</span>
+            )}
+          </div>
+        )}
+      </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <StatusBadge projectId={project.id} status={project.status} />
       </td>
