@@ -39,10 +39,26 @@ export async function GET(
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!project.workspace.tempoApiToken) return NextResponse.json([], { status: 200 });
 
-  // Unique accountIds from Tempo worklogs
   const tempo = new TempoClient(project.workspace.tempoApiToken);
-  const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
-  const accountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
+
+  // For fee regular projects, collect all users who have ever logged on this project
+  // by scanning a wide historical range, not just the selected period.
+  let accountIds: string[];
+  if (project.isFeeRegular) {
+    const today = new Date().toISOString().slice(0, 10);
+    const [periodWorklogs, allWorklogs] = await Promise.all([
+      tempo.getWorklogs(project.jiraId, from, to),
+      tempo.getWorklogs(project.jiraId, "2020-01-01", today),
+    ]);
+    const seen = new Set<string>();
+    for (const w of allWorklogs) seen.add(w.author.accountId);
+    for (const w of periodWorklogs) seen.add(w.author.accountId);
+    accountIds = [...seen];
+  } else {
+    const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
+    accountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
+  }
+
   if (accountIds.length === 0) return NextResponse.json([], { status: 200 });
 
   // Resolve display names

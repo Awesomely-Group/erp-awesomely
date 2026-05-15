@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
-import { setProjectUserRole } from "../actions";
+import React, { useState, useEffect } from "react";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -156,25 +155,6 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Set<string>>(new Set());
-  const [localRoleByAccount, setLocalRoleByAccount] = useState<Record<string, string>>(accountToRole ?? {});
-  const [isPending, startTransition] = useTransition();
-
-  const bucketList = bucketByRole
-    ? Object.entries(bucketByRole).map(([roleId, info]) => ({ roleId, ...info }))
-    : [];
-
-  function handleBucketAssign(accountId: string, roleId: string): void {
-    const newRoleId = roleId || null;
-    setLocalRoleByAccount((prev) => {
-      const next = { ...prev };
-      if (newRoleId) next[accountId] = newRoleId;
-      else delete next[accountId];
-      return next;
-    });
-    startTransition(async () => {
-      await setProjectUserRole(projectId, accountId, newRoleId);
-    });
-  }
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
@@ -286,21 +266,10 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                         {user.displayName[0]?.toUpperCase() ?? "?"}
                       </div>
                       <span className="font-semibold text-gray-900">{user.displayName}</span>
-                      {isBolsasHoras && bucketList.length > 0 && (
-                        <select
-                          value={localRoleByAccount[user.accountId] ?? ""}
-                          onChange={(e) => handleBucketAssign(user.accountId, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          disabled={isPending}
-                          className="ml-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 text-[11px] font-medium px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 cursor-pointer"
-                        >
-                          <option value="">Sin bolsa</option>
-                          {bucketList.map((b) => (
-                            <option key={b.roleId} value={b.roleId}>
-                              {b.roleName} · {b.totalHours}h
-                            </option>
-                          ))}
-                        </select>
+                      {isBolsasHoras && accountToRole?.[user.accountId] && bucketByRole?.[accountToRole[user.accountId]] && (
+                        <span className="ml-1 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 text-[11px] font-medium px-2 py-0.5">
+                          {bucketByRole[accountToRole[user.accountId]].roleName}
+                        </span>
                       )}
                     </div>
                   </td>

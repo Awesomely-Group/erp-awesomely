@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HourBucketEntry, HourBucketsResponse, UnassignedUser } from "@/app/api/projects/[projectId]/hour-buckets/route";
+import { ProjectBucketTeamSection } from "./project-bucket-team-section";
 
 interface Props {
   projectId: string;
@@ -81,32 +82,23 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
   );
 }
 
-function UnassignedAlert({ users, projectId }: { users: UnassignedUser[]; projectId: string }): React.JSX.Element {
+function UnassignedAlert({ users }: { users: UnassignedUser[] }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
       <div className="flex items-center gap-2 mb-3">
         <svg className="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
         </svg>
-        <p className="text-sm font-semibold text-orange-800">Usuarios con horas sin bolsa asignada</p>
+        <p className="text-sm font-semibold text-orange-800">Usuarios con horas sin rol asignado</p>
       </div>
       <div className="space-y-2">
         {users.map((u) => (
-          <div key={u.accountId} className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-orange-300 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                {u.displayName[0]?.toUpperCase() ?? "?"}
-              </div>
-              <span className="text-sm text-gray-800">{u.displayName}</span>
-              <span className="text-xs text-gray-500 tabular-nums">{u.hours.toFixed(1)} h</span>
+          <div key={u.accountId} className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full bg-orange-300 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+              {u.displayName[0]?.toUpperCase() ?? "?"}
             </div>
-            <a
-              href={`/projects/${projectId}/timesheet`}
-              className="text-xs font-medium text-orange-700 hover:text-orange-900 underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Asignar bolsa →
-            </a>
+            <span className="text-sm text-gray-800">{u.displayName}</span>
+            <span className="text-xs text-gray-500 tabular-nums">{u.hours.toFixed(1)} h</span>
           </div>
         ))}
       </div>
@@ -169,8 +161,15 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
           </div>
 
           {response.unassignedUsers.length > 0 && (
-            <UnassignedAlert users={response.unassignedUsers} projectId={projectId} />
+            <UnassignedAlert users={response.unassignedUsers} />
           )}
+
+          <ProjectBucketTeamSection
+            projectId={projectId}
+            from={from}
+            to={to}
+            bucketRoleIds={response.buckets.map((b) => b.roleId)}
+          />
         </div>
       )}
     </div>
