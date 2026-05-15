@@ -6,14 +6,20 @@ import { ProjectRegularFeeSection } from "./project-regular-fee-section";
 import { ProjectHourBucketsSection } from "./project-hour-buckets-section";
 import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
 
+interface RegularFeeEntry {
+  id: string;
+  label: string;
+  monthlyFee: number;
+  maxHoursPerMonth: number;
+}
+
 interface ProjectTypesConfig {
   isPrecioCerrado: boolean;
   isBolsasHoras: boolean;
   isFeeRegular: boolean;
   fixedPrice: number | null;
   budgetedHours: number | null;
-  monthlyFee: number | null;
-  maxHoursPerMonth: number | null;
+  regularFeeEntries: RegularFeeEntry[];
 }
 
 interface Props {
@@ -30,7 +36,7 @@ export function ProjectTypesDashboard({ projectId, from, to, hasTempoToken, conf
 
   const [tempoData, setTempoData] = useState<TempoWorklogsMonthCostResponse | null>(null);
 
-  const needsTempoData = (isPrecioCerrado || isFeeRegular) && hasTempoToken;
+  const needsTempoData = (isPrecioCerrado || (isFeeRegular && config.regularFeeEntries.length > 0)) && hasTempoToken;
 
   useEffect(() => {
     if (!needsTempoData) return;
@@ -68,8 +74,7 @@ export function ProjectTypesDashboard({ projectId, from, to, hasTempoToken, conf
 
       {isFeeRegular && (
         <ProjectRegularFeeSection
-          monthlyFee={config.monthlyFee}
-          maxHoursPerMonth={config.maxHoursPerMonth}
+          entries={config.regularFeeEntries}
           months={tempoData?.months ?? []}
           totalHours={tempoData?.totalHours ?? 0}
         />

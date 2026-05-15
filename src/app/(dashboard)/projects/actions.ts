@@ -10,8 +10,6 @@ interface ProjectTypesPayload {
   isFeeRegular: boolean;
   fixedPrice?: number | null;
   budgetedHours?: number | null;
-  monthlyFee?: number | null;
-  maxHoursPerMonth?: number | null;
 }
 
 interface HourBucketPayload {
@@ -19,6 +17,13 @@ interface HourBucketPayload {
   roleId: string;
   totalHours: number;
   alertThreshold: number;
+}
+
+interface RegularFeeEntryPayload {
+  id?: string;
+  label: string;
+  monthlyFee: number;
+  maxHoursPerMonth: number;
 }
 
 export async function updateProjectStatus(
@@ -46,8 +51,6 @@ export async function updateProjectTypes(
       isFeeRegular: payload.isFeeRegular,
       fixedPrice: payload.isPrecioCerrado ? (payload.fixedPrice ?? null) : null,
       budgetedHours: payload.isPrecioCerrado ? (payload.budgetedHours ?? null) : null,
-      monthlyFee: payload.isFeeRegular ? (payload.monthlyFee ?? null) : null,
-      maxHoursPerMonth: payload.isFeeRegular ? (payload.maxHoursPerMonth ?? null) : null,
     },
   });
   revalidatePath(`/projects/${projectId}`);
@@ -87,6 +90,34 @@ export async function deleteHourBucket(bucketId: string, projectId: string): Pro
   if (!session?.user) throw new Error("Unauthorized");
 
   await prisma.hourBucket.delete({ where: { id: bucketId } });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function upsertRegularFeeEntry(
+  projectId: string,
+  entry: RegularFeeEntryPayload
+): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  if (entry.id) {
+    await prisma.regularFeeEntry.update({
+      where: { id: entry.id },
+      data: { label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth },
+    });
+  } else {
+    await prisma.regularFeeEntry.create({
+      data: { projectId, label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth },
+    });
+  }
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteRegularFeeEntry(entryId: string, projectId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.regularFeeEntry.delete({ where: { id: entryId } });
   revalidatePath(`/projects/${projectId}`);
 }
 

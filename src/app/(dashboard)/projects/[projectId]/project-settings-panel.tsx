@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useRef, useEffect } from "react";
-import { updateProjectTypes, upsertHourBucket, deleteHourBucket } from "../actions";
+import { updateProjectTypes, upsertHourBucket, deleteHourBucket, upsertRegularFeeEntry, deleteRegularFeeEntry } from "../actions";
 
 interface SupplierRoleOption {
   id: string;
@@ -20,15 +20,21 @@ interface ExistingBucket {
   alertThreshold: number;
 }
 
+export interface RegularFeeEntryData {
+  id: string;
+  label: string;
+  monthlyFee: number;
+  maxHoursPerMonth: number;
+}
+
 interface ProjectConfig {
   isPrecioCerrado: boolean;
   isBolsasHoras: boolean;
   isFeeRegular: boolean;
   fixedPrice: number | null;
   budgetedHours: number | null;
-  monthlyFee: number | null;
-  maxHoursPerMonth: number | null;
   hourBuckets: ExistingBucket[];
+  regularFeeEntries: RegularFeeEntryData[];
 }
 
 interface Props {
@@ -43,6 +49,12 @@ interface BucketFormState {
   alertThreshold: string;
 }
 
+interface FeeFormState {
+  label: string;
+  monthlyFee: string;
+  maxHoursPerMonth: string;
+}
+
 export function ProjectSettingsPanel({ projectId, config, availableRoles }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -54,8 +66,6 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
   const [isFeeRegular, setIsFeeRegular] = useState(config.isFeeRegular);
   const [fixedPrice, setFixedPrice] = useState(config.fixedPrice?.toString() ?? "");
   const [budgetedHours, setBudgetedHours] = useState(config.budgetedHours?.toString() ?? "");
-  const [monthlyFee, setMonthlyFee] = useState(config.monthlyFee?.toString() ?? "");
-  const [maxHoursPerMonth, setMaxHoursPerMonth] = useState(config.maxHoursPerMonth?.toString() ?? "");
 
   // New bucket form
   const [showBucketForm, setShowBucketForm] = useState(false);
@@ -64,6 +74,10 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
     totalHours: "",
     alertThreshold: "80",
   });
+
+  // New fee entry form
+  const [showFeeForm, setShowFeeForm] = useState(false);
+  const [feeForm, setFeeForm] = useState<FeeFormState>({ label: "", monthlyFee: "", maxHoursPerMonth: "" });
 
   // Close on Escape
   useEffect(() => {
@@ -81,8 +95,6 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         isFeeRegular,
         fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
         budgetedHours: budgetedHours ? parseFloat(budgetedHours) : null,
-        monthlyFee: monthlyFee ? parseFloat(monthlyFee) : null,
-        maxHoursPerMonth: maxHoursPerMonth ? parseFloat(maxHoursPerMonth) : null,
       });
       setOpen(false);
     });
@@ -104,6 +116,25 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
   function handleDeleteBucket(bucketId: string): void {
     startTransition(async () => {
       await deleteHourBucket(bucketId, projectId);
+    });
+  }
+
+  function handleAddFeeEntry(): void {
+    if (!feeForm.label || !feeForm.monthlyFee || !feeForm.maxHoursPerMonth) return;
+    startTransition(async () => {
+      await upsertRegularFeeEntry(projectId, {
+        label: feeForm.label,
+        monthlyFee: parseFloat(feeForm.monthlyFee),
+        maxHoursPerMonth: parseFloat(feeForm.maxHoursPerMonth),
+      });
+      setShowFeeForm(false);
+      setFeeForm({ label: "", monthlyFee: "", maxHoursPerMonth: "" });
+    });
+  }
+
+  function handleDeleteFeeEntry(entryId: string): void {
+    startTransition(async () => {
+      await deleteRegularFeeEntry(entryId, projectId);
     });
   }
 
@@ -168,7 +199,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
               />
               <Toggle
                 label="Fee regular"
-                description="Se vende una cantidad máxima de horas por un precio fijo mensual."
+                description="Fees mensuales por persona, con horas máximas por período."
                 checked={isFeeRegular}
                 onChange={setIsFeeRegular}
               />
@@ -206,34 +237,109 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
             </section>
           )}
 
-          {/* Fee regular fields */}
+          {/* Fee regular — lista de entradas por persona */}
           {isFeeRegular && (
             <section className="bg-purple-50 rounded-xl p-4 space-y-4">
               <h3 className="text-sm font-semibold text-purple-800">Fee regular</h3>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Fee mensual (€)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={monthlyFee}
-                  onChange={(e) => setMonthlyFee(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Horas máximas / mes</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={maxHoursPerMonth}
-                  onChange={(e) => setMaxHoursPerMonth(e.target.value)}
-                  placeholder="0"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
+              <p className="text-xs text-purple-700">Añade un fee por persona o perfil con su cap de horas mensual.</p>
+
+              {/* Existing entries */}
+              {config.regularFeeEntries.length > 0 && (
+                <div className="space-y-2">
+                  {config.regularFeeEntries.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between bg-white rounded-lg border border-purple-200 px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{e.label}</p>
+                        <p className="text-xs text-gray-400">
+                          {e.monthlyFee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}/mes · {e.maxHoursPerMonth} h/mes
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteFeeEntry(e.id)}
+                        disabled={isPending}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  {/* Summary row */}
+                  <div className="flex justify-between text-xs font-medium text-purple-700 px-1 pt-1">
+                    <span>Total mensual</span>
+                    <span>
+                      {config.regularFeeEntries.reduce((s, e) => s + e.monthlyFee, 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      {" / "}
+                      {config.regularFeeEntries.reduce((s, e) => s + e.maxHoursPerMonth, 0)} h
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Add fee entry form */}
+              {showFeeForm ? (
+                <div className="bg-white rounded-lg border border-purple-200 p-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Nombre / Persona</label>
+                    <input
+                      type="text"
+                      value={feeForm.label}
+                      onChange={(e) => setFeeForm((prev) => ({ ...prev, label: e.target.value }))}
+                      placeholder="Ej: Victor, Laura, Diseño UX…"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Fee mensual (€)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={feeForm.monthlyFee}
+                        onChange={(e) => setFeeForm((prev) => ({ ...prev, monthlyFee: e.target.value }))}
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Horas máx./mes</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={feeForm.maxHoursPerMonth}
+                        onChange={(e) => setFeeForm((prev) => ({ ...prev, maxHoursPerMonth: e.target.value }))}
+                        placeholder="0"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAddFeeEntry}
+                      disabled={isPending || !feeForm.label || !feeForm.monthlyFee || !feeForm.maxHoursPerMonth}
+                      className="flex-1 rounded-lg bg-purple-600 text-white text-sm font-medium py-2 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                    >
+                      Añadir
+                    </button>
+                    <button
+                      onClick={() => setShowFeeForm(false)}
+                      className="px-3 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowFeeForm(true)}
+                  className="w-full rounded-lg border border-dashed border-purple-300 text-purple-700 text-sm py-2 hover:bg-purple-100 transition-colors"
+                >
+                  + Añadir persona / fee
+                </button>
+              )}
             </section>
           )}
 

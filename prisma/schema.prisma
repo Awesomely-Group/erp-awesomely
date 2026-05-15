@@ -134,15 +134,12 @@ model JiraProject {
   fixedPrice       Decimal?
   budgetedHours    Float?
 
-  // Fee regular
-  monthlyFee       Decimal?
-  maxHoursPerMonth Float?
-
-  classifications Classification[]
-  userRoles       ProjectUserRole[]
-  proformas       Proforma[]
-  forecasts       Forecast[]
-  hourBuckets     HourBucket[]
+  classifications    Classification[]
+  userRoles          ProjectUserRole[]
+  proformas          Proforma[]
+  forecasts          Forecast[]
+  hourBuckets        HourBucket[]
+  regularFeeEntries  RegularFeeEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -167,6 +164,21 @@ model HourBucket {
 
   @@index([projectId])
   @@map("hour_buckets")
+}
+
+model RegularFeeEntry {
+  id               String      @id @default(cuid())
+  projectId        String
+  project          JiraProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label            String
+  monthlyFee       Decimal
+  maxHoursPerMonth Float
+  active           Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([projectId])
+  @@map("regular_fee_entries")
 }
 
 // ─── Invoices ──────────────────────────────────────────────────────────────────

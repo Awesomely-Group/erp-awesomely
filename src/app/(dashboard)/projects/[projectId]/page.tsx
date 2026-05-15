@@ -49,6 +49,10 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           where: { active: true },
           include: { role: { include: { supplier: true } } },
         },
+        regularFeeEntries: {
+          where: { active: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
     }),
     prisma.invoice.findMany({
@@ -114,8 +118,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
               isFeeRegular: project.isFeeRegular,
               fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
               budgetedHours: project.budgetedHours,
-              monthlyFee: project.monthlyFee !== null ? Number(project.monthlyFee) : null,
-              maxHoursPerMonth: project.maxHoursPerMonth,
               hourBuckets: project.hourBuckets.map((b) => ({
                 id: b.id,
                 roleId: b.roleId,
@@ -124,6 +126,12 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 ratePerHour: Number(b.role.ratePerHour),
                 totalHours: b.totalHours,
                 alertThreshold: b.alertThreshold,
+              })),
+              regularFeeEntries: project.regularFeeEntries.map((e) => ({
+                id: e.id,
+                label: e.label,
+                monthlyFee: Number(e.monthlyFee),
+                maxHoursPerMonth: e.maxHoursPerMonth,
               })),
             }}
             availableRoles={availableRoles.map((r) => ({
@@ -148,8 +156,12 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           isFeeRegular: project.isFeeRegular,
           fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
           budgetedHours: project.budgetedHours,
-          monthlyFee: project.monthlyFee !== null ? Number(project.monthlyFee) : null,
-          maxHoursPerMonth: project.maxHoursPerMonth,
+          regularFeeEntries: project.regularFeeEntries.map((e) => ({
+            id: e.id,
+            label: e.label,
+            monthlyFee: Number(e.monthlyFee),
+            maxHoursPerMonth: e.maxHoursPerMonth,
+          })),
         }}
       />
 
