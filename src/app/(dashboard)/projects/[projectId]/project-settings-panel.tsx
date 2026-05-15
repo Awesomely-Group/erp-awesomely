@@ -76,6 +76,28 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
     alertThreshold: "80",
   });
 
+  // Edit bucket inline
+  const [editingBucketId, setEditingBucketId] = useState<string | null>(null);
+  const [editBucketForm, setEditBucketForm] = useState<BucketFormState>({ roleId: "", totalHours: "", alertThreshold: "80" });
+
+  function startEditBucket(b: ExistingBucket): void {
+    setEditingBucketId(b.id);
+    setEditBucketForm({ roleId: b.roleId, totalHours: String(b.totalHours), alertThreshold: String(Math.round(b.alertThreshold * 100)) });
+  }
+
+  function handleSaveBucketEdit(): void {
+    if (!editingBucketId || !editBucketForm.totalHours) return;
+    startTransition(async () => {
+      await upsertHourBucket(projectId, {
+        id: editingBucketId,
+        roleId: editBucketForm.roleId,
+        totalHours: parseFloat(editBucketForm.totalHours),
+        alertThreshold: parseFloat(editBucketForm.alertThreshold) / 100,
+      });
+      setEditingBucketId(null);
+    });
+  }
+
   // New fee entry form
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [feeForm, setFeeForm] = useState<FeeFormState>({ label: "", monthlyFee: "", maxHoursPerMonth: "" });
@@ -358,43 +380,112 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
               {/* Existing buckets */}
               {config.hourBuckets.length > 0 && (
                 <div className="space-y-2">
-                  {config.hourBuckets.map((b) => (
-                    <div key={b.id} className={`flex items-center justify-between bg-white rounded-lg border px-3 py-2.5 ${b.active ? "border-amber-200" : "border-gray-200 opacity-60"}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-gray-800">{b.roleName}</p>
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${b.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                            {b.active ? "Activa" : "Inactiva"}
-                          </span>
+                  {config.hourBuckets.map((b) =>
+                    editingBucketId === b.id ? (
+                      <div key={b.id} className="bg-white rounded-lg border border-amber-300 p-3 space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Perfil / Rol</label>
+                          <select
+                            value={editBucketForm.roleId}
+                            onChange={(e) => setEditBucketForm((prev) => ({ ...prev, roleId: e.target.value }))}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          >
+                            {availableRoles.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.name} — {r.supplierName} ({r.ratePerHour}€/h)
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                        <p className="text-xs text-gray-400">{b.supplierName} · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Horas totales</label>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={editBucketForm.totalHours}
+                              onChange={(e) => setEditBucketForm((prev) => ({ ...prev, totalHours: e.target.value }))}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Alerta al (%)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              step="5"
+                              value={editBucketForm.alertThreshold}
+                              onChange={(e) => setEditBucketForm((prev) => ({ ...prev, alertThreshold: e.target.value }))}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveBucketEdit}
+                            disabled={isPending || !editBucketForm.totalHours}
+                            className="flex-1 rounded-lg bg-amber-600 text-white text-sm font-medium py-2 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                          >
+                            Guardar
+                          </button>
+                          <button
+                            onClick={() => setEditingBucketId(null)}
+                            className="px-3 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleToggleBucketActive(b.id, !b.active)}
-                          disabled={isPending}
-                          title={b.active ? "Desactivar bolsa" : "Activar bolsa"}
-                          className={`p-1 rounded transition-colors ${b.active ? "text-green-600 hover:text-amber-600 hover:bg-amber-50" : "text-gray-400 hover:text-green-600 hover:bg-green-50"}`}
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            {b.active
-                              ? <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                              : <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            }
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBucket(b.id)}
-                          disabled={isPending}
-                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                    ) : (
+                      <div key={b.id} className={`flex items-center justify-between bg-white rounded-lg border px-3 py-2.5 ${b.active ? "border-amber-200" : "border-gray-200 opacity-60"}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-800">{b.roleName}</p>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${b.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                              {b.active ? "Activa" : "Inactiva"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-400">{b.supplierName} · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                          <button
+                            onClick={() => startEditBucket(b)}
+                            disabled={isPending}
+                            title="Editar bolsa"
+                            className="p-1 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleToggleBucketActive(b.id, !b.active)}
+                            disabled={isPending}
+                            title={b.active ? "Desactivar bolsa" : "Activar bolsa"}
+                            className={`p-1 rounded transition-colors ${b.active ? "text-green-600 hover:text-amber-600 hover:bg-amber-50" : "text-gray-400 hover:text-green-600 hover:bg-green-50"}`}
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              {b.active
+                                ? <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                : <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              }
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBucket(b.id)}
+                            disabled={isPending}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               )}
 
