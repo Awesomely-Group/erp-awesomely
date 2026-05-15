@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface Props {
@@ -20,6 +21,7 @@ export function ProjectCombobox({
 }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -53,6 +55,16 @@ export function ProjectCombobox({
 
   function handleFocus(): void {
     if (!disabled) {
+      if (inputRef.current) {
+        const rect = inputRef.current.getBoundingClientRect();
+        setDropdownStyle({
+          position: "fixed",
+          top: rect.bottom + 4,
+          left: rect.left,
+          width: rect.width,
+          zIndex: 9999,
+        });
+      }
       setOpen(true);
       setQuery("");
     }
@@ -97,8 +109,11 @@ export function ProjectCombobox({
         )}
       </div>
 
-      {open && (
-        <div className="absolute z-[9999] mt-1 min-w-full w-max max-w-sm rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          style={dropdownStyle}
+          className="rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
+        >
           {projects.length === 0 ? (
             <div className="px-3 py-2 text-xs text-gray-400">Sin proyectos para esta marca</div>
           ) : filtered.length === 0 ? (
@@ -133,7 +148,8 @@ export function ProjectCombobox({
               ))}
             </ul>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
