@@ -23,6 +23,7 @@ export function ProjectCombobox({
   const [query, setQuery] = useState("");
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedProject = projects.find((p) => p.id === value) ?? null;
@@ -34,7 +35,10 @@ export function ProjectCombobox({
   useEffect(() => {
     if (!open) return;
     function handleClickOutside(e: MouseEvent): void {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideContainer = containerRef.current?.contains(target) ?? false;
+      const insideDropdown = dropdownRef.current?.contains(target) ?? false;
+      if (!insideContainer && !insideDropdown) {
         setOpen(false);
         setQuery("");
       }
@@ -111,6 +115,7 @@ export function ProjectCombobox({
 
       {open && typeof document !== "undefined" && createPortal(
         <div
+          ref={dropdownRef}
           style={dropdownStyle}
           className="rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
         >
