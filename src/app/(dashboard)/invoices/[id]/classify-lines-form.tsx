@@ -73,36 +73,47 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
     lines.find((l) => !l.classification)?.id ?? null
   );
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   function handleClassify(lineId: string, projectId: string | null, marca: string | null, notes: string): void {
+    setError(null);
     startTransition(async () => {
-      const { classificationId } = await classifyLine({ lineId, projectId, marca, notes, invoiceId });
-      setLocalLines((prev) =>
-        prev.map((l) => {
-          if (l.id !== lineId) return l;
-          const project = projectId ? projects.find((p) => p.id === projectId) : null;
-          return {
-            ...l,
-            classification: {
-              id: classificationId,
-              status: "CLASSIFIED",
-              projectId,
-              projectName: project?.name ?? null,
-              workspaceName: project?.workspaceName ?? null,
-              marca,
-              notes,
-            },
-          };
-        })
-      );
-      const nextUnclassified = localLines.find((l) => l.id !== lineId && !l.classification);
-      setExpandedLine(nextUnclassified?.id ?? null);
-      router.refresh();
+      try {
+        const { classificationId } = await classifyLine({ lineId, projectId, marca, notes, invoiceId });
+        setLocalLines((prev) =>
+          prev.map((l) => {
+            if (l.id !== lineId) return l;
+            const project = projectId ? projects.find((p) => p.id === projectId) : null;
+            return {
+              ...l,
+              classification: {
+                id: classificationId,
+                status: "CLASSIFIED",
+                projectId,
+                projectName: project?.name ?? null,
+                workspaceName: project?.workspaceName ?? null,
+                marca,
+                notes,
+              },
+            };
+          })
+        );
+        const nextUnclassified = localLines.find((l) => l.id !== lineId && !l.classification);
+        setExpandedLine(nextUnclassified?.id ?? null);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al clasificar la línea");
+      }
     });
   }
 
   return (
     <div className="space-y-2">
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
       {localLines.map((line) => (
         <LineRow
           key={line.id}
