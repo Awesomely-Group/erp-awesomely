@@ -18,7 +18,7 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
       workspace: true,
       hourBuckets: {
         where: { active: true },
-        include: { role: { include: { supplier: true } } },
+        include: { role: true },
       },
       userRoles: true,
     },
@@ -26,13 +26,12 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
 
   if (!project) notFound();
 
-  // Compute filter from bucketId if present
   let filterAccountIds: string[] | undefined;
   let filterBucketName: string | undefined;
   if (bucketId) {
     const bucket = project.hourBuckets.find((b) => b.id === bucketId);
     if (bucket) {
-      filterBucketName = `${bucket.role.name} (${bucket.role.supplier.name})`;
+      filterBucketName = bucket.role.name;
       filterAccountIds = project.userRoles
         .filter((ur) => ur.roleId === bucket.roleId)
         .map((ur) => ur.jiraAccountId);
@@ -74,7 +73,7 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
         bucketByRole={Object.fromEntries(
           project.hourBuckets.map((b) => [
             b.roleId,
-            { roleName: b.role.name, supplierName: b.role.supplier.name, totalHours: b.totalHours },
+            { roleName: b.role.name, totalHours: b.totalHours },
           ])
         )}
         accountToRole={Object.fromEntries(project.userRoles.map((ur) => [ur.jiraAccountId, ur.roleId]))}

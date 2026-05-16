@@ -134,7 +134,6 @@ function WorklogIcon(): React.JSX.Element {
 
 interface BucketInfo {
   roleName: string;
-  supplierName: string;
   totalHours: number;
 }
 

@@ -46,7 +46,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       include: {
         workspace: true,
         hourBuckets: {
-          include: { role: { include: { supplier: true } } },
+          include: { role: true },
         },
         regularFeeEntries: {
           where: { active: true },
@@ -62,10 +62,9 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       include: { company: true },
       orderBy: { date: "desc" },
     }),
-    prisma.supplierRole.findMany({
+    prisma.roleTemplate.findMany({
       where: { active: true },
-      include: { supplier: true },
-      orderBy: [{ supplier: { name: "asc" } }, { name: "asc" }],
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -121,7 +120,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 id: b.id,
                 roleId: b.roleId,
                 roleName: b.role.name,
-                supplierName: b.role.supplier.name,
                 ratePerHour: Number(b.role.ratePerHour),
                 totalHours: b.totalHours,
                 alertThreshold: b.alertThreshold,
@@ -139,7 +137,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             availableRoles={availableRoles.map((r) => ({
               id: r.id,
               name: r.name,
-              supplierName: r.supplier.name,
               ratePerHour: Number(r.ratePerHour),
             }))}
           />

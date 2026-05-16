@@ -8,7 +8,6 @@ export interface HourBucketEntry {
   id: string;
   roleId: string;
   roleName: string;
-  supplierName: string;
   ratePerHour: number;
   totalHours: number;
   consumedHours: number;
@@ -48,7 +47,7 @@ export async function GET(
       workspace: true,
       hourBuckets: {
         where: { active: true },
-        include: { role: { include: { supplier: true } } },
+        include: { role: true },
       },
       userRoles: true,
     },
@@ -128,7 +127,6 @@ export async function GET(
     id: bucket.id,
     roleId: bucket.roleId,
     roleName: bucket.role.name,
-    supplierName: bucket.role.supplier.name,
     ratePerHour: Number(bucket.role.ratePerHour),
     totalHours: bucket.totalHours,
     consumedHours: Math.round((hoursPerRole.get(bucket.roleId) ?? 0) * 100) / 100,

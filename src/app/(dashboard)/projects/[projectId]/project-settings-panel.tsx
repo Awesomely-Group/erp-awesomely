@@ -3,10 +3,9 @@
 import React, { useState, useTransition, useRef, useEffect } from "react";
 import { updateProjectTypes, upsertHourBucket, deleteHourBucket, toggleHourBucketActive, upsertRegularFeeEntry, deleteRegularFeeEntry } from "../actions";
 
-interface SupplierRoleOption {
+interface RoleOption {
   id: string;
   name: string;
-  supplierName: string;
   ratePerHour: number;
 }
 
@@ -14,7 +13,6 @@ interface ExistingBucket {
   id: string;
   roleId: string;
   roleName: string;
-  supplierName: string;
   ratePerHour: number;
   totalHours: number;
   alertThreshold: number;
@@ -43,7 +41,7 @@ interface ProjectConfig {
 interface Props {
   projectId: string;
   config: ProjectConfig;
-  availableRoles: SupplierRoleOption[];
+  availableRoles: RoleOption[];
 }
 
 interface BucketFormState {
@@ -402,7 +400,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                           >
                             {availableRoles.map((r) => (
                               <option key={r.id} value={r.id}>
-                                {r.name} — {r.supplierName} ({r.ratePerHour}€/h)
+                                {r.name} ({r.ratePerHour}€/h)
                               </option>
                             ))}
                           </select>
@@ -477,7 +475,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                               {b.active ? "Activa" : "Inactiva"}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-400">{b.supplierName} · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
+                          <p className="text-xs text-gray-400">{b.ratePerHour}€/h · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
                         </div>
                         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                           <button
@@ -531,7 +529,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                     >
                       {availableRoles.map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.name} — {r.supplierName} ({r.ratePerHour}€/h)
+                          {r.name} ({r.ratePerHour}€/h)
                         </option>
                       ))}
                     </select>

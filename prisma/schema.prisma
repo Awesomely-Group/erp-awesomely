@@ -155,7 +155,7 @@ model HourBucket {
   projectId      String
   project        JiraProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   roleId         String
-  role           SupplierRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  role           RoleTemplate @relation(fields: [roleId], references: [id], onDelete: Restrict)
   totalHours     Float
   alertThreshold Float        @default(0.8)
   active         Boolean      @default(true)
@@ -430,8 +430,6 @@ model SupplierRole {
 
   verifications       SupplierVerification[]
   defaultForSuppliers Supplier[]             @relation("SupplierDefaultRole")
-  projectUserRoles    ProjectUserRole[]
-  hourBuckets         HourBucket[]
 
   @@index([supplierId])
   @@map("supplier_roles")
@@ -443,7 +441,7 @@ model ProjectUserRole {
   project       JiraProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   jiraAccountId String
   roleId        String
-  role          SupplierRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role          RoleTemplate @relation(fields: [roleId], references: [id], onDelete: Cascade)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -454,10 +452,14 @@ model ProjectUserRole {
 
 /// Catálogo global de roles de proveedor, gestionable desde Configuración.
 model RoleTemplate {
-  id     String  @id @default(cuid())
-  name   String
-  color  String  @default("gray")
-  active Boolean @default(true)
+  id          String  @id @default(cuid())
+  name        String
+  color       String  @default("gray")
+  ratePerHour Decimal @default(0)
+  active      Boolean @default(true)
+
+  hourBuckets      HourBucket[]
+  projectUserRoles ProjectUserRole[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -46,7 +46,7 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-gray-900">{bucket.roleName}</p>
-          <p className="text-xs text-gray-400">{bucket.supplierName} · {bucket.ratePerHour}€/h</p>
+          <p className="text-xs text-gray-400">{bucket.ratePerHour}€/h</p>
           {(bucket.startDate ?? bucket.endDate) && (
             <p className="text-xs text-gray-400 mt-0.5">
               {bucket.startDate ? fmtDate(bucket.startDate) : "—"} → {bucket.endDate ? fmtDate(bucket.endDate) : "—"}

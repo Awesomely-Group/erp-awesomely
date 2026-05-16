@@ -13,7 +13,6 @@ export interface UserRoleOption {
 export interface ProjectUserRoleEntry {
   accountId: string;
   displayName: string;
-  supplierId: string | null;
   roles: UserRoleOption[];
   effectiveRoleId: string | null;
 }
@@ -41,8 +40,6 @@ export async function GET(
 
   const tempo = new TempoClient(project.workspace.tempoApiToken);
 
-  // For fee regular projects, collect all users who have ever logged on this project
-  // by scanning a wide historical range, not just the selected period.
   let accountIds: string[];
   if (project.isFeeRegular) {
     const today = new Date().toISOString().slice(0, 10);
@@ -61,43 +58,26 @@ export async function GET(
 
   if (accountIds.length === 0) return NextResponse.json([], { status: 200 });
 
-  // Resolve display names
   const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-  const nameMap = await jira.getUsersByAccountIds(accountIds);
-
-  // Supplier data + project overrides
-  const [suppliers, projectOverrides] = await Promise.all([
-    prisma.supplier.findMany({
-      where: { jiraUsers: { some: { accountId: { in: accountIds } } } },
-      include: {
-        jiraUsers: { select: { accountId: true } },
-        roles: { where: { active: true }, orderBy: { name: "asc" } },
-      },
-    }),
+  const [nameMap, roleTemplates, projectOverrides] = await Promise.all([
+    jira.getUsersByAccountIds(accountIds),
+    prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.projectUserRole.findMany({ where: { projectId, jiraAccountId: { in: accountIds } } }),
   ]);
 
-  const supplierByAccountId = new Map<string, typeof suppliers[0]>();
-  for (const s of suppliers) {
-    for (const u of s.jiraUsers) {
-      supplierByAccountId.set(u.accountId, s);
-    }
-  }
   const overrideByAccountId = new Map(projectOverrides.map((o) => [o.jiraAccountId, o.roleId]));
+  const roles: UserRoleOption[] = roleTemplates.map((r) => ({
+    id: r.id,
+    name: r.name,
+    ratePerHour: Number(r.ratePerHour),
+  }));
 
-  const entries: ProjectUserRoleEntry[] = accountIds.map((accountId) => {
-    const supplier = supplierByAccountId.get(accountId) ?? null;
-    const overrideRoleId = overrideByAccountId.get(accountId) ?? null;
-    const effectiveRoleId = overrideRoleId ?? supplier?.defaultRoleId ?? null;
-
-    return {
-      accountId,
-      displayName: nameMap.get(accountId) ?? accountId,
-      supplierId: supplier?.id ?? null,
-      roles: supplier?.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })) ?? [],
-      effectiveRoleId,
-    };
-  });
+  const entries: ProjectUserRoleEntry[] = accountIds.map((accountId) => ({
+    accountId,
+    displayName: nameMap.get(accountId) ?? accountId,
+    roles,
+    effectiveRoleId: overrideByAccountId.get(accountId) ?? null,
+  }));
 
   return NextResponse.json(entries);
 }
