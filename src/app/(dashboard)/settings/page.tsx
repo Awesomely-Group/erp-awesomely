@@ -96,7 +96,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
           </p>
         </div>
         <RoleTemplatesSection
-          templates={roleTemplates.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
+          templates={roleTemplates.map((t) => ({ id: t.id, name: t.name, color: t.color, ratePerHour: Number(t.ratePerHour) }))}
         />
       </section>
 

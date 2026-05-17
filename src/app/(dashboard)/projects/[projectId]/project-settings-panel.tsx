@@ -400,7 +400,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                           >
                             {availableRoles.map((r) => (
                               <option key={r.id} value={r.id}>
-                                {r.name} ({r.ratePerHour}€/h)
+                                {r.name}
                               </option>
                             ))}
                           </select>
@@ -529,7 +529,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                     >
                       {availableRoles.map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.name} ({r.ratePerHour}€/h)
+                          {r.name}
                         </option>
                       ))}
                     </select>

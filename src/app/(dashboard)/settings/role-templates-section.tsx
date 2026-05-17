@@ -8,6 +8,7 @@ export interface RoleTemplateItem {
   id: string;
   name: string;
   color: string;
+  ratePerHour: number;
 }
 
 // ─── Color picker ─────────────────────────────────────────────────────────────
@@ -58,11 +59,12 @@ function TemplateRow({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(template.name);
   const [color, setColor] = useState(template.color);
+  const [ratePerHour, setRatePerHour] = useState(template.ratePerHour.toString());
   const [isPending, startTransition] = useTransition();
 
   function handleSave(): void {
     startTransition(async () => {
-      await updateRoleTemplate(template.id, name, color);
+      await updateRoleTemplate(template.id, name, color, ratePerHour !== "" ? parseFloat(ratePerHour) : 0);
       setEditing(false);
     });
   }
@@ -82,6 +84,18 @@ function TemplateRow({
           className="border border-gray-300 rounded px-2 py-1 text-sm w-40"
           autoFocus
         />
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={ratePerHour}
+            onChange={(e) => setRatePerHour(e.target.value)}
+            placeholder="0.00"
+            className="border border-gray-300 rounded px-2 py-1 text-sm w-24"
+          />
+          <span className="text-xs text-gray-500">€/h</span>
+        </div>
         <ColorPicker value={color} onChange={setColor} />
         <button
           onClick={handleSave}
@@ -91,7 +105,7 @@ function TemplateRow({
           Guardar
         </button>
         <button
-          onClick={() => { setName(template.name); setColor(template.color); setEditing(false); }}
+          onClick={() => { setName(template.name); setColor(template.color); setRatePerHour(template.ratePerHour.toString()); setEditing(false); }}
           className="text-sm text-gray-500 hover:text-gray-700"
         >
           Cancelar
@@ -103,6 +117,7 @@ function TemplateRow({
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0">
       <RolePill name={template.name} color={template.color} />
+      <span className="text-xs text-gray-400">{template.ratePerHour > 0 ? `${template.ratePerHour}€/h` : "—"}</span>
       <div className="ml-auto flex items-center gap-3">
         <button
           onClick={() => setEditing(true)}
@@ -128,15 +143,17 @@ function AddTemplateForm(): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState("gray");
+  const [ratePerHour, setRatePerHour] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
     if (!name.trim()) return;
     startTransition(async () => {
-      await createRoleTemplate(name, color);
+      await createRoleTemplate(name, color, ratePerHour !== "" ? parseFloat(ratePerHour) : 0);
       setName("");
       setColor("gray");
+      setRatePerHour("");
       setOpen(false);
     });
   }
@@ -154,7 +171,7 @@ function AddTemplateForm(): React.JSX.Element {
 
   return (
     <form onSubmit={handleSubmit} className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -163,6 +180,18 @@ function AddTemplateForm(): React.JSX.Element {
           className="border border-gray-300 rounded px-2 py-1 text-sm w-40"
           autoFocus
         />
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={ratePerHour}
+            onChange={(e) => setRatePerHour(e.target.value)}
+            placeholder="0.00"
+            className="border border-gray-300 rounded px-2 py-1 text-sm w-24"
+          />
+          <span className="text-xs text-gray-500">€/h</span>
+        </div>
         <button
           type="submit"
           disabled={isPending || !name.trim()}

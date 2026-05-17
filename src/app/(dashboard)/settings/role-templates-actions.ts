@@ -3,17 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 
-export async function createRoleTemplate(name: string, color: string): Promise<void> {
+export async function createRoleTemplate(name: string, color: string, ratePerHour: number = 0): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("El nombre no puede estar vacío");
-  await prisma.roleTemplate.create({ data: { name: trimmed, color } });
+  await prisma.roleTemplate.create({ data: { name: trimmed, color, ratePerHour } });
   revalidatePath("/settings");
 }
 
-export async function updateRoleTemplate(id: string, name: string, color: string): Promise<void> {
+export async function updateRoleTemplate(id: string, name: string, color: string, ratePerHour: number = 0): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("El nombre no puede estar vacío");
-  await prisma.roleTemplate.update({ where: { id }, data: { name: trimmed, color } });
+  await prisma.roleTemplate.update({ where: { id }, data: { name: trimmed, color, ratePerHour } });
   revalidatePath("/settings");
 }
 
