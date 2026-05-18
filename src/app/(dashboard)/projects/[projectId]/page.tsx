@@ -143,6 +143,15 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         </div>
       </div>
 
+      {/* Overview charts + KPIs */}
+      <ProjectOverviewCharts
+        projectId={project.id}
+        hasTempoToken={!!project.workspace.tempoApiToken}
+        from={fromStr}
+        to={toStr}
+        totalInvoicesEur={relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
+      />
+
       {/* Type-specific sections */}
       <ProjectTypesDashboard
         projectId={project.id}
@@ -162,14 +171,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             maxHoursPerMonth: e.maxHoursPerMonth,
           })),
         }}
-      />
-
-      {/* Overview charts + KPIs */}
-      <ProjectOverviewCharts
-        projectId={project.id}
-        hasTempoToken={!!project.workspace.tempoApiToken}
-        from={fromStr}
-        to={toStr}
       />
 
       {/* Facturas relacionadas */}

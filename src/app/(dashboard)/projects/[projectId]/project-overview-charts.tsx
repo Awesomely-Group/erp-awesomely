@@ -92,9 +92,10 @@ interface Props {
   hasTempoToken: boolean;
   from: string;
   to: string;
+  totalInvoicesEur: number;
 }
 
-export function ProjectOverviewCharts({ projectId, hasTempoToken, from, to }: Props): React.JSX.Element {
+export function ProjectOverviewCharts({ projectId, hasTempoToken, from, to, totalInvoicesEur }: Props): React.JSX.Element {
   const [data, setData] = useState<MonthCostData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,18 +180,55 @@ export function ProjectOverviewCharts({ projectId, hasTempoToken, from, to }: Pr
     monthLabel: monthLabel(m.month),
   }));
 
+  const beneficioReal = totalInvoicesEur - data.totalCost;
+  const beneficioEsperado = data.estimateCost != null ? totalInvoicesEur - data.estimateCost : null;
+  const margenReal = totalInvoicesEur > 0 ? (beneficioReal / totalInvoicesEur) * 100 : null;
+  const margenEsperado = beneficioEsperado != null && totalInvoicesEur > 0
+    ? (beneficioEsperado / totalInvoicesEur) * 100
+    : null;
+
   return (
     <div className="space-y-4">
-      {/* KPI cards */}
+      {/* KPI cards — fila 1: horas y costes */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Horas reales" value={`${data.totalHours}h`} sub={data.estimateHours != null ? `Est. ${data.estimateHours}h` : undefined} />
-        <KpiCard label="Coste real" value={formatCurrency(data.totalCost)} />
-        <KpiCard label="Coste estimado" value={data.estimateCost != null ? formatCurrency(data.estimateCost) : "—"} />
+        <KpiCard label="Coste real" value={formatCurrency(data.totalCost)} accent="red" />
+        <KpiCard label="Coste estimado" value={data.estimateCost != null ? formatCurrency(data.estimateCost) : "—"} accent="red" />
         <KpiCard
           label="Desviación coste"
           value={deviation != null ? `${deviation >= 0 ? "+" : ""}${deviation.toFixed(1)}%` : "—"}
           accent={deviation == null ? undefined : deviation > 0 ? "red" : "green"}
           sub={deviation != null ? (deviation > 0 ? "Por encima del estimado" : "Dentro del estimado") : undefined}
+        />
+      </div>
+
+      {/* KPI cards — fila 2: beneficios */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="Ingresos (facturas)"
+          value={formatCurrency(totalInvoicesEur)}
+        />
+        <KpiCard
+          label="Beneficio esperado"
+          value={beneficioEsperado != null ? formatCurrency(beneficioEsperado) : "—"}
+          accent={beneficioEsperado == null ? undefined : beneficioEsperado >= 0 ? "green" : "red"}
+          sub={margenEsperado != null ? `${margenEsperado.toFixed(1)}% margen` : undefined}
+        />
+        <KpiCard
+          label="Beneficio real"
+          value={formatCurrency(beneficioReal)}
+          accent={beneficioReal >= 0 ? "green" : "red"}
+          sub={margenReal != null ? `${margenReal.toFixed(1)}% margen` : undefined}
+        />
+        <KpiCard
+          label="Desviación beneficio"
+          value={beneficioEsperado != null
+            ? `${(beneficioReal - beneficioEsperado) >= 0 ? "+" : ""}${formatCurrency(beneficioReal - beneficioEsperado)}`
+            : "—"}
+          accent={beneficioEsperado == null ? undefined : (beneficioReal - beneficioEsperado) >= 0 ? "green" : "red"}
+          sub={beneficioEsperado != null && margenEsperado != null && margenReal != null
+            ? `${(margenReal - margenEsperado) >= 0 ? "+" : ""}${(margenReal - margenEsperado).toFixed(1)}pp`
+            : undefined}
         />
       </div>
 
