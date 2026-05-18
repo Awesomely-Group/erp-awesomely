@@ -59,28 +59,14 @@ export async function GET(
   }
 
   // Get Tempo worklogs if token exists; otherwise all consumed = 0
-  // Fetch from the earliest bucket start (not the UI period) so consumption is over the full bucket lifetime
+  // Fetch all history so consumption is not date-restricted (bucket dates are informational only)
   type WorklogEntry = { accountId: string; hours: number; date: string };
   let worklogs: WorklogEntry[] = [];
 
   if (project.workspace.tempoApiToken) {
     const today = new Date().toISOString().slice(0, 10);
-    const bucketStarts = project.hourBuckets
-      .map((b) => b.startDate?.toISOString().slice(0, 10))
-      .filter((d): d is string => d != null);
-    const fetchFrom = bucketStarts.length > 0
-      ? bucketStarts.reduce((a, b) => (a < b ? a : b))
-      : from;
-    const bucketEnds = project.hourBuckets
-      .map((b) => b.endDate?.toISOString().slice(0, 10))
-      .filter((d): d is string => d != null);
-    const fetchTo = bucketEnds.length > 0
-      ? bucketEnds.reduce((a, b) => (a > b ? a : b))
-      : today;
-    const effectiveFetchTo = fetchTo > today ? today : fetchTo;
-
     const tempo = new TempoClient(project.workspace.tempoApiToken);
-    const raw = await tempo.getWorklogs(project.jiraId, fetchFrom, effectiveFetchTo);
+    const raw = await tempo.getWorklogs(project.jiraId, "2020-01-01", today);
     worklogs = raw.map((w) => ({
       accountId: w.author.accountId,
       hours: w.timeSpentSeconds / 3600,
@@ -94,10 +80,10 @@ export async function GET(
     accountToRole.set(ur.jiraAccountId, ur.roleId);
   }
 
-  // Detect unassigned users (have hours but no role mapping)
+  // Detect unassigned users within the current view period only (not all history)
   const hoursPerUnassigned = new Map<string, number>();
   for (const w of worklogs) {
-    if (!accountToRole.has(w.accountId)) {
+    if (!accountToRole.has(w.accountId) && w.date >= from && w.date <= to) {
       hoursPerUnassigned.set(w.accountId, (hoursPerUnassigned.get(w.accountId) ?? 0) + w.hours);
     }
   }
@@ -120,20 +106,13 @@ export async function GET(
     })).sort((a, b) => b.hours - a.hours);
   }
 
-  // Sum hours per role over the bucket's full lifetime (independent of UI period)
-  const today = new Date().toISOString().slice(0, 10);
+  // Sum all hours per role — no date restriction (bucket dates are display-only)
   const hoursPerRole = new Map<string, number>();
   for (const bucket of project.hourBuckets) {
-    const bucketFrom = bucket.startDate ? bucket.startDate.toISOString().slice(0, 10) : "2000-01-01";
-    const bucketTo = bucket.endDate ? bucket.endDate.toISOString().slice(0, 10) : today;
-
     let roleHours = 0;
     for (const w of worklogs) {
       const roleId = accountToRole.get(w.accountId);
-      if (roleId !== bucket.roleId) continue;
-      if (w.date >= bucketFrom && w.date <= bucketTo) {
-        roleHours += w.hours;
-      }
+      if (roleId === bucket.roleId) roleHours += w.hours;
     }
     hoursPerRole.set(bucket.roleId, (hoursPerRole.get(bucket.roleId) ?? 0) + roleHours);
   }
