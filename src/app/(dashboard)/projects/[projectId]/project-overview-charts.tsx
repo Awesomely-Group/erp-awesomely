@@ -51,21 +51,9 @@ function KpiCard({
   );
 }
 
-function HoursTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{ value: number }>;
-  label?: string;
-}): React.JSX.Element | null {
-  if (!active || !payload?.length) return null;
+function SectionLabel({ children }: { children: string }): React.JSX.Element {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
-      <p className="font-semibold text-gray-700 mb-1">{label}</p>
-      <p className="text-indigo-600">{payload[0].value}h</p>
-    </div>
+    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{children}</p>
   );
 }
 
@@ -82,7 +70,7 @@ function CostTooltip({
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
       <p className="font-semibold text-gray-700 mb-1">{label}</p>
-      <p className="text-emerald-600">{formatCurrency(payload[0].value)}</p>
+      <p className="text-red-600">{formatCurrency(payload[0].value)}</p>
     </div>
   );
 }
@@ -163,16 +151,20 @@ export function ProjectOverviewCharts({ projectId, hasTempoToken, from, to, tota
     );
   }
 
-  const deviation = data.estimateCost != null && data.estimateCost > 0
-    ? ((data.totalCost - data.estimateCost) / data.estimateCost) * 100
+  const beneficioReal = totalInvoicesEur - data.totalCost;
+  const margenReal = totalInvoicesEur > 0 ? (beneficioReal / totalInvoicesEur) * 100 : null;
+
+  const hasEstimate = data.estimateCost != null && data.estimateCost > 0;
+  const beneficioEsperado = hasEstimate ? totalInvoicesEur - data.estimateCost! : null;
+  const margenEsperado = beneficioEsperado != null && totalInvoicesEur > 0
+    ? (beneficioEsperado / totalInvoicesEur) * 100
+    : null;
+  const desvCoste = hasEstimate
+    ? ((data.totalCost - data.estimateCost!) / data.estimateCost!) * 100
     : null;
 
-  const avgEstimateHoursPerMonth = data.estimateHours != null && data.months.length > 0
-    ? data.estimateHours / data.months.length
-    : null;
-
-  const avgEstimateCostPerMonth = data.estimateCost != null && data.months.length > 0
-    ? data.estimateCost / data.months.length
+  const avgEstimateCostPerMonth = hasEstimate && data.months.length > 0
+    ? data.estimateCost! / data.months.length
     : null;
 
   const chartData = data.months.map((m) => ({
@@ -180,39 +172,19 @@ export function ProjectOverviewCharts({ projectId, hasTempoToken, from, to, tota
     monthLabel: monthLabel(m.month),
   }));
 
-  const beneficioReal = totalInvoicesEur - data.totalCost;
-  const beneficioEsperado = data.estimateCost != null ? totalInvoicesEur - data.estimateCost : null;
-  const margenReal = totalInvoicesEur > 0 ? (beneficioReal / totalInvoicesEur) * 100 : null;
-  const margenEsperado = beneficioEsperado != null && totalInvoicesEur > 0
-    ? (beneficioEsperado / totalInvoicesEur) * 100
-    : null;
-
   return (
-    <div className="space-y-4">
-      {/* KPI cards — fila 1: horas y costes */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Horas reales" value={`${data.totalHours}h`} sub={data.estimateHours != null ? `Est. ${data.estimateHours}h` : undefined} />
-        <KpiCard label="Coste real" value={formatCurrency(data.totalCost)} accent="red" />
-        <KpiCard label="Coste estimado" value={data.estimateCost != null ? formatCurrency(data.estimateCost) : "—"} accent="red" />
-        <KpiCard
-          label="Desviación coste"
-          value={deviation != null ? `${deviation >= 0 ? "+" : ""}${deviation.toFixed(1)}%` : "—"}
-          accent={deviation == null ? undefined : deviation > 0 ? "red" : "green"}
-          sub={deviation != null ? (deviation > 0 ? "Por encima del estimado" : "Dentro del estimado") : undefined}
-        />
-      </div>
-
-      {/* KPI cards — fila 2: beneficios */}
+    <div className="space-y-3">
+      {/* Sección 1: Resultado del período */}
+      <SectionLabel>Resultado del período</SectionLabel>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          label="Ingresos (facturas)"
+          label="Ingresos"
           value={formatCurrency(totalInvoicesEur)}
         />
         <KpiCard
-          label="Beneficio esperado"
-          value={beneficioEsperado != null ? formatCurrency(beneficioEsperado) : "—"}
-          accent={beneficioEsperado == null ? undefined : beneficioEsperado >= 0 ? "green" : "red"}
-          sub={margenEsperado != null ? `${margenEsperado.toFixed(1)}% margen` : undefined}
+          label="Coste real"
+          value={formatCurrency(data.totalCost)}
+          accent="red"
         />
         <KpiCard
           label="Beneficio real"
@@ -221,85 +193,81 @@ export function ProjectOverviewCharts({ projectId, hasTempoToken, from, to, tota
           sub={margenReal != null ? `${margenReal.toFixed(1)}% margen` : undefined}
         />
         <KpiCard
-          label="Desviación beneficio"
-          value={beneficioEsperado != null
-            ? `${(beneficioReal - beneficioEsperado) >= 0 ? "+" : ""}${formatCurrency(beneficioReal - beneficioEsperado)}`
-            : "—"}
-          accent={beneficioEsperado == null ? undefined : (beneficioReal - beneficioEsperado) >= 0 ? "green" : "red"}
-          sub={beneficioEsperado != null && margenEsperado != null && margenReal != null
-            ? `${(margenReal - margenEsperado) >= 0 ? "+" : ""}${(margenReal - margenEsperado).toFixed(1)}pp`
-            : undefined}
+          label="Margen real"
+          value={margenReal != null ? `${margenReal.toFixed(1)}%` : "—"}
+          accent={margenReal == null ? undefined : margenReal >= 0 ? "green" : "red"}
+          sub="sobre ingresos"
         />
       </div>
 
-      {/* Charts */}
-      {chartData.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Horas por mes */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-4">Horas por mes</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis
-                  dataKey="monthLabel"
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tickFormatter={(v: number) => `${v}h`}
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                />
-                <Tooltip content={<HoursTooltip />} />
-                <Bar dataKey="totalHours" fill="#6366f1" maxBarSize={40} radius={[4, 4, 0, 0]} />
-                {avgEstimateHoursPerMonth != null && (
-                  <ReferenceLine
-                    y={avgEstimateHoursPerMonth}
-                    stroke="#a5b4fc"
-                    strokeDasharray="4 3"
-                    label={{ value: "Est.", position: "insideTopRight", fontSize: 10, fill: "#818cf8" }}
-                  />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
+      {/* Sección 2: Previsión vs Real (solo si hay estimación) */}
+      {hasEstimate && (
+        <>
+          <SectionLabel>Previsión vs Real</SectionLabel>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KpiCard
+              label="Coste estimado"
+              value={formatCurrency(data.estimateCost!)}
+              accent="red"
+            />
+            <KpiCard
+              label="Beneficio esperado"
+              value={beneficioEsperado != null ? formatCurrency(beneficioEsperado) : "—"}
+              accent={beneficioEsperado == null ? undefined : beneficioEsperado >= 0 ? "green" : "red"}
+              sub={margenEsperado != null ? `${margenEsperado.toFixed(1)}% margen` : undefined}
+            />
+            <KpiCard
+              label="Desviación coste"
+              value={desvCoste != null ? `${desvCoste >= 0 ? "+" : ""}${desvCoste.toFixed(1)}%` : "—"}
+              accent={desvCoste == null ? undefined : desvCoste > 0 ? "red" : "green"}
+              sub={desvCoste != null ? (desvCoste > 0 ? "Por encima del estimado" : "Dentro del estimado") : undefined}
+            />
+            <KpiCard
+              label="Desviación beneficio"
+              value={beneficioEsperado != null
+                ? `${(beneficioReal - beneficioEsperado) >= 0 ? "+" : ""}${formatCurrency(beneficioReal - beneficioEsperado)}`
+                : "—"}
+              accent={beneficioEsperado == null ? undefined : (beneficioReal - beneficioEsperado) >= 0 ? "green" : "red"}
+              sub={beneficioEsperado != null && margenEsperado != null && margenReal != null
+                ? `${(margenReal - margenEsperado) >= 0 ? "+" : ""}${(margenReal - margenEsperado).toFixed(1)}pp`
+                : undefined}
+            />
           </div>
+        </>
+      )}
 
-          {/* Coste por mes */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-4">Coste por mes</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis
-                  dataKey="monthLabel"
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
-                  axisLine={false}
-                  tickLine={false}
+      {/* Chart: Coste por mes (full width, barras rojas) */}
+      {chartData.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-4">Coste por mes</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis
+                dataKey="monthLabel"
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`}
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                axisLine={false}
+                tickLine={false}
+                width={36}
+              />
+              <Tooltip content={<CostTooltip />} />
+              <Bar dataKey="totalCost" fill="#ef4444" maxBarSize={40} radius={[4, 4, 0, 0]} />
+              {avgEstimateCostPerMonth != null && (
+                <ReferenceLine
+                  y={avgEstimateCostPerMonth}
+                  stroke="#fca5a5"
+                  strokeDasharray="4 3"
+                  label={{ value: "Est.", position: "insideTopRight", fontSize: 10, fill: "#f87171" }}
                 />
-                <YAxis
-                  tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`}
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                />
-                <Tooltip content={<CostTooltip />} />
-                <Bar dataKey="totalCost" fill="#10b981" maxBarSize={40} radius={[4, 4, 0, 0]} />
-                {avgEstimateCostPerMonth != null && (
-                  <ReferenceLine
-                    y={avgEstimateCostPerMonth}
-                    stroke="#6ee7b7"
-                    strokeDasharray="4 3"
-                    label={{ value: "Est.", position: "insideTopRight", fontSize: 10, fill: "#34d399" }}
-                  />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+              )}
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>
