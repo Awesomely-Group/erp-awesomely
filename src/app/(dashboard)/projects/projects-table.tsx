@@ -503,17 +503,17 @@ function ProjectTableRow({
   function totalHoursCell(): React.JSX.Element {
     if (!project.hasTempoToken) return dash;
     if (loading) return spin;
-    return data && data.totalHours > 0
-      ? <span className="font-semibold text-gray-900">{data.totalHours}h</span>
-      : dash;
+    if (!data || data.totalHours === 0) return dash;
+    const overBudget = data.estimateHours != null && data.totalHours > data.estimateHours;
+    return <span className={`font-semibold ${overBudget ? "text-red-600" : "text-gray-900"}`}>{data.totalHours}h</span>;
   }
 
   function totalCostCell(): React.JSX.Element {
     if (!project.hasTempoToken) return dash;
     if (loading) return spin;
-    return data && data.totalCost > 0
-      ? <span className="font-semibold text-indigo-600 tabular-nums">{fmt(data.totalCost)}</span>
-      : dash;
+    if (!data || data.totalCost === 0) return dash;
+    const overBudget = data.estimateCost != null && data.totalCost > data.estimateCost;
+    return <span className={`font-semibold tabular-nums ${overBudget ? "text-red-600" : "text-indigo-600"}`}>{fmt(data.totalCost)}</span>;
   }
 
   function estHoursCell(): React.JSX.Element {
