@@ -14,6 +14,7 @@ import {
   Users,
   ClipboardList,
   CalendarDays,
+  LineChart,
   PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ const navigation = [
   { name: "Proveedores", href: "/suppliers", icon: Users },
   { name: "Flujo de Caja", href: "/cashflow", icon: TrendingUp },
   { name: "Previsiones", href: "/forecasts", icon: CalendarDays },
+  { name: "Proyecciones", href: "/proyecciones", icon: LineChart },
   { name: "Pagos y Cobros", href: "/payments", icon: CreditCard },
   { name: "Sincronización", href: "/sync", icon: RefreshCw },
   { name: "Configuración", href: "/settings", icon: Settings },
