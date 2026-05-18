@@ -142,6 +142,7 @@ export async function setProjectUserRole(
   projectId: string,
   jiraAccountId: string,
   roleId: string | null,
+  ratePerHour?: number | null,
 ): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
@@ -149,10 +150,11 @@ export async function setProjectUserRole(
   if (roleId === null) {
     await prisma.projectUserRole.deleteMany({ where: { projectId, jiraAccountId } });
   } else {
+    const rateValue = ratePerHour !== undefined ? ratePerHour : null;
     await prisma.projectUserRole.upsert({
       where: { projectId_jiraAccountId: { projectId, jiraAccountId } },
-      create: { projectId, jiraAccountId, roleId },
-      update: { roleId },
+      create: { projectId, jiraAccountId, roleId, ratePerHour: rateValue },
+      update: { roleId, ratePerHour: rateValue },
     });
   }
 }

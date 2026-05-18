@@ -209,13 +209,17 @@ export async function GET(request: Request): Promise<NextResponse> {
         }),
         prisma.projectUserRole.findMany({
           where: { projectId: project.id, jiraAccountId: { in: allAccountIds } },
-          select: { jiraAccountId: true, role: { select: { ratePerHour: true } } },
+          select: { jiraAccountId: true, ratePerHour: true },
         }),
       ]);
       const issueMap = new Map(jiraIssues.map((i) => [i.numericId, i]));
       const supplierByAccount = new Map<string, typeof suppliers[0]>();
       for (const s of suppliers) { for (const u of s.jiraUsers) { supplierByAccount.set(u.accountId, s); } }
-      const overrideByAccount = new Map(projectOverrides.map((o) => [o.jiraAccountId, Number(o.role.ratePerHour)]));
+      const overrideByAccount = new Map(
+        projectOverrides
+          .filter((o) => o.ratePerHour != null)
+          .map((o) => [o.jiraAccountId, Number(o.ratePerHour)])
+      );
 
       function getRate(accountId: string): number {
         const override = overrideByAccount.get(accountId);
@@ -333,7 +337,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         }),
         prisma.projectUserRole.findMany({
           where: { projectId: project.id, jiraAccountId: { in: accountIds } },
-          select: { jiraAccountId: true, role: { select: { ratePerHour: true } } },
+          select: { jiraAccountId: true, ratePerHour: true },
         }),
         new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken)
           .getIssuesByIds(issueIds).catch(() => []),
@@ -345,7 +349,11 @@ export async function GET(request: Request): Promise<NextResponse> {
           supplierByAccount.set(u.accountId, s);
         }
       }
-      const overrideByAccount = new Map(projectOverrides.map((o) => [o.jiraAccountId, Number(o.role.ratePerHour)]));
+      const overrideByAccount = new Map(
+        projectOverrides
+          .filter((o) => o.ratePerHour != null)
+          .map((o) => [o.jiraAccountId, Number(o.ratePerHour)])
+      );
 
       function getRate(accountId: string): number {
         const override = overrideByAccount.get(accountId);

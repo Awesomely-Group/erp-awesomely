@@ -442,6 +442,7 @@ model ProjectUserRole {
   jiraAccountId String
   roleId        String
   role          RoleTemplate @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  ratePerHour   Decimal?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

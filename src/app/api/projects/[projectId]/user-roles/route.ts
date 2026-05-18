@@ -7,7 +7,6 @@ import { NextResponse } from "next/server";
 export interface UserRoleOption {
   id: string;
   name: string;
-  ratePerHour: number;
 }
 
 export interface ProjectUserRoleEntry {
@@ -15,6 +14,8 @@ export interface ProjectUserRoleEntry {
   displayName: string;
   roles: UserRoleOption[];
   effectiveRoleId: string | null;
+  supplierRate: number | null;
+  projectRate: number | null;
 }
 
 export async function GET(
@@ -59,25 +60,55 @@ export async function GET(
   if (accountIds.length === 0) return NextResponse.json([], { status: 200 });
 
   const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-  const [nameMap, roleTemplates, projectOverrides] = await Promise.all([
+  const [nameMap, roleTemplates, projectOverrides, suppliers] = await Promise.all([
     jira.getUsersByAccountIds(accountIds),
     prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.projectUserRole.findMany({ where: { projectId, jiraAccountId: { in: accountIds } } }),
+    prisma.projectUserRole.findMany({
+      where: { projectId, jiraAccountId: { in: accountIds } },
+      select: { jiraAccountId: true, roleId: true, ratePerHour: true },
+    }),
+    prisma.supplier.findMany({
+      where: { jiraUsers: { some: { accountId: { in: accountIds } } } },
+      select: {
+        jiraUsers: { select: { accountId: true } },
+        hourlyRate: true,
+        defaultRole: { select: { ratePerHour: true } },
+      },
+    }),
   ]);
 
-  const overrideByAccountId = new Map(projectOverrides.map((o) => [o.jiraAccountId, o.roleId]));
+  const overrideByAccountId = new Map(projectOverrides.map((o) => [o.jiraAccountId, { roleId: o.roleId, ratePerHour: o.ratePerHour }]));
+
+  const supplierByAccount = new Map<string, typeof suppliers[number]>();
+  for (const s of suppliers) {
+    for (const u of s.jiraUsers) {
+      supplierByAccount.set(u.accountId, s);
+    }
+  }
+
   const roles: UserRoleOption[] = roleTemplates.map((r) => ({
     id: r.id,
     name: r.name,
-    ratePerHour: Number(r.ratePerHour),
   }));
 
-  const entries: ProjectUserRoleEntry[] = accountIds.map((accountId) => ({
-    accountId,
-    displayName: nameMap.get(accountId) ?? accountId,
-    roles,
-    effectiveRoleId: overrideByAccountId.get(accountId) ?? null,
-  }));
+  const entries: ProjectUserRoleEntry[] = accountIds.map((accountId) => {
+    const override = overrideByAccountId.get(accountId);
+    const supplier = supplierByAccount.get(accountId);
+    const supplierRate = supplier?.defaultRole != null
+      ? Number(supplier.defaultRole.ratePerHour)
+      : supplier?.hourlyRate != null
+        ? Number(supplier.hourlyRate)
+        : null;
+
+    return {
+      accountId,
+      displayName: nameMap.get(accountId) ?? accountId,
+      roles,
+      effectiveRoleId: override?.roleId ?? null,
+      supplierRate,
+      projectRate: override?.ratePerHour != null ? Number(override.ratePerHour) : null,
+    };
+  });
 
   return NextResponse.json(entries);
 }

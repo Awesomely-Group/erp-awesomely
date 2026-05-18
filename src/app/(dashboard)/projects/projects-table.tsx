@@ -340,25 +340,55 @@ function RolesPanel({
 }): React.JSX.Element {
   const [entries, setEntries] = useState<ProjectUserRoleEntry[] | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [rates, setRates] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch(`/api/projects/${projectId}/user-roles?from=${from}&to=${to}`)
       .then(async (r) => r.ok ? (await r.json()) as ProjectUserRoleEntry[] : [])
-      .then(setEntries)
+      .then((data) => {
+        setEntries(data);
+        const initial: Record<string, string> = {};
+        for (const e of data) {
+          initial[e.accountId] = (e.projectRate ?? e.supplierRate ?? "").toString();
+        }
+        setRates(initial);
+      })
       .catch(() => setEntries([]));
   }, [projectId, from, to]);
 
-  async function handleChange(accountId: string, roleId: string): Promise<void> {
+  async function handleRoleChange(accountId: string, roleId: string, rate: string): Promise<void> {
+    if (roleId === "") {
+      setPending(accountId);
+      await setProjectUserRole(projectId, accountId, null);
+      setEntries((prev) =>
+        prev?.map((e) => e.accountId === accountId ? { ...e, effectiveRoleId: null, projectRate: null } : e) ?? null
+      );
+      setPending(null);
+      return;
+    }
+    const entry = entries?.find((e) => e.accountId === accountId);
+    const effectiveRate = rate !== "" ? parseFloat(rate) : (entry?.supplierRate ?? null);
     setPending(accountId);
-    await setProjectUserRole(projectId, accountId, roleId === "" ? null : roleId);
+    await setProjectUserRole(projectId, accountId, roleId, effectiveRate);
     setEntries((prev) =>
-      prev?.map((e) => e.accountId === accountId ? { ...e, effectiveRoleId: roleId || null } : e) ?? null
+      prev?.map((e) => e.accountId === accountId ? { ...e, effectiveRoleId: roleId, projectRate: effectiveRate } : e) ?? null
+    );
+    setPending(null);
+  }
+
+  async function handleRateBlur(accountId: string, roleId: string | null, rate: string): Promise<void> {
+    if (!roleId) return;
+    const parsed = rate !== "" ? parseFloat(rate) : null;
+    setPending(accountId);
+    await setProjectUserRole(projectId, accountId, roleId, parsed);
+    setEntries((prev) =>
+      prev?.map((e) => e.accountId === accountId ? { ...e, projectRate: parsed } : e) ?? null
     );
     setPending(null);
   }
 
   return (
-    <div className="absolute right-0 top-full mt-1 z-50 w-80 bg-white rounded-lg shadow-lg border border-gray-200 text-left" onClick={(e) => e.stopPropagation()}>
+    <div className="absolute right-0 top-full mt-1 z-50 w-96 bg-white rounded-lg shadow-lg border border-gray-200 text-left" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-600">Tarifas del proyecto</span>
         <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
@@ -368,26 +398,47 @@ function RolesPanel({
       ) : entries.length === 0 ? (
         <div className="px-3 py-3 text-xs text-gray-400">Sin horas en este período.</div>
       ) : (
-        <ul className="max-h-60 overflow-y-auto divide-y divide-gray-50">
+        <ul className="max-h-72 overflow-y-auto divide-y divide-gray-50">
           {entries.map((e) => (
-            <li key={e.accountId} className="px-3 py-2">
-              <p className="text-xs font-medium text-gray-700 truncate mb-1">{e.displayName}</p>
+            <li key={e.accountId} className="px-3 py-2.5">
+              <p className="text-xs font-medium text-gray-700 truncate mb-1.5">{e.displayName}</p>
               {e.roles.length === 0 ? (
                 <span className="text-xs text-gray-400">Sin roles (configura en Proveedores)</span>
               ) : (
-                <select
-                  value={e.effectiveRoleId ?? ""}
-                  disabled={pending === e.accountId}
-                  onChange={(ev) => void handleChange(e.accountId, ev.target.value)}
-                  className="w-full text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-50"
-                >
-                  <option value="">— Sin tarifa —</option>
-                  {e.roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} ({r.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h)
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={e.effectiveRoleId ?? ""}
+                    disabled={pending === e.accountId}
+                    onChange={(ev) => void handleRoleChange(e.accountId, ev.target.value, rates[e.accountId] ?? "")}
+                    className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-50"
+                  >
+                    <option value="">— Sin tarifa —</option>
+                    {e.roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  {e.effectiveRoleId && (
+                    <>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={rates[e.accountId] ?? ""}
+                        disabled={pending === e.accountId}
+                        onChange={(ev) => setRates((prev) => ({ ...prev, [e.accountId]: ev.target.value }))}
+                        onBlur={(ev) => void handleRateBlur(e.accountId, e.effectiveRoleId, ev.target.value)}
+                        className="w-20 text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-50 text-right"
+                        placeholder={e.supplierRate?.toString() ?? "0"}
+                      />
+                      <span className="text-xs text-gray-400 flex-shrink-0">€/h</span>
+                    </>
+                  )}
+                </div>
+              )}
+              {e.effectiveRoleId && e.supplierRate != null && (e.projectRate == null || e.projectRate !== e.supplierRate) && (
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  Tarifa proveedor: {e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+                </p>
               )}
             </li>
           ))}
