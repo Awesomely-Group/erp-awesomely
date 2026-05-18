@@ -14,22 +14,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatCurrency } from "@/lib/utils";
+import type { CashflowMonthlyPoint } from "@/lib/cashflow-data";
 
-export type CashflowMonthlyPoint = {
-  monthKey: string;
-  monthLabel: string;
-  inflowsBase: number;
-  inflowsTax: number;
-  inflows: number;
-  outflowsBase: number;
-  outflowsTax: number;
-  outflows: number;
-  net: number;
-  forecastInflows: number;
-  forecastOutflows: number;
-  trendInflows: number;
-  trendOutflows: number;
-};
+export type { CashflowMonthlyPoint };
 
 type TooltipEntry = { name: string; value: number; color: string; dataKey: string };
 
@@ -129,9 +116,13 @@ const LEGEND_LABELS: Record<string, string> = {
 export function CashflowChart({
   data,
   height = 350,
+  showForecast = false,
+  basePath = "/cashflow",
 }: {
   data: CashflowMonthlyPoint[];
   height?: number;
+  showForecast?: boolean;
+  basePath?: string;
 }): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
@@ -149,7 +140,7 @@ export function CashflowChart({
     } else {
       next.set("selectedMonth", key);
     }
-    router.push(`/cashflow?${next.toString()}`);
+    router.push(`${basePath}?${next.toString()}`);
   }
 
   if (data.length === 0) {
@@ -227,81 +218,85 @@ export function CashflowChart({
           ))}
         </Bar>
 
-        {/* Forecast inflows (proformas + ERP income estimates) */}
-        <Bar dataKey="forecastInflows" stackId="forecast" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#3b82f6">
-          {data.map((entry) => (
-            <Cell
-              key={entry.monthKey}
-              fill={selectedMonth === entry.monthKey ? "#2563eb" : "#3b82f6"}
-              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.8}
-            />
-          ))}
-        </Bar>
-
-        {/* Forecast outflows (ERP expense estimates) */}
-        <Bar dataKey="forecastOutflows" stackId="forecastOut" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#93c5fd">
-          {data.map((entry) => (
-            <Cell
-              key={entry.monthKey}
-              fill={selectedMonth === entry.monthKey ? "#60a5fa" : "#93c5fd"}
-              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.8}
-            />
-          ))}
-        </Bar>
-
-        {/* Línea de previsión de ingresos (traza histórico + proyecta futuro) */}
-        <Line
-          dataKey="trendInflows"
-          type="monotone"
-          stroke="#15803d"
-          strokeWidth={2}
-          legendType="line"
-          isAnimationActive={false}
-          dot={(dotProps: { cx?: number; cy?: number; payload?: CashflowMonthlyPoint }) => {
-            const { cx, cy, payload } = dotProps;
-            if (!cx || !cy || !payload) return <g key={`ti-${payload?.monthKey ?? "x"}`} />;
-            if (payload.monthKey < currentMonthKey) return <g key={`ti-${payload.monthKey}`} />;
-            return (
-              <circle
-                key={`ti-${payload.monthKey}`}
-                cx={cx}
-                cy={cy}
-                r={3}
-                fill="#15803d"
-                stroke="white"
-                strokeWidth={1.5}
+        {/* Forecast bars — only shown in preview mode */}
+        {showForecast && (
+          <Bar dataKey="forecastInflows" stackId="forecast" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#3b82f6">
+            {data.map((entry) => (
+              <Cell
+                key={entry.monthKey}
+                fill={selectedMonth === entry.monthKey ? "#2563eb" : "#3b82f6"}
+                opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.8}
               />
-            );
-          }}
-          activeDot={{ r: 5, fill: "#15803d" }}
-        />
-
-        {/* Línea de previsión de costes (traza histórico + proyecta futuro) */}
-        <Line
-          dataKey="trendOutflows"
-          type="monotone"
-          stroke="#b91c1c"
-          strokeWidth={2}
-          legendType="line"
-          isAnimationActive={false}
-          dot={(dotProps: { cx?: number; cy?: number; payload?: CashflowMonthlyPoint }) => {
-            const { cx, cy, payload } = dotProps;
-            if (!cx || !cy || !payload) return <g key={`to-${payload?.monthKey ?? "x"}`} />;
-            if (payload.monthKey < currentMonthKey) return <g key={`to-${payload.monthKey}`} />;
-            return (
-              <circle
-                key={`to-${payload.monthKey}`}
-                cx={cx}
-                cy={cy}
-                r={3}
-                fill="#b91c1c"
-                stroke="white"
-                strokeWidth={1.5}
+            ))}
+          </Bar>
+        )}
+        {showForecast && (
+          <Bar dataKey="forecastOutflows" stackId="forecastOut" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#93c5fd">
+            {data.map((entry) => (
+              <Cell
+                key={entry.monthKey}
+                fill={selectedMonth === entry.monthKey ? "#60a5fa" : "#93c5fd"}
+                opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.8}
               />
-            );
-          }}
-          activeDot={{ r: 5, fill: "#b91c1c" }}
-        />
+            ))}
+          </Bar>
+        )}
+
+        {/* Trend lines — only shown in preview mode */}
+        {showForecast && (
+          <Line
+            dataKey="trendInflows"
+            type="monotone"
+            stroke="#15803d"
+            strokeWidth={2}
+            legendType="line"
+            isAnimationActive={false}
+            dot={(dotProps: { cx?: number; cy?: number; payload?: CashflowMonthlyPoint }) => {
+              const { cx, cy, payload } = dotProps;
+              if (!cx || !cy || !payload) return <g key={`ti-${payload?.monthKey ?? "x"}`} />;
+              if (payload.monthKey < currentMonthKey) return <g key={`ti-${payload.monthKey}`} />;
+              return (
+                <circle
+                  key={`ti-${payload.monthKey}`}
+                  cx={cx}
+                  cy={cy}
+                  r={3}
+                  fill="#15803d"
+                  stroke="white"
+                  strokeWidth={1.5}
+                />
+              );
+            }}
+            activeDot={{ r: 5, fill: "#15803d" }}
+          />
+        )}
+        {showForecast && (
+          <Line
+            dataKey="trendOutflows"
+            type="monotone"
+            stroke="#b91c1c"
+            strokeWidth={2}
+            legendType="line"
+            isAnimationActive={false}
+            dot={(dotProps: { cx?: number; cy?: number; payload?: CashflowMonthlyPoint }) => {
+              const { cx, cy, payload } = dotProps;
+              if (!cx || !cy || !payload) return <g key={`to-${payload?.monthKey ?? "x"}`} />;
+              if (payload.monthKey < currentMonthKey) return <g key={`to-${payload.monthKey}`} />;
+              return (
+                <circle
+                  key={`to-${payload.monthKey}`}
+                  cx={cx}
+                  cy={cy}
+                  r={3}
+                  fill="#b91c1c"
+                  stroke="white"
+                  strokeWidth={1.5}
+                />
+              );
+            }}
+            activeDot={{ r: 5, fill: "#b91c1c" }}
+          />
+        )}
       </ComposedChart>
     </ResponsiveContainer>
   );

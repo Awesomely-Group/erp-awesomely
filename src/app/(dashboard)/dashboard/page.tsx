@@ -6,7 +6,8 @@ import { invoiceWhereMarca, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
 import { InvoiceStatus, Prisma, type Prisma as PrismaTypes } from "@prisma/client";
 import { DashboardFilters } from "./dashboard-filters";
 import { Suspense } from "react";
-import { CashflowChart, type CashflowMonthlyPoint } from "@/app/(dashboard)/cashflow/cashflow-chart";
+import { CashflowChart } from "@/app/(dashboard)/cashflow/cashflow-chart";
+import type { CashflowMonthlyPoint } from "@/lib/cashflow-data";
 
 type DashboardParams = {
   period?: string;
@@ -232,7 +233,7 @@ export default async function DashboardPage({
         <h2 className="text-sm font-semibold text-gray-700 mb-4">
           Flujo de caja mensual
         </h2>
-        <CashflowChart data={cashflowMonthly} height={260} />
+        <CashflowChart data={cashflowMonthly} height={260} showForecast={false} />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
