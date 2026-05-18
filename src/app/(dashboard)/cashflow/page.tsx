@@ -180,6 +180,7 @@ async function getCashflowData(params: CashflowParams): Promise<{
         outflowsBase: 0, outflowsTax: 0, outflows: 0,
         net: 0,
         forecastInflows: 0, forecastOutflows: 0,
+        trendInflows: 0, trendOutflows: 0,
       });
     }
     return pointMap.get(monthKey)!;
@@ -224,6 +225,33 @@ async function getCashflowData(params: CashflowParams): Promise<{
   const monthly = Array.from(pointMap.values()).sort((a, b) =>
     a.monthKey.localeCompare(b.monthKey)
   );
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  for (let i = 0; i < monthly.length; i++) {
+    const point = monthly[i];
+    const isPast = point.monthKey < currentMonthKey;
+
+    if (isPast) {
+      point.trendInflows = point.inflows;
+      point.trendOutflows = point.outflows;
+    } else {
+      const pastActuals = monthly
+        .slice(0, i)
+        .filter((p) => p.monthKey < currentMonthKey);
+      const win = pastActuals.slice(-3);
+      const avgInflows = win.length > 0
+        ? win.reduce((s, p) => s + p.inflows, 0) / win.length
+        : 0;
+      const avgOutflows = win.length > 0
+        ? win.reduce((s, p) => s + p.outflows, 0) / win.length
+        : 0;
+      point.trendInflows = avgInflows + point.forecastInflows;
+      point.trendOutflows = avgOutflows + point.forecastOutflows;
+    }
+  }
+
   const kpis: CashflowKpis = {
     totalInflows: monthly.reduce((s, p) => s + p.inflows, 0),
     totalOutflows: monthly.reduce((s, p) => s + p.outflows, 0),

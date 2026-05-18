@@ -2,8 +2,9 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  BarChart,
+  ComposedChart,
   Bar,
+  Line,
   Cell,
   XAxis,
   YAxis,
@@ -26,6 +27,8 @@ export type CashflowMonthlyPoint = {
   net: number;
   forecastInflows: number;
   forecastOutflows: number;
+  trendInflows: number;
+  trendOutflows: number;
 };
 
 type TooltipEntry = { name: string; value: number; color: string; dataKey: string };
@@ -54,9 +57,16 @@ function CustomTooltip({
   const outflowsTax = find("outflowsTax");
   const forecastInflows = find("forecastInflows");
   const forecastOutflows = find("forecastOutflows");
+  const trendInflows = find("trendInflows");
+  const trendOutflows = find("trendOutflows");
   const inflows = inflowsBase + inflowsTax;
   const outflows = outflowsBase + outflowsTax;
   const net = inflows - outflows;
+
+  const monthKey = (payload[0] as unknown as { payload?: CashflowMonthlyPoint })?.payload?.monthKey;
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const isFutureMonth = monthKey ? monthKey >= currentMonthKey : false;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm min-w-[210px]">
@@ -87,6 +97,16 @@ function CustomTooltip({
           )}
         </div>
       )}
+      {isFutureMonth && (trendInflows > 0 || trendOutflows > 0) && (
+        <div className="mb-1.5 border-t border-gray-100 pt-1.5">
+          {trendInflows > 0 && (
+            <p className="text-green-700 font-medium">Prev. ingresos: {formatCurrency(trendInflows)}</p>
+          )}
+          {trendOutflows > 0 && (
+            <p className="text-red-700 font-medium">Prev. costes: {formatCurrency(trendOutflows)}</p>
+          )}
+        </div>
+      )}
       <p className={`font-medium mt-1 border-t border-gray-100 pt-1.5 ${net >= 0 ? "text-indigo-600" : "text-red-600"}`}>
         Neto: {formatCurrency(net)}
       </p>
@@ -102,6 +122,8 @@ const LEGEND_LABELS: Record<string, string> = {
   outflowsTax: "Salidas (IVA)",
   forecastInflows: "Previsión entradas",
   forecastOutflows: "Previsión salidas",
+  trendInflows: "Prev. ingresos (tendencia)",
+  trendOutflows: "Prev. costes (tendencia)",
 };
 
 export function CashflowChart({
@@ -114,6 +136,9 @@ export function CashflowChart({
   const router = useRouter();
   const sp = useSearchParams();
   const selectedMonth = sp.get("selectedMonth") ?? undefined;
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   function handleClick(chartData: ChartClickData): void {
     if (!chartData?.activePayload?.[0]) return;
@@ -137,7 +162,7 @@ export function CashflowChart({
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart
+      <ComposedChart
         data={data}
         margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
         onClick={handleClick}
@@ -223,7 +248,61 @@ export function CashflowChart({
             />
           ))}
         </Bar>
-      </BarChart>
+
+        {/* Línea de previsión de ingresos (traza histórico + proyecta futuro) */}
+        <Line
+          dataKey="trendInflows"
+          type="monotone"
+          stroke="#15803d"
+          strokeWidth={2}
+          legendType="line"
+          isAnimationActive={false}
+          dot={(dotProps: { cx?: number; cy?: number; payload?: CashflowMonthlyPoint }) => {
+            const { cx, cy, payload } = dotProps;
+            if (!cx || !cy || !payload) return <g key={`ti-${payload?.monthKey ?? "x"}`} />;
+            if (payload.monthKey < currentMonthKey) return <g key={`ti-${payload.monthKey}`} />;
+            return (
+              <circle
+                key={`ti-${payload.monthKey}`}
+                cx={cx}
+                cy={cy}
+                r={3}
+                fill="#15803d"
+                stroke="white"
+                strokeWidth={1.5}
+              />
+            );
+          }}
+          activeDot={{ r: 5, fill: "#15803d" }}
+        />
+
+        {/* Línea de previsión de costes (traza histórico + proyecta futuro) */}
+        <Line
+          dataKey="trendOutflows"
+          type="monotone"
+          stroke="#b91c1c"
+          strokeWidth={2}
+          legendType="line"
+          isAnimationActive={false}
+          dot={(dotProps: { cx?: number; cy?: number; payload?: CashflowMonthlyPoint }) => {
+            const { cx, cy, payload } = dotProps;
+            if (!cx || !cy || !payload) return <g key={`to-${payload?.monthKey ?? "x"}`} />;
+            if (payload.monthKey < currentMonthKey) return <g key={`to-${payload.monthKey}`} />;
+            return (
+              <circle
+                key={`to-${payload.monthKey}`}
+                cx={cx}
+                cy={cy}
+                r={3}
+                fill="#b91c1c"
+                stroke="white"
+                strokeWidth={1.5}
+              />
+            );
+          }}
+          activeDot={{ r: 5, fill: "#b91c1c" }}
+        />
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }
