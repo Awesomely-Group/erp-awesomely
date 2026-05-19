@@ -363,7 +363,10 @@ export class HoldedClient {
       (typeof bankData?.["bankAccount"] === "string" && bankData["bankAccount"] ? bankData["bankAccount"] as string : null) ??
       (typeof payment?.["iban"] === "string" && payment["iban"] ? payment["iban"] as string : null) ??
       null;
-    const paymentMethod = typeof data["payment_method"] === "string" ? data["payment_method"] : null;
+    const paymentObj = data["payment"] as Record<string, unknown> | undefined;
+    const paymentMethod =
+      (typeof data["payment_method"] === "string" ? data["payment_method"] : null) ??
+      (typeof paymentObj?.["method"] === "string" ? (paymentObj["method"] as string) : null);
     return { iban, paymentMethod };
   }
 
