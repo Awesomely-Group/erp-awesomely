@@ -37,6 +37,7 @@ function statusBadge(status: number | null): React.JSX.Element {
     [0]: { label: "Borrador", cls: "bg-gray-100 text-gray-600" },
     [1]: { label: "Enviada", cls: "bg-yellow-100 text-yellow-700" },
     [2]: { label: "Aceptada", cls: "bg-green-100 text-green-700" },
+    [3]: { label: "Facturado", cls: "bg-blue-100 text-blue-700" },
   };
   const { label, cls } = map[s] ?? { label: `Estado ${s}`, cls: "bg-gray-100 text-gray-600" };
   return (

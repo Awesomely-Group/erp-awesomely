@@ -57,6 +57,8 @@ function buildWhere(params: ProformaPageParams): Prisma.ProformaWhereInput {
 
   if (params.status !== undefined && params.status !== "") {
     andConditions.push({ holdedStatus: parseInt(params.status, 10) });
+  } else {
+    andConditions.push({ holdedStatus: { not: 3 } });
   }
 
   if (params.marca) {

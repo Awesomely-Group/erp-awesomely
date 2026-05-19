@@ -21,6 +21,7 @@ const STATUSES = [
   { value: "1", label: "Enviada" },
   { value: "2", label: "Aceptada" },
   { value: "-1", label: "Cancelada" },
+  { value: "3", label: "Facturado" },
 ];
 
 const MARCA_ALL_OPTIONS = [

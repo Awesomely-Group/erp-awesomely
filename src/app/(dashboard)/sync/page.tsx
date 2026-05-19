@@ -42,7 +42,7 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
               "Nunca sincronizado"
             )}
             {" · "}
-            Automática cada día a las 6:00 UTC vía cron
+            Automática cada día a las 8:00 (hora española) vía cron
           </p>
         </div>
         <SyncButton />
