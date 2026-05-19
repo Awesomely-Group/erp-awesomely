@@ -95,6 +95,7 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   const startedAt = new Date();
   let invoicesSynced = 0;
   let errorMessage: string | undefined;
+  let convertedProformaHoldedIds: string[] = [];
 
   // Process a list of invoices in parallel batches to reduce total sync time
   type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
@@ -134,22 +135,13 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
     ]);
 
-    // Mark proformas that have been converted to an invoice in Holded.
+    // Collect proforma Holded IDs that were converted to an invoice.
     // Holded sets invoice.from = { id: proformaHoldedId, docType: "proform" } on conversion
-    // but does NOT update the proforma's own status field — so we fix it here.
-    const convertedProformaHoldedIds = salesInvoices
+    // but does NOT update the proforma's own status field — so we fix it after syncProformas
+    // runs (otherwise syncProformas would overwrite our status: 3 with the original Holded value).
+    convertedProformaHoldedIds = salesInvoices
       .filter((inv) => inv.from?.docType === "proform")
       .map((inv) => inv.from!.id);
-    if (convertedProformaHoldedIds.length > 0) {
-      await prisma.proforma.updateMany({
-        where: {
-          companyId,
-          holdedId: { in: convertedProformaHoldedIds },
-          holdedStatus: { notIn: [3, -1] },
-        },
-        data: { holdedStatus: 3 },
-      });
-    }
 
     // Remove invoices that no longer exist in Holded (source of truth).
     // Only delete if no user work has been done (no classifications, no ERP payments).
@@ -222,6 +214,19 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   await syncProformas(companyId).catch((err: unknown) => {
     console.error("[sync] Error syncing proformas:", err);
   });
+
+  // Mark converted proformas AFTER syncProformas so we override whatever Holded returned.
+  // Holded never sets holdedStatus=3 on the proforma side when converting to invoice.
+  if (convertedProformaHoldedIds.length > 0) {
+    await prisma.proforma.updateMany({
+      where: {
+        companyId,
+        holdedId: { in: convertedProformaHoldedIds },
+        holdedStatus: { notIn: [3, -1] },
+      },
+      data: { holdedStatus: 3 },
+    });
+  }
 
   if (errorMessage) throw new Error(errorMessage);
 }
