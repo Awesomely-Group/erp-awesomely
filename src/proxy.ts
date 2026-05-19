@@ -10,7 +10,8 @@ export default auth((req) => {
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
 
   const isApiInternal = req.nextUrl.pathname === "/api/sync" ||
-    req.nextUrl.pathname === "/api/debug-accounts";
+    req.nextUrl.pathname === "/api/debug-accounts" ||
+    req.nextUrl.pathname === "/api/notify/proformas";
 
   if (isApiAuth || isApiInternal) return NextResponse.next();
   if (!isLoggedIn && !isLoginPage) {
