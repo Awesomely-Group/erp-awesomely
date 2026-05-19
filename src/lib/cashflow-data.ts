@@ -378,6 +378,7 @@ export async function getMonthProformas(
   const marcaFilter = proformaWhereMarca(params.marca);
   const where: Prisma.ProformaWhereInput = {
     date: { gte: from, lte: to },
+    holdedStatus: { in: [0, 1] },
     ...(marcaFilter ?? {}),
     ...(params.company ? { companyId: params.company } : {}),
   };
