@@ -26,6 +26,7 @@ interface RegularFeeEntryPayload {
   label: string;
   monthlyFee: number;
   maxHoursPerMonth: number;
+  roleId?: string | null;
 }
 
 export async function updateProjectStatus(
@@ -120,11 +121,11 @@ export async function upsertRegularFeeEntry(
   if (entry.id) {
     await prisma.regularFeeEntry.update({
       where: { id: entry.id },
-      data: { label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth },
+      data: { label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth, roleId: entry.roleId ?? null },
     });
   } else {
     await prisma.regularFeeEntry.create({
-      data: { projectId, label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth },
+      data: { projectId, label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth, roleId: entry.roleId ?? null },
     });
   }
   revalidatePath(`/projects/${projectId}`);

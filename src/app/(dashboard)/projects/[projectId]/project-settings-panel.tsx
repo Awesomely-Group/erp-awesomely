@@ -26,6 +26,8 @@ export interface RegularFeeEntryData {
   label: string;
   monthlyFee: number;
   maxHoursPerMonth: number;
+  roleId?: string | null;
+  roleName?: string | null;
 }
 
 interface ProjectConfig {
@@ -56,6 +58,7 @@ interface FeeFormState {
   label: string;
   monthlyFee: string;
   maxHoursPerMonth: string;
+  roleId: string;
 }
 
 export function ProjectSettingsPanel({ projectId, config, availableRoles }: Props): React.JSX.Element {
@@ -104,9 +107,21 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
     });
   }
 
+  function handleUpdateFeeRole(entry: RegularFeeEntryData, newRoleId: string): void {
+    startTransition(async () => {
+      await upsertRegularFeeEntry(projectId, {
+        id: entry.id,
+        label: entry.label,
+        monthlyFee: entry.monthlyFee,
+        maxHoursPerMonth: entry.maxHoursPerMonth,
+        roleId: newRoleId || null,
+      });
+    });
+  }
+
   // New fee entry form
   const [showFeeForm, setShowFeeForm] = useState(false);
-  const [feeForm, setFeeForm] = useState<FeeFormState>({ label: "", monthlyFee: "", maxHoursPerMonth: "" });
+  const [feeForm, setFeeForm] = useState<FeeFormState>({ label: "", monthlyFee: "", maxHoursPerMonth: "", roleId: "" });
 
   // Close on Escape
   useEffect(() => {
@@ -163,9 +178,10 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         label: feeForm.label,
         monthlyFee: parseFloat(feeForm.monthlyFee),
         maxHoursPerMonth: parseFloat(feeForm.maxHoursPerMonth),
+        roleId: feeForm.roleId || null,
       });
       setShowFeeForm(false);
-      setFeeForm({ label: "", monthlyFee: "", maxHoursPerMonth: "" });
+      setFeeForm({ label: "", monthlyFee: "", maxHoursPerMonth: "", roleId: "" });
     });
   }
 
@@ -284,22 +300,33 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
               {config.regularFeeEntries.length > 0 && (
                 <div className="space-y-2">
                   {config.regularFeeEntries.map((e) => (
-                    <div key={e.id} className="flex items-center justify-between bg-white rounded-lg border border-purple-200 px-3 py-2.5">
-                      <div>
+                    <div key={e.id} className="bg-white rounded-lg border border-purple-200 px-3 py-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-gray-800">{e.label}</p>
-                        <p className="text-xs text-gray-400">
-                          {e.monthlyFee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}/mes · {e.maxHoursPerMonth} h/mes
-                        </p>
+                        <button
+                          onClick={() => handleDeleteFeeEntry(e.id)}
+                          disabled={isPending}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleDeleteFeeEntry(e.id)}
+                      <select
+                        value={e.roleId ?? ""}
                         disabled={isPending}
-                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        onChange={(ev) => handleUpdateFeeRole(e, ev.target.value)}
+                        className="w-full rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                        <option value="">— Sin rol —</option>
+                        {availableRoles.map((r) => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400">
+                        {e.monthlyFee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}/mes · {e.maxHoursPerMonth} h/mes
+                      </p>
                     </div>
                   ))}
                   {/* Summary row */}
@@ -317,6 +344,19 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
               {/* Add fee entry form */}
               {showFeeForm ? (
                 <div className="bg-white rounded-lg border border-purple-200 p-3 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Perfil / Rol (opcional)</label>
+                    <select
+                      value={feeForm.roleId}
+                      onChange={(e) => setFeeForm((prev) => ({ ...prev, roleId: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">— Sin rol —</option>
+                      {availableRoles.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Nombre / Persona</label>
                     <input
