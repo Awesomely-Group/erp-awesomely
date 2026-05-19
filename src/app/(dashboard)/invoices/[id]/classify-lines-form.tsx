@@ -171,6 +171,16 @@ function LineRow({
     }
   }
 
+  function handleMarcaChange(newMarca: string): void {
+    setSelectedMarca(newMarca);
+    if (selectedProject) {
+      const project = projects.find((p) => p.id === selectedProject);
+      if (!project || project.workspaceName !== newMarca) {
+        setSelectedProject("");
+      }
+    }
+  }
+
   const classifiedLabel =
     line.classification?.projectName ??
     line.classification?.marca ??
@@ -261,7 +271,7 @@ function LineRow({
             selectedProject={selectedProject}
             onProjectChange={handleProjectChange}
             selectedMarca={selectedMarca}
-            onMarcaChange={setSelectedMarca}
+            onMarcaChange={handleMarcaChange}
             isPending={isPending}
           />
 

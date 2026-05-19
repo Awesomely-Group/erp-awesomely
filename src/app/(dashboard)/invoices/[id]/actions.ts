@@ -232,7 +232,10 @@ export async function updateInvoiceMarca({
     },
   });
 
+  await updateInvoiceStatus(invoiceId);
+
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
 }
 
 export async function bulkUpdateInvoiceMarca({
