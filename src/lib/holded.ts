@@ -49,6 +49,7 @@ export interface HoldedInvoice {
   paymentsTotal?: number;
   paymentsPending?: number;
   tags?: string[];
+  from?: { id: string; docType: string };
 }
 
 export interface HoldedListResponse {

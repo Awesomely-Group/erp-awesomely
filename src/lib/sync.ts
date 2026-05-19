@@ -134,6 +134,23 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
     ]);
 
+    // Mark proformas that have been converted to an invoice in Holded.
+    // Holded sets invoice.from = { id: proformaHoldedId, docType: "proform" } on conversion
+    // but does NOT update the proforma's own status field — so we fix it here.
+    const convertedProformaHoldedIds = salesInvoices
+      .filter((inv) => inv.from?.docType === "proform")
+      .map((inv) => inv.from!.id);
+    if (convertedProformaHoldedIds.length > 0) {
+      await prisma.proforma.updateMany({
+        where: {
+          companyId,
+          holdedId: { in: convertedProformaHoldedIds },
+          holdedStatus: { notIn: [3, -1] },
+        },
+        data: { holdedStatus: 3 },
+      });
+    }
+
     // Remove invoices that no longer exist in Holded (source of truth).
     // Only delete if no user work has been done (no classifications, no ERP payments).
     const returnedHoldedIds = new Set([
