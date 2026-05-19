@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { MARCA_OPTIONS } from "@/lib/org";
-import { bulkUpdateInvoiceMarca } from "./[id]/actions";
+import { bulkUpdateInvoiceMarca, bulkUpdateInvoiceProject } from "./[id]/actions";
 
 function formatMonth(isoDate: string): string {
   return new Date(isoDate).toLocaleDateString("es-ES", {
@@ -64,13 +64,15 @@ interface InvoiceRow {
 interface Props {
   invoices: InvoiceRow[];
   selectedId?: string;
+  projects: { id: string; name: string; workspaceName: string }[];
 }
 
-export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Element {
+export function InvoicesTable({ invoices, selectedId, projects }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMarca, setBulkMarca] = useState<string>("");
+  const [bulkProjectId, setBulkProjectId] = useState<string>("");
   const [isPending, startTransition] = useTransition();
 
   const allSelected = invoices.length > 0 && selected.size === invoices.length;
@@ -107,6 +109,18 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
     });
   }
 
+  function handleBulkProjectApply(): void {
+    if (!bulkProjectId) return;
+    startTransition(async () => {
+      await bulkUpdateInvoiceProject({
+        invoiceIds: [...selected],
+        projectId: bulkProjectId,
+      });
+      setSelected(new Set());
+      setBulkProjectId("");
+    });
+  }
+
   if (invoices.length === 0) {
     return (
       <tr>
@@ -122,32 +136,59 @@ export function InvoicesTable({ invoices, selectedId }: Props): React.JSX.Elemen
       {selected.size > 0 && (
         <tr className="bg-indigo-50 border-b border-indigo-100">
           <td colSpan={12} className="px-4 py-2">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-sm font-medium text-indigo-700">
                 {selected.size} {selected.size === 1 ? "seleccionada" : "seleccionadas"}
               </span>
-              <select
-                value={bulkMarca}
-                onChange={(e) => setBulkMarca(e.target.value)}
-                disabled={isPending}
-                className="rounded border border-indigo-200 px-2 py-1 text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              >
-                <option value="">Sin marca</option>
-                {MARCA_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleBulkApply}
-                disabled={isPending}
-                className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {isPending ? "Aplicando…" : "Aplicar marca"}
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={bulkMarca}
+                  onChange={(e) => setBulkMarca(e.target.value)}
+                  disabled={isPending}
+                  className="rounded border border-indigo-200 px-2 py-1 text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">Sin marca</option>
+                  {MARCA_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBulkApply}
+                  disabled={isPending}
+                  className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {isPending ? "Aplicando…" : "Aplicar marca"}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={bulkProjectId}
+                  onChange={(e) => setBulkProjectId(e.target.value)}
+                  disabled={isPending}
+                  className="rounded border border-indigo-200 px-2 py-1 text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">Sin proyecto</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    onClick={handleBulkProjectApply}
+                    disabled={isPending || !bulkProjectId}
+                    className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {isPending ? "Aplicando…" : "Aplicar proyecto"}
+                  </button>
+                  <span className="text-[10px] text-indigo-400 leading-tight">
+                    Se aplicará a todas las líneas de la factura
+                  </span>
+                </div>
+              </div>
               <button
                 onClick={() => setSelected(new Set())}
                 disabled={isPending}
-                className="text-xs text-indigo-500 hover:text-indigo-700 disabled:opacity-50"
+                className="text-xs text-indigo-500 hover:text-indigo-700 disabled:opacity-50 ml-auto"
               >
                 Deseleccionar
               </button>

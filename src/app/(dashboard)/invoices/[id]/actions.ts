@@ -267,3 +267,65 @@ export async function bulkUpdateInvoiceMarca({
 
   revalidatePath("/invoices");
 }
+
+export async function bulkUpdateInvoiceProject({
+  invoiceIds,
+  projectId,
+}: {
+  invoiceIds: string[];
+  projectId: string;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+  if (invoiceIds.length === 0) return;
+
+  const project = await prisma.jiraProject.findUniqueOrThrow({
+    where: { id: projectId },
+    include: { workspace: true },
+  });
+  const marca = project.workspace.name;
+
+  const lines = await prisma.invoiceLine.findMany({
+    where: { invoiceId: { in: invoiceIds } },
+    select: { id: true, invoiceId: true },
+  });
+
+  for (const line of lines) {
+    await prisma.classification.upsert({
+      where: { invoiceLineId: line.id },
+      create: {
+        invoiceLineId: line.id,
+        projectId,
+        marca,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+        status: ClassificationStatus.CLASSIFIED,
+      },
+      update: {
+        projectId,
+        marca,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+        status: ClassificationStatus.CLASSIFIED,
+      },
+    });
+  }
+
+  for (const invoiceId of invoiceIds) {
+    await updateInvoiceStatus(invoiceId);
+    await deriveMarcaFromLines(invoiceId);
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Invoice",
+      entityId: invoiceIds[0],
+      previousValue: { bulk: true, count: invoiceIds.length },
+      newValue: { projectId, invoiceIds },
+    },
+  });
+
+  revalidatePath("/invoices");
+}

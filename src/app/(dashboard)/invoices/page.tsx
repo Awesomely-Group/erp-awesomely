@@ -164,7 +164,7 @@ export default async function InvoicesPage({
   const params = await searchParams;
   const activeProjects = await prisma.jiraProject.findMany({
     where: { active: true },
-    select: { id: true, jiraKey: true, name: true },
+    select: { id: true, jiraKey: true, name: true, workspace: { select: { name: true } } },
     orderBy: { name: "asc" },
   }).catch(() => []);
   let data: Awaited<ReturnType<typeof loadInvoicesPageData>>;
@@ -253,6 +253,7 @@ export default async function InvoicesPage({
         <tbody>
           <InvoicesTable
             selectedId={params.invoiceId}
+            projects={activeProjects.map((p) => ({ id: p.id, name: p.name, workspaceName: p.workspace.name }))}
             invoices={invoices.map((inv) => ({
               id: inv.id,
               holdedId: inv.holdedId,
