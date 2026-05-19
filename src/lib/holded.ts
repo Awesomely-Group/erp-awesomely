@@ -16,6 +16,7 @@ export interface HoldedContact {
 export interface HoldedSupplierContact {
   id: string;
   name: string;
+  paymentMethod?: string;
 }
 
 export interface HoldedInvoiceProduct {
@@ -328,7 +329,7 @@ export class HoldedClient {
     let prevFirstId: string | undefined;
 
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const batch = await this.fetch<Array<{ id: string; name: string; type?: string }>>(
+      const batch = await this.fetch<Array<{ id: string; name: string; type?: string; payment_method?: string }>>(
         "/contacts",
         { page: String(page), limit: String(PAGE_SIZE) }
       );
@@ -341,7 +342,7 @@ export class HoldedClient {
 
       for (const c of batch) {
         if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
-          all.set(c.id, { id: c.id, name: c.name });
+          all.set(c.id, { id: c.id, name: c.name, paymentMethod: c.payment_method });
         }
       }
 
@@ -351,7 +352,7 @@ export class HoldedClient {
     return [...all.values()];
   }
 
-  async getContactWithBankData(id: string): Promise<{ iban: string | null }> {
+  async getContactWithBankData(id: string): Promise<{ iban: string | null; paymentMethod: string | null }> {
     const data = await this.fetch<Record<string, unknown>>(`/contacts/${id}`);
     const bankData = data["bankData"] as Record<string, unknown> | undefined;
     const payment = data["payment"] as Record<string, unknown> | undefined;
@@ -362,7 +363,8 @@ export class HoldedClient {
       (typeof bankData?.["bankAccount"] === "string" && bankData["bankAccount"] ? bankData["bankAccount"] as string : null) ??
       (typeof payment?.["iban"] === "string" && payment["iban"] ? payment["iban"] as string : null) ??
       null;
-    return { iban };
+    const paymentMethod = typeof data["payment_method"] === "string" ? data["payment_method"] : null;
+    return { iban, paymentMethod };
   }
 
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {

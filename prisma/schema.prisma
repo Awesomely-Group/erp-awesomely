@@ -169,17 +169,20 @@ model HourBucket {
 }
 
 model RegularFeeEntry {
-  id               String      @id @default(cuid())
+  id               String        @id @default(cuid())
   projectId        String
-  project          JiraProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          JiraProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roleId           String?
+  role             RoleTemplate? @relation(fields: [roleId], references: [id], onDelete: SetNull)
   label            String
   monthlyFee       Decimal
   maxHoursPerMonth Float
-  active           Boolean     @default(true)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  active           Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@index([projectId])
+  @@index([roleId])
   @@map("regular_fee_entries")
 }
 
@@ -394,6 +397,7 @@ model Supplier {
   defaultRoleId String?
   defaultRole   SupplierRole? @relation("SupplierDefaultRole", fields: [defaultRoleId], references: [id], onDelete: SetNull)
 
+  isPartner Boolean  @default(false)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -459,8 +463,9 @@ model RoleTemplate {
   ratePerHour Decimal @default(0)
   active      Boolean @default(true)
 
-  hourBuckets      HourBucket[]
-  projectUserRoles ProjectUserRole[]
+  hourBuckets       HourBucket[]
+  projectUserRoles  ProjectUserRole[]
+  regularFeeEntries RegularFeeEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

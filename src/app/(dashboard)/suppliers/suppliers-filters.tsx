@@ -17,13 +17,20 @@ export function SuppliersFilters(): React.JSX.Element {
     const params = new URLSearchParams();
     if (m.search) params.set("search", m.search);
     if (m.tipo) params.set("tipo", m.tipo);
+    const tab = sp.get("tab");
+    if (tab) params.set("tab", tab);
     router.push(`/suppliers?${params.toString()}`);
   }
 
   function reset(): void {
     setSearch("");
     setTipo("");
-    router.push("/suppliers");
+    const tab = sp.get("tab");
+    if (tab) {
+      router.push(`/suppliers?tab=${tab}`);
+    } else {
+      router.push("/suppliers");
+    }
   }
 
   return (

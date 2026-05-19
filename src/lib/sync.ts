@@ -70,11 +70,22 @@ export async function syncSuppliers(companyId: string): Promise<void> {
 
   const activeHoldedIds = new Set(contacts.map((c) => c.id));
 
+  // Contacts list may not include payment_method; detect whether we need individual calls
+  const listHasPaymentMethod = contacts.some((c) => c.paymentMethod !== undefined);
+
   for (const contact of contacts) {
+    let paymentMethod = contact.paymentMethod;
+    if (!listHasPaymentMethod) {
+      // Fetch individual contact to get payment_method
+      const detail = await client.getContactWithBankData(contact.id);
+      paymentMethod = detail.paymentMethod ?? undefined;
+    }
+    // "transferencia bancaria" in Holded — verify exact value if contacts use a different string
+    const isPartner = typeof paymentMethod === "string" && paymentMethod === "bank_transfer";
     await prisma.supplier.upsert({
       where: { holdedContactId_companyId: { holdedContactId: contact.id, companyId } },
-      create: { holdedContactId: contact.id, companyId, name: contact.name },
-      update: { name: contact.name, active: true },
+      create: { holdedContactId: contact.id, companyId, name: contact.name, isPartner },
+      update: { name: contact.name, active: true, isPartner },
     });
   }
 

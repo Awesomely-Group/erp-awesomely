@@ -51,6 +51,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         regularFeeEntries: {
           where: { active: true },
           orderBy: { createdAt: "asc" },
+          include: { role: true },
         },
       },
     }),
@@ -132,6 +133,8 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 label: e.label,
                 monthlyFee: Number(e.monthlyFee),
                 maxHoursPerMonth: e.maxHoursPerMonth,
+                roleId: e.roleId ?? null,
+                roleName: e.role?.name ?? null,
               })),
             }}
             availableRoles={availableRoles.map((r) => ({
@@ -149,7 +152,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         hasTempoToken={!!project.workspace.tempoApiToken}
         from={fromStr}
         to={toStr}
-        totalInvoicesEur={relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
+        totalInvoicesEur={relatedInvoices.filter((inv) => inv.type === "SALE").reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
       />
 
       {/* Type-specific sections */}

@@ -4,9 +4,10 @@ import { JiraClient } from "@/lib/jira";
 import { TempoClient } from "@/lib/tempo";
 import { SuppliersFilters } from "./suppliers-filters";
 import { SuppliersTable } from "./suppliers-table";
+import { SuppliersTabNav } from "./suppliers-tab-nav";
 
 interface Props {
-  searchParams: Promise<{ search?: string; tipo?: string }>;
+  searchParams: Promise<{ search?: string; tipo?: string; tab?: string }>;
 }
 
 const TIPO_VALUES: SupplierTipo[] = ["SERVICIOS", "HERRAMIENTAS"];
@@ -16,10 +17,16 @@ function isTipo(v: string): v is SupplierTipo {
 }
 
 export default async function SuppliersPage({ searchParams }: Props): Promise<React.JSX.Element> {
-  const { search, tipo } = await searchParams;
+  const { search, tipo, tab } = await searchParams;
+
+  const tabFilter: Prisma.SupplierWhereInput =
+    tab === "partners" ? { isPartner: true } :
+    tab === "proveedores" ? { isPartner: false } :
+    {};
 
   const where: Prisma.SupplierWhereInput = {
     active: true,
+    ...tabFilter,
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     ...(tipo && isTipo(tipo) ? { tipo } : {}),
   };
@@ -71,7 +78,8 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),
   }));
 
-  const emptyMessage = search ?? tipo
+  const hasFilters = Boolean(search ?? tipo ?? tab);
+  const emptyMessage = hasFilters
     ? "No hay proveedores que coincidan con los filtros."
     : "No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded.";
 
@@ -86,6 +94,8 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
         </div>
         <SuppliersFilters />
       </div>
+
+      <SuppliersTabNav tab={tab} />
 
       <SuppliersTable suppliers={suppliersData} roleTemplates={roleTemplates} workspaceId={firstWorkspace?.id ?? null} emptyMessage={emptyMessage} />
     </div>
