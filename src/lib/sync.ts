@@ -70,13 +70,9 @@ export async function syncSuppliers(companyId: string): Promise<void> {
 
   const activeHoldedIds = new Set(contacts.map((c) => c.id));
 
-  // Contacts list may not include payment_method; detect whether we need individual calls
-  const listHasPaymentMethod = contacts.some((c) => c.paymentMethod !== undefined);
-
   for (const contact of contacts) {
     let paymentMethod = contact.paymentMethod;
-    if (!listHasPaymentMethod) {
-      // Fetch individual contact to get payment_method
+    if (paymentMethod === undefined) {
       const detail = await client.getContactWithBankData(contact.id);
       paymentMethod = detail.paymentMethod ?? undefined;
     }
