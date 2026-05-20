@@ -15,6 +15,7 @@ export type PlDataKey =
   | "trabajos_activo"
   | "otros_ingresos_explotacion"
   | "gastos_personal"
+  | "otros_gastos_explotacion"
   | "amortizacion"
   | "otros_resultados"
   | "ingresos_financieros"
@@ -47,6 +48,7 @@ export const PL_LINE_DEFS: PlLineDef[] = [
   { key: "trabajos_activo",               label: "Trabajos realizados para su activo",         type: "data" },
   { key: "otros_ingresos_explotacion",    label: "Otros ingresos de explotación",             type: "data" },
   { key: "gastos_personal",               label: "Gastos de personal",                        type: "data" },
+  { key: "otros_gastos_explotacion",      label: "Otros gastos de explotación",               type: "data" },
   { key: "amortizacion",                  label: "Amortización del inmovilizado",             type: "data" },
   { key: "otros_resultados",              label: "Otros resultados",                          type: "data" },
   { key: "ebitda",                        label: "EBITDA",                                    type: "subtotal" },
@@ -71,6 +73,7 @@ function prefixToDataKey(prefix: number): PlDataKey {
   if (prefix >= 600 && prefix <= 609) return "aprovisionamientos";
   if (prefix >= 610 && prefix <= 619) return "variacion_existencias";
   if (prefix >= 630 && prefix <= 639) return "impuesto_beneficios";
+  if (prefix >= 620 && prefix <= 629) return "otros_gastos_explotacion";
   if (prefix >= 640 && prefix <= 649) return "gastos_personal";
   if (prefix >= 660 && prefix <= 669) return "gastos_financieros";
   if (prefix >= 670 && prefix <= 679) return "otros_resultados";
@@ -92,15 +95,17 @@ function emptyData(): DataRecord {
   return {
     ventas: 0, aprovisionamientos: 0, variacion_existencias: 0,
     trabajos_activo: 0, otros_ingresos_explotacion: 0, gastos_personal: 0,
-    amortizacion: 0, otros_resultados: 0, ingresos_financieros: 0,
-    gastos_financieros: 0, otros_resultados_financieros: 0, impuesto_beneficios: 0,
+    otros_gastos_explotacion: 0, amortizacion: 0, otros_resultados: 0,
+    ingresos_financieros: 0, gastos_financieros: 0, otros_resultados_financieros: 0,
+    impuesto_beneficios: 0,
   };
 }
 
 function computeSubtotals(d: DataRecord): FullRecord {
   const margen_bruto              = d.ventas + d.aprovisionamientos;
   const ebitda                    = margen_bruto + d.variacion_existencias + d.trabajos_activo
-                                    + d.otros_ingresos_explotacion + d.gastos_personal + d.otros_resultados;
+                                    + d.otros_ingresos_explotacion + d.gastos_personal
+                                    + d.otros_gastos_explotacion + d.otros_resultados;
   const ebit                      = ebitda + d.amortizacion;
   const resultado_financiero      = d.ingresos_financieros + d.gastos_financieros + d.otros_resultados_financieros;
   const resultado_antes_impuestos = ebit + resultado_financiero;
