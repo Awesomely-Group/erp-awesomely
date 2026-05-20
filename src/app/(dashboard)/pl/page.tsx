@@ -15,19 +15,15 @@ export default async function PlPage({
   const [plData, years] = await Promise.all([getPlData(params), getPlYears()]);
 
   const displayYears = years.length > 0 ? years : [new Date().getFullYear()];
-  const { year, entities, consolidated, l1Categories } = plData;
+  const { year, entities, consolidated } = plData;
 
-  const entityParam = params.entity ?? "consolidated";
+  const entityParam  = params.entity ?? "consolidated";
   const activeEntity =
     entityParam !== "consolidated"
       ? (entities.find((e) => e.companyId === entityParam) ?? consolidated)
       : consolidated;
 
-  const netIsPositive = activeEntity.yearly.result >= 0;
-  const margin =
-    activeEntity.yearly.revenue > 0
-      ? (activeEntity.yearly.result / activeEntity.yearly.revenue) * 100
-      : null;
+  const yearly = activeEntity.yearly;
 
   return (
     <div className="space-y-6">
@@ -52,35 +48,52 @@ export default async function PlPage({
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ingresos</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(activeEntity.yearly.revenue)}</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ventas</p>
+          <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(yearly.ventas)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Gastos</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(activeEntity.yearly.totalExpenses)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Resultado</p>
-          <p className={cn("mt-2 text-2xl font-bold", netIsPositive ? "text-green-600" : "text-red-500")}>
-            {formatCurrency(activeEntity.yearly.result)}
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Margen Bruto</p>
+          <p className={cn("mt-2 text-2xl font-bold", yearly.margen_bruto >= 0 ? "text-gray-900" : "text-red-500")}>
+            {formatCurrency(yearly.margen_bruto)}
           </p>
+          {yearly.ventas > 0 && (
+            <p className="mt-1 text-xs text-gray-400">
+              {((yearly.margen_bruto / yearly.ventas) * 100).toFixed(1)}% s/ventas
+            </p>
+          )}
+        </div>
+        <div className="bg-indigo-800 rounded-xl p-5">
+          <p className="text-xs font-medium text-indigo-200 uppercase tracking-wide">EBITDA</p>
+          <p className={cn("mt-2 text-2xl font-bold", yearly.ebitda >= 0 ? "text-white" : "text-red-300")}>
+            {formatCurrency(yearly.ebitda)}
+          </p>
+          {yearly.ventas > 0 && (
+            <p className="mt-1 text-xs text-indigo-300">
+              {((yearly.ebitda / yearly.ventas) * 100).toFixed(1)}% s/ventas
+            </p>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Margen</p>
-          <p className={cn("mt-2 text-2xl font-bold", margin !== null && margin >= 0 ? "text-indigo-600" : "text-red-500")}>
-            {margin !== null ? `${margin.toFixed(1)}%` : "—"}
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Resultado ejercicio</p>
+          <p className={cn("mt-2 text-2xl font-bold", yearly.resultado_ejercicio >= 0 ? "text-green-600" : "text-red-500")}>
+            {formatCurrency(yearly.resultado_ejercicio)}
           </p>
+          {yearly.ventas > 0 && (
+            <p className="mt-1 text-xs text-gray-400">
+              {((yearly.resultado_ejercicio / yearly.ventas) * 100).toFixed(1)}% s/ventas
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Tabla full-width */}
+      {/* Tabla */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {activeEntity.yearly.revenue === 0 && activeEntity.yearly.totalExpenses === 0 ? (
+        {yearly.ventas === 0 && yearly.aprovisionamientos === 0 ? (
           <p className="px-6 py-16 text-center text-sm text-gray-400">
             No hay datos para {activeEntity.companyName} en {year}.
           </p>
         ) : (
-          <PlTable entity={activeEntity} l1Categories={l1Categories} />
+          <PlTable entity={activeEntity} />
         )}
       </div>
     </div>
