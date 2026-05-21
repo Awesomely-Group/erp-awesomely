@@ -39,11 +39,9 @@ export async function GET(req: Request): Promise<NextResponse> {
     tryFetch(`https://api.holded.com/api/invoicing/v1/contacts?page=1&limit=10`, key),
   ]);
 
-  // Extract payment_method fields from list sample to see the raw values
+  // Show full raw objects to reveal nested fields like defaults.payment_method
   const listPaymentMethods = Array.isArray(listSample.raw)
-    ? (listSample.raw as Array<Record<string, unknown>>)
-        .slice(0, 5)
-        .map((c) => ({ id: c["id"], name: c["name"], payment_method: c["payment_method"], type: c["type"] }))
+    ? (listSample.raw as Array<Record<string, unknown>>).slice(0, 3)
     : listSample.raw;
 
   return NextResponse.json({
