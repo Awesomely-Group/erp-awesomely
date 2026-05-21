@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { ProjectTimesheetSection } from "../project-timesheet-section";
+import { assignIssueToBucket } from "../../actions";
 
 interface Props {
   params: Promise<{ projectId: string }>;
@@ -36,6 +37,19 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
         .filter((ur) => ur.roleId === bucket.roleId)
         .map((ur) => ur.jiraAccountId);
     }
+  }
+
+  const buckets = project.hourBuckets.map((b) => ({ id: b.id, roleName: b.role.name }));
+
+  const resolvedProjectId = project.id;
+
+  async function handleAssignIssueToBucket(
+    issueKey: string,
+    jiraIssueId: number,
+    hourBucketId: string | null
+  ): Promise<void> {
+    "use server";
+    await assignIssueToBucket(resolvedProjectId, issueKey, jiraIssueId, hourBucketId);
   }
 
   return (
@@ -79,6 +93,8 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
         accountToRole={Object.fromEntries(project.userRoles.map((ur) => [ur.jiraAccountId, ur.roleId]))}
         filterAccountIds={filterAccountIds}
         filterBucketName={filterBucketName}
+        buckets={buckets}
+        onAssignIssueToBucket={handleAssignIssueToBucket}
       />
     </div>
   );

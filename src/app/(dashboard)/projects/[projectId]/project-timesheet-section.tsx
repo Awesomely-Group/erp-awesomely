@@ -106,7 +106,7 @@ function PeriodSelector({ periodType, periodOffset, onTypeChange, onOffsetChange
 // ─── Hierarchical timesheet ───────────────────────────────────────────────────
 
 interface WorklogDetail { description: string; issueKey: string; hours: number; }
-interface IssueWithWorklogs { issueKey: string; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; actualCostEur: number; estimatedCostEur: number | null; }
+interface IssueWithWorklogs { issueKey: string; jiraIssueId: number; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; actualCostEur: number; estimatedCostEur: number | null; hourBucketId?: string; }
 interface UserWithIssues { accountId: string; displayName: string; totalHours: number; ratePerHour: number; actualCostEur: number; estimatedCostEur: number | null; issues: IssueWithWorklogs[]; }
 interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; totalActualCostEur: number; totalEstimatedCostEur: number; }
 
@@ -137,6 +137,11 @@ interface BucketInfo {
   totalHours: number;
 }
 
+interface BucketOption {
+  id: string;
+  roleName: string;
+}
+
 interface HierarchicalTableProps {
   projectId: string;
   hasTempoToken: boolean;
@@ -147,13 +152,16 @@ interface HierarchicalTableProps {
   bucketByRole?: Record<string, BucketInfo>;
   accountToRole?: Record<string, string>;
   filterAccountIds?: string[];
+  buckets?: BucketOption[];
+  onAssignIssueToBucket?: (issueKey: string, jiraIssueId: number, hourBucketId: string | null) => Promise<void>;
 }
 
-function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds }: HierarchicalTableProps): React.JSX.Element {
+function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds, buckets, onAssignIssueToBucket }: HierarchicalTableProps): React.JSX.Element {
   const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Set<string>>(new Set());
+  const [bucketOverrides, setBucketOverrides] = useState<Record<string, string | null>>({});
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
@@ -287,13 +295,40 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                   </td>
                 </tr>
 
-                {!collapsed && user.issues.map((issue) => (
+                {!collapsed && user.issues.map((issue) => {
+                  const currentBucketId = bucketOverrides[issue.issueKey] !== undefined
+                    ? bucketOverrides[issue.issueKey]
+                    : (issue.hourBucketId ?? null);
+                  return (
                   <React.Fragment key={`${user.accountId}-${issue.issueKey}`}>
                     <tr className="border-t border-gray-100">
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2 pl-8">
                           <IssueIcon />
-                          <span className="text-gray-700 truncate max-w-[320px]">{issue.summary}</span>
+                          <span className="text-gray-700 truncate max-w-[280px]">{issue.summary}</span>
+                          {isBolsasHoras && buckets && onAssignIssueToBucket && (
+                            <select
+                              value={currentBucketId ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value || null;
+                                setBucketOverrides((prev) => ({ ...prev, [issue.issueKey]: val }));
+                                void onAssignIssueToBucket(issue.issueKey, issue.jiraIssueId, val).catch(() => {
+                                  setBucketOverrides((prev) => {
+                                    const next = { ...prev };
+                                    delete next[issue.issueKey];
+                                    return next;
+                                  });
+                                });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="ml-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-500 cursor-pointer hover:border-indigo-300 focus:outline-none focus:border-indigo-400"
+                            >
+                              <option value="">— Sin bolsa —</option>
+                              {buckets.map((b) => (
+                                <option key={b.id} value={b.id}>{b.roleName}</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-2">
@@ -351,7 +386,8 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                       </tr>
                     ))}
                   </React.Fragment>
-                ))}
+                  );
+                })}
               </React.Fragment>
             );
           })}
@@ -396,9 +432,11 @@ interface Props {
   accountToRole?: Record<string, string>;
   filterAccountIds?: string[];
   filterBucketName?: string;
+  buckets?: BucketOption[];
+  onAssignIssueToBucket?: (issueKey: string, jiraIssueId: number, hourBucketId: string | null) => Promise<void>;
 }
 
-export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds, filterBucketName }: Props): React.JSX.Element {
+export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -438,6 +476,8 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         bucketByRole={bucketByRole}
         accountToRole={accountToRole}
         filterAccountIds={filterAccountIds}
+        buckets={buckets}
+        onAssignIssueToBucket={onAssignIssueToBucket}
       />
     </div>
   );

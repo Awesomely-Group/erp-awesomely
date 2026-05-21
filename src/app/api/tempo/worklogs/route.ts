@@ -74,12 +74,14 @@ export interface WorklogDetail {
 
 export interface IssueWithWorklogs {
   issueKey: string;
+  jiraIssueId: number;
   summary: string;
   totalHours: number;
   originalEstimateHours: number | null;
   worklogs: WorklogDetail[];
   actualCostEur: number;
   estimatedCostEur: number | null;
+  hourBucketId?: string;
 }
 
 export interface UserWithIssues {
@@ -200,7 +202,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       const allAccountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
       const allIssueIds = [...new Set(worklogs.map((w) => w.issue.id))];
       const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-      const [jiraIssues, nameMap, suppliers, projectOverrides] = await Promise.all([
+      const [jiraIssues, nameMap, suppliers, projectOverrides, issueAssignments] = await Promise.all([
         jira.getIssuesByIds(allIssueIds),
         jira.getUsersByAccountIds(allAccountIds),
         prisma.supplier.findMany({
@@ -211,7 +213,12 @@ export async function GET(request: Request): Promise<NextResponse> {
           where: { projectId: project.id, jiraAccountId: { in: allAccountIds } },
           select: { jiraAccountId: true, ratePerHour: true },
         }),
+        prisma.issueHourBucketAssignment.findMany({
+          where: { projectId: project.id },
+          select: { issueKey: true, hourBucketId: true },
+        }),
       ]);
+      const assignmentByIssueKey = new Map(issueAssignments.map((a) => [a.issueKey, a.hourBucketId]));
       const issueMap = new Map(jiraIssues.map((i) => [i.numericId, i]));
       const supplierByAccount = new Map<string, typeof suppliers[0]>();
       for (const s of suppliers) { for (const u of s.jiraUsers) { supplierByAccount.set(u.accountId, s); } }
@@ -253,6 +260,7 @@ export async function GET(request: Request): Promise<NextResponse> {
               : null;
             return {
               issueKey,
+              jiraIssueId: issueId,
               summary: jiraData?.summary ?? issueKey,
               totalHours,
               originalEstimateHours,
@@ -265,6 +273,7 @@ export async function GET(request: Request): Promise<NextResponse> {
               estimatedCostEur: originalEstimateHours != null
                 ? Math.round(originalEstimateHours * rate * 100) / 100
                 : null,
+              hourBucketId: assignmentByIssueKey.get(issueKey),
             };
           }).sort((a, b) => a.issueKey.localeCompare(b.issueKey));
           const totalHours = Math.round(issues.reduce((s, i) => s + i.totalHours, 0) * 100) / 100;

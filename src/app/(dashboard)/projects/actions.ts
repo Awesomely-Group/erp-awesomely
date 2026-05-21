@@ -159,3 +159,27 @@ export async function setProjectUserRole(
     });
   }
 }
+
+export async function assignIssueToBucket(
+  projectId: string,
+  issueKey: string,
+  issueNumericId: number,
+  hourBucketId: string | null,
+): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  if (hourBucketId === null) {
+    await prisma.issueHourBucketAssignment.deleteMany({ where: { projectId, issueKey } });
+  } else {
+    const bucket = await prisma.hourBucket.findFirst({ where: { id: hourBucketId, projectId } });
+    if (!bucket) throw new Error("Bucket not found");
+
+    await prisma.issueHourBucketAssignment.upsert({
+      where: { projectId_issueKey: { projectId, issueKey } },
+      create: { projectId, issueKey, issueNumericId, hourBucketId },
+      update: { hourBucketId, issueNumericId },
+    });
+  }
+  revalidatePath(`/projects/${projectId}/timesheet`);
+}
