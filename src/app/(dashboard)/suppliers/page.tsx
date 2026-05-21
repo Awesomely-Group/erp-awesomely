@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { type SupplierTipo, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { JiraClient } from "@/lib/jira";
 import { TempoClient } from "@/lib/tempo";
 import { SuppliersFilters } from "./suppliers-filters";
@@ -7,17 +7,11 @@ import { SuppliersTable } from "./suppliers-table";
 import { SuppliersTabNav } from "./suppliers-tab-nav";
 
 interface Props {
-  searchParams: Promise<{ search?: string; tipo?: string; tab?: string }>;
-}
-
-const TIPO_VALUES: SupplierTipo[] = ["SERVICIOS", "HERRAMIENTAS"];
-
-function isTipo(v: string): v is SupplierTipo {
-  return (TIPO_VALUES as string[]).includes(v);
+  searchParams: Promise<{ search?: string; tab?: string }>;
 }
 
 export default async function SuppliersPage({ searchParams }: Props): Promise<React.JSX.Element> {
-  const { search, tipo, tab } = await searchParams;
+  const { search, tab } = await searchParams;
 
   const tabFilter: Prisma.SupplierWhereInput =
     tab === "partners" ? { isPartner: true } :
@@ -28,7 +22,6 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     active: true,
     ...tabFilter,
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
-    ...(tipo && isTipo(tipo) ? { tipo } : {}),
   };
 
   const [suppliers, roleTemplatesRaw, firstWorkspace] = await Promise.all([
@@ -68,7 +61,6 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     name: s.name,
     holdedContactId: s.holdedContactId,
     companyName: s.company?.name ?? null,
-    tipo: s.tipo,
     isPartner: s.isPartner,
     jiraUsers: s.jiraUsers.map((u) => ({
       accountId: u.accountId,
@@ -79,7 +71,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, ratePerHour: Number(r.ratePerHour) })),
   }));
 
-  const hasFilters = Boolean(search ?? tipo ?? tab);
+  const hasFilters = Boolean(search ?? tab);
   const emptyMessage = hasFilters
     ? "No hay proveedores que coincidan con los filtros."
     : "No hay proveedores. Se sincronizan automáticamente desde los contactos de tipo proveedor en Holded.";

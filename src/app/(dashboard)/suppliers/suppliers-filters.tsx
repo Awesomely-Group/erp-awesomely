@@ -3,20 +3,16 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-const selectClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white";
-
 export function SuppliersFilters(): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
   const [search, setSearch] = useState(sp.get("search") ?? "");
-  const [tipo, setTipo] = useState(sp.get("tipo") ?? "");
 
-  function applyWith(overrides: Partial<{ search: string; tipo: string }>): void {
-    const m = { search, tipo, ...overrides };
+  function applyWith(overrides: Partial<{ search: string }>): void {
+    const m = { search, ...overrides };
     const params = new URLSearchParams();
     if (m.search) params.set("search", m.search);
-    if (m.tipo) params.set("tipo", m.tipo);
     const tab = sp.get("tab");
     if (tab) params.set("tab", tab);
     router.push(`/suppliers?${params.toString()}`);
@@ -24,7 +20,6 @@ export function SuppliersFilters(): React.JSX.Element {
 
   function reset(): void {
     setSearch("");
-    setTipo("");
     const tab = sp.get("tab");
     if (tab) {
       router.push(`/suppliers?tab=${tab}`);
@@ -46,19 +41,6 @@ export function SuppliersFilters(): React.JSX.Element {
           placeholder="Nombre del proveedor…"
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white w-56"
         />
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Tipo</label>
-        <select
-          value={tipo}
-          onChange={(e) => { const v = e.target.value; setTipo(v); applyWith({ tipo: v }); }}
-          className={selectClass}
-        >
-          <option value="">Todos</option>
-          <option value="SERVICIOS">Servicios</option>
-          <option value="HERRAMIENTAS">Herramientas</option>
-        </select>
       </div>
 
       <button
