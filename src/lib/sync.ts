@@ -488,13 +488,14 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
 
   let status: "PENDING" | "PARTIAL" | "CLASSIFIED" | "APPROVED" = "PENDING";
 
+  const marcaValues = (invoice?.marca ?? "").split(",").filter(Boolean);
+  const isAutoClassifiedMarca =
+    marcaValues.length > 0 && marcaValues.every((m) => AUTO_CLASSIFIED_MARCAS.has(m));
+
   if (classified === 0) {
-    const marcaValues = (invoice?.marca ?? "").split(",").filter(Boolean);
-    const isAutoClassified =
-      marcaValues.length > 0 && marcaValues.every((m) => AUTO_CLASSIFIED_MARCAS.has(m));
-    status = isAutoClassified ? "CLASSIFIED" : "PENDING";
+    status = isAutoClassifiedMarca ? "CLASSIFIED" : "PENDING";
   } else if (classified < lines.length) {
-    status = "PARTIAL";
+    status = isAutoClassifiedMarca ? "CLASSIFIED" : "PARTIAL";
   } else {
     // All classified — use the minimum status of all lines
     const statuses = lines

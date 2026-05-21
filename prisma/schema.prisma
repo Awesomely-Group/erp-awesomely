@@ -134,12 +134,13 @@ model JiraProject {
   fixedPrice       Decimal?
   budgetedHours    Float?
 
-  classifications    Classification[]
-  userRoles          ProjectUserRole[]
-  proformas          Proforma[]
-  forecasts          Forecast[]
-  hourBuckets        HourBucket[]
-  regularFeeEntries  RegularFeeEntry[]
+  classifications              Classification[]
+  userRoles                    ProjectUserRole[]
+  proformas                    Proforma[]
+  forecasts                    Forecast[]
+  hourBuckets                  HourBucket[]
+  regularFeeEntries            RegularFeeEntry[]
+  issueHourBucketAssignments   IssueHourBucketAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -164,8 +165,28 @@ model HourBucket {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  issueAssignments IssueHourBucketAssignment[]
+
   @@index([projectId])
   @@map("hour_buckets")
+}
+
+model IssueHourBucketAssignment {
+  id             String      @id @default(cuid())
+  projectId      String
+  project        JiraProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issueKey       String
+  issueNumericId Int
+  hourBucketId   String
+  hourBucket     HourBucket  @relation(fields: [hourBucketId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([projectId, issueKey])
+  @@index([projectId])
+  @@index([hourBucketId])
+  @@index([issueNumericId])
+  @@map("issue_hour_bucket_assignments")
 }
 
 model RegularFeeEntry {

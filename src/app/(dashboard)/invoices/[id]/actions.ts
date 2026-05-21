@@ -265,6 +265,8 @@ export async function bulkUpdateInvoiceMarca({
     },
   });
 
+  await Promise.all(invoiceIds.map((id) => updateInvoiceStatus(id)));
+
   revalidatePath("/invoices");
 }
 
