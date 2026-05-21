@@ -329,7 +329,12 @@ export class HoldedClient {
     let prevFirstId: string | undefined;
 
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const batch = await this.fetch<Array<{ id: string; name: string; type?: string; payment_method?: string }>>(
+      const batch = await this.fetch<Array<{
+        id: string;
+        name: string;
+        type?: string;
+        defaults?: { paymentMethod?: string | number };
+      }>>(
         "/contacts",
         { page: String(page), limit: String(PAGE_SIZE) }
       );
@@ -342,7 +347,9 @@ export class HoldedClient {
 
       for (const c of batch) {
         if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
-          all.set(c.id, { id: c.id, name: c.name, paymentMethod: c.payment_method });
+          // paymentMethod is a string ID when set, or 0 (number) when not set
+          const pm = c.defaults?.paymentMethod;
+          all.set(c.id, { id: c.id, name: c.name, paymentMethod: typeof pm === "string" && pm ? pm : undefined });
         }
       }
 

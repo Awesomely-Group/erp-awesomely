@@ -71,13 +71,8 @@ export async function syncSuppliers(companyId: string): Promise<void> {
   const activeHoldedIds = new Set(contacts.map((c) => c.id));
 
   for (const contact of contacts) {
-    let paymentMethod = contact.paymentMethod;
-    if (paymentMethod === undefined) {
-      const detail = await client.getContactWithBankData(contact.id);
-      paymentMethod = detail.paymentMethod ?? undefined;
-    }
-    const BANK_TRANSFER_VALUES = new Set(["bank_transfer", "bank transfer", "transferencia bancaria", "transferencia_bancaria"]);
-    const isPartner = typeof paymentMethod === "string" && BANK_TRANSFER_VALUES.has(paymentMethod.toLowerCase().trim());
+    // paymentMethod is a Holded payment-method ID (string) when set, or undefined when not
+    const isPartner = typeof contact.paymentMethod === "string" && contact.paymentMethod.length > 0;
     await prisma.supplier.upsert({
       where: { holdedContactId_companyId: { holdedContactId: contact.id, companyId } },
       create: { holdedContactId: contact.id, companyId, name: contact.name, isPartner },
