@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { type VerificationStatus, type SupplierTipo } from "@prisma/client";
 import { SupplierTipoSelect } from "./supplier-tipo-select";
+import { SupplierClasificacionSelect } from "./supplier-clasificacion-select";
 import { RolesSection } from "./[id]/roles-section";
 import { JiraUserList, type JiraUserEntry } from "./[id]/jira-user-list";
 import { JiraUserChip } from "./jira-user-chip";
@@ -32,6 +33,7 @@ export interface SupplierRow {
   companyName: string | null;
   tipo: SupplierTipo | null;
   jiraUsers: JiraUserEntry[];
+  isPartner: boolean;
   defaultRoleId: string | null;
   lastVerification: { status: VerificationStatus } | null;
   roles: SupplierRole[];
@@ -218,6 +220,9 @@ function SupplierTableRow({
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <SupplierTipoSelect supplierId={supplier.id} tipo={supplier.tipo} />
       </td>
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <SupplierClasificacionSelect supplierId={supplier.id} isPartner={supplier.isPartner} />
+      </td>
       <td className="px-4 py-3">
         {supplier.lastVerification
           ? statusBadge(supplier.lastVerification.status)
@@ -287,6 +292,7 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
               <SortThClick label="Entidad" active={sortBy === "companyName"} sortDir={sortDir} onClick={() => handleSort("companyName")} className="text-xs uppercase tracking-wider" />
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuarios Jira</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Clasificación</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último período</th>
               <th className="px-4 py-3" />
             </tr>

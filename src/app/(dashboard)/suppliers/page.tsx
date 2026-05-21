@@ -69,6 +69,7 @@ export default async function SuppliersPage({ searchParams }: Props): Promise<Re
     holdedContactId: s.holdedContactId,
     companyName: s.company?.name ?? null,
     tipo: s.tipo,
+    isPartner: s.isPartner,
     jiraUsers: s.jiraUsers.map((u) => ({
       accountId: u.accountId,
       displayName: jiraNameMap.get(u.accountId) ?? null,

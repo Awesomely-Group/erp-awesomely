@@ -44,6 +44,17 @@ export async function updateSupplierTipo(
   revalidatePath("/suppliers");
 }
 
+export async function updateSupplierIsPartner(
+  supplierId: string,
+  isPartner: boolean,
+): Promise<void> {
+  await prisma.supplier.update({
+    where: { id: supplierId },
+    data: { isPartner },
+  });
+  revalidatePath("/suppliers");
+}
+
 export async function setDefaultRole(
   supplierId: string,
   roleId: string | null,

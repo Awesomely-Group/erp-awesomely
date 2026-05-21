@@ -71,12 +71,10 @@ export async function syncSuppliers(companyId: string): Promise<void> {
   const activeHoldedIds = new Set(contacts.map((c) => c.id));
 
   for (const contact of contacts) {
-    // paymentMethod is a Holded payment-method ID (string) when set, or undefined when not
-    const isPartner = typeof contact.paymentMethod === "string" && contact.paymentMethod.length > 0;
     await prisma.supplier.upsert({
       where: { holdedContactId_companyId: { holdedContactId: contact.id, companyId } },
-      create: { holdedContactId: contact.id, companyId, name: contact.name, isPartner },
-      update: { name: contact.name, active: true, isPartner },
+      create: { holdedContactId: contact.id, companyId, name: contact.name },
+      update: { name: contact.name, active: true },
     });
   }
 
