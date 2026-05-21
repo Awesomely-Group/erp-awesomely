@@ -157,6 +157,7 @@ model HourBucket {
   project        JiraProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   roleId         String
   role           RoleTemplate @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  code           String?      @unique
   totalHours     Float
   alertThreshold Float        @default(0.8)
   active         Boolean      @default(true)

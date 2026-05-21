@@ -4,6 +4,22 @@ import { prisma } from "@/lib/prisma";
 import { ProjectStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+
+async function generateBucketCode(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `B${String(year).slice(-2)}`;
+  const existing = await prisma.hourBucket.findMany({
+    where: { code: { startsWith: prefix } },
+    select: { code: true },
+  });
+  let maxNum = 0;
+  for (const b of existing) {
+    if (!b.code) continue;
+    const num = parseInt(b.code.slice(3), 10);
+    if (!isNaN(num) && num > maxNum) maxNum = num;
+  }
+  return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
+}
 interface ProjectTypesPayload {
   isPrecioCerrado: boolean;
   isBolsasHoras: boolean;
@@ -82,12 +98,14 @@ export async function upsertHourBucket(
       },
     });
   } else {
+    const code = await generateBucketCode();
     await prisma.hourBucket.create({
       data: {
         projectId,
         roleId: bucket.roleId,
         totalHours: bucket.totalHours,
         alertThreshold: bucket.alertThreshold,
+        code,
         ...dates,
       },
     });

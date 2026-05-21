@@ -45,7 +45,14 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-900">{bucket.roleName}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-900">{bucket.roleName}</p>
+            {bucket.code && (
+              <span className="font-mono text-[11px] font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 leading-none">
+                {bucket.code}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-400">{bucket.ratePerHour}€/h</p>
           {(bucket.startDate ?? bucket.endDate) && (
             <p className="text-xs text-gray-400 mt-0.5">

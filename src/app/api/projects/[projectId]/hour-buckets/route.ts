@@ -8,6 +8,7 @@ export interface HourBucketEntry {
   id: string;
   roleId: string;
   roleName: string;
+  code: string | null;
   ratePerHour: number;
   totalHours: number;
   consumedHours: number;
@@ -148,6 +149,7 @@ export async function GET(
     id: bucket.id,
     roleId: bucket.roleId,
     roleName: bucket.role.name,
+    code: bucket.code ?? null,
     ratePerHour: Number(bucket.role.ratePerHour),
     totalHours: bucket.totalHours,
     consumedHours: Math.round((hoursPerBucket.get(bucket.id) ?? 0) * 100) / 100,

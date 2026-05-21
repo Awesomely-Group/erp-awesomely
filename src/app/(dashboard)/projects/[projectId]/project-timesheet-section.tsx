@@ -140,6 +140,7 @@ interface BucketInfo {
 interface BucketOption {
   id: string;
   roleName: string;
+  code: string | null;
 }
 
 interface HierarchicalTableProps {
@@ -325,7 +326,9 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                             >
                               <option value="">— Sin bolsa —</option>
                               {buckets.map((b) => (
-                                <option key={b.id} value={b.id}>{b.roleName}</option>
+                                <option key={b.id} value={b.id}>
+                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}
+                                </option>
                               ))}
                             </select>
                           )}
