@@ -71,6 +71,21 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
 
   if (!project) notFound();
 
+  const invoiceMonthMap = new Map<string, { totalSale: number; totalPurchase: number }>();
+  for (const inv of relatedInvoices) {
+    const month = inv.date.toISOString().slice(0, 7);
+    const current = invoiceMonthMap.get(month) ?? { totalSale: 0, totalPurchase: 0 };
+    if (inv.type === "SALE") current.totalSale += Number(inv.totalEur);
+    else current.totalPurchase += Number(inv.totalEur);
+    invoiceMonthMap.set(month, current);
+  }
+  const invoicesByMonth = [...invoiceMonthMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, d]) => ({ month, totalSale: d.totalSale, totalPurchase: d.totalPurchase }));
+  const totalExpensesEur = relatedInvoices
+    .filter((inv) => inv.type === "PURCHASE")
+    .reduce((sum, inv) => sum + Number(inv.totalEur), 0);
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
@@ -153,6 +168,8 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         from={fromStr}
         to={toStr}
         totalInvoicesEur={relatedInvoices.filter((inv) => inv.type === "SALE").reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
+        invoicesByMonth={invoicesByMonth}
+        totalExpensesEur={totalExpensesEur}
       />
 
       {/* Type-specific sections */}

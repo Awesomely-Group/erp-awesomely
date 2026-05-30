@@ -39,6 +39,13 @@ interface Props {
 export function ProjectInvoicesSection({ invoices }: Props): React.JSX.Element {
   const [open, setOpen] = useState(true);
 
+  const totalSale = invoices
+    .filter((inv) => inv.type === "SALE")
+    .reduce((sum, inv) => sum + inv.totalEur, 0);
+  const totalPurchase = invoices
+    .filter((inv) => inv.type === "PURCHASE")
+    .reduce((sum, inv) => sum + inv.totalEur, 0);
+
   return (
     <section className="space-y-3">
       <button
@@ -71,6 +78,7 @@ export function ProjectInvoicesSection({ invoices }: Props): React.JSX.Element {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad legal</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Contraparte</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
@@ -100,11 +108,22 @@ export function ProjectInvoicesSection({ invoices }: Props): React.JSX.Element {
                         </a>
                       </div>
                     </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        inv.type === "SALE"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}>
+                        {inv.type === "SALE" ? "Ingreso" : "Gasto"}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-gray-600">{inv.companyName}</td>
                     <td className="px-4 py-2.5 text-gray-600 max-w-[180px] truncate">{inv.counterparty ?? "—"}</td>
                     <td className="px-4 py-2.5 text-gray-600">{formatDate(inv.date)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-gray-900">
-                      {formatCurrency(inv.totalEur)}
+                    <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${
+                      inv.type === "SALE" ? "text-green-600" : "text-red-600"
+                    }`}>
+                      {inv.type === "SALE" ? "+" : "-"}{formatCurrency(inv.totalEur)}
                     </td>
                     <td className="px-4 py-2.5">
                       {inv.holdedStatus != null && (
@@ -116,6 +135,28 @@ export function ProjectInvoicesSection({ invoices }: Props): React.JSX.Element {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2.5 text-xs font-medium text-gray-500" colSpan={5}>
+                    Totales
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <div className="flex flex-col items-end gap-0.5">
+                      {totalSale > 0 && (
+                        <span className="text-xs font-semibold text-green-600 tabular-nums">
+                          +{formatCurrency(totalSale)}
+                        </span>
+                      )}
+                      {totalPurchase > 0 && (
+                        <span className="text-xs font-semibold text-red-600 tabular-nums">
+                          -{formatCurrency(totalPurchase)}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
         )
