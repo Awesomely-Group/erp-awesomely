@@ -26,6 +26,7 @@ interface ProjectTypesPayload {
   isFeeRegular: boolean;
   fixedPrice?: number | null;
   budgetedHours?: number | null;
+  fixedPriceInvoiceId?: string | null;
 }
 
 interface HourBucketPayload {
@@ -35,6 +36,7 @@ interface HourBucketPayload {
   alertThreshold: number;
   startDate?: string | null;
   endDate?: string | null;
+  invoiceId?: string | null;
 }
 
 interface RegularFeeEntryPayload {
@@ -43,6 +45,7 @@ interface RegularFeeEntryPayload {
   monthlyFee: number;
   maxHoursPerMonth: number;
   roleId?: string | null;
+  invoiceId?: string | null;
 }
 
 export async function updateProjectStatus(
@@ -70,6 +73,7 @@ export async function updateProjectTypes(
       isFeeRegular: payload.isFeeRegular,
       fixedPrice: payload.isPrecioCerrado ? (payload.fixedPrice ?? null) : null,
       budgetedHours: payload.isPrecioCerrado ? (payload.budgetedHours ?? null) : null,
+      fixedPriceInvoiceId: payload.isPrecioCerrado ? (payload.fixedPriceInvoiceId ?? null) : null,
     },
   });
   revalidatePath(`/projects/${projectId}`);
@@ -94,6 +98,7 @@ export async function upsertHourBucket(
         roleId: bucket.roleId,
         totalHours: bucket.totalHours,
         alertThreshold: bucket.alertThreshold,
+        invoiceId: bucket.invoiceId ?? null,
         ...dates,
       },
     });
@@ -106,6 +111,7 @@ export async function upsertHourBucket(
         totalHours: bucket.totalHours,
         alertThreshold: bucket.alertThreshold,
         code,
+        invoiceId: bucket.invoiceId ?? null,
         ...dates,
       },
     });
@@ -139,11 +145,11 @@ export async function upsertRegularFeeEntry(
   if (entry.id) {
     await prisma.regularFeeEntry.update({
       where: { id: entry.id },
-      data: { label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth, roleId: entry.roleId ?? null },
+      data: { label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth, roleId: entry.roleId ?? null, invoiceId: entry.invoiceId ?? null },
     });
   } else {
     await prisma.regularFeeEntry.create({
-      data: { projectId, label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth, roleId: entry.roleId ?? null },
+      data: { projectId, label: entry.label, monthlyFee: entry.monthlyFee, maxHoursPerMonth: entry.maxHoursPerMonth, roleId: entry.roleId ?? null, invoiceId: entry.invoiceId ?? null },
     });
   }
   revalidatePath(`/projects/${projectId}`);

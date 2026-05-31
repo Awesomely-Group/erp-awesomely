@@ -131,8 +131,10 @@ model JiraProject {
   isFeeRegular     Boolean  @default(false)
 
   // Precio cerrado
-  fixedPrice       Decimal?
-  budgetedHours    Float?
+  fixedPrice          Decimal?
+  budgetedHours       Float?
+  fixedPriceInvoiceId String?
+  fixedPriceInvoice   Invoice? @relation("FixedPriceInvoice", fields: [fixedPriceInvoiceId], references: [id], onDelete: SetNull)
 
   classifications              Classification[]
   userRoles                    ProjectUserRole[]
@@ -148,6 +150,7 @@ model JiraProject {
   @@unique([jiraId, workspaceId])
   @@index([workspaceId])
   @@index([status])
+  @@index([fixedPriceInvoiceId])
   @@map("jira_projects")
 }
 
@@ -163,12 +166,15 @@ model HourBucket {
   active         Boolean      @default(true)
   startDate      DateTime?
   endDate        DateTime?
+  invoiceId      String?
+  invoice        Invoice?     @relation("HourBucketInvoice", fields: [invoiceId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   issueAssignments IssueHourBucketAssignment[]
 
   @@index([projectId])
+  @@index([invoiceId])
   @@map("hour_buckets")
 }
 
@@ -200,11 +206,14 @@ model RegularFeeEntry {
   monthlyFee       Decimal
   maxHoursPerMonth Float
   active           Boolean       @default(true)
+  invoiceId        String?
+  invoice          Invoice?      @relation("RegularFeeInvoice", fields: [invoiceId], references: [id], onDelete: SetNull)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
   @@index([projectId])
   @@index([roleId])
+  @@index([invoiceId])
   @@map("regular_fee_entries")
 }
 
@@ -256,10 +265,13 @@ model Invoice {
   paymentsTotal   Decimal @default(0)
   paymentsPending Decimal @default(0)
 
-  lines         InvoiceLine[]
-  auditLogs     AuditLog[]
-  erpPayments   InvoicePayment[]
-  verifications SupplierVerification[]
+  lines              InvoiceLine[]
+  auditLogs          AuditLog[]
+  erpPayments        InvoicePayment[]
+  verifications      SupplierVerification[]
+  hourBuckets        HourBucket[]       @relation("HourBucketInvoice")
+  fixedPriceProjects JiraProject[]      @relation("FixedPriceInvoice")
+  regularFeeEntries  RegularFeeEntry[]  @relation("RegularFeeInvoice")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

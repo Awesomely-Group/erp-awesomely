@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useRef, useEffect } from "react";
 import { updateProjectTypes, upsertHourBucket, deleteHourBucket, toggleHourBucketActive, upsertRegularFeeEntry, deleteRegularFeeEntry } from "../actions";
+import { InvoiceCombobox } from "@/components/invoice-combobox";
 
 interface RoleOption {
   id: string;
@@ -19,6 +20,7 @@ interface ExistingBucket {
   active: boolean;
   startDate: string;
   endDate: string;
+  invoiceId: string | null;
 }
 
 export interface RegularFeeEntryData {
@@ -28,6 +30,7 @@ export interface RegularFeeEntryData {
   maxHoursPerMonth: number;
   roleId?: string | null;
   roleName?: string | null;
+  invoiceId?: string | null;
 }
 
 interface ProjectConfig {
@@ -36,12 +39,14 @@ interface ProjectConfig {
   isFeeRegular: boolean;
   fixedPrice: number | null;
   budgetedHours: number | null;
+  fixedPriceInvoiceId: string | null;
   hourBuckets: ExistingBucket[];
   regularFeeEntries: RegularFeeEntryData[];
 }
 
 interface Props {
   projectId: string;
+  marca: string;
   config: ProjectConfig;
   availableRoles: RoleOption[];
 }
@@ -52,6 +57,7 @@ interface BucketFormState {
   alertThreshold: string;
   startDate: string;
   endDate: string;
+  invoiceId: string | null;
 }
 
 interface FeeFormState {
@@ -59,9 +65,10 @@ interface FeeFormState {
   monthlyFee: string;
   maxHoursPerMonth: string;
   roleId: string;
+  invoiceId: string | null;
 }
 
-export function ProjectSettingsPanel({ projectId, config, availableRoles }: Props): React.JSX.Element {
+export function ProjectSettingsPanel({ projectId, marca, config, availableRoles }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -72,6 +79,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
   const [isFeeRegular, setIsFeeRegular] = useState(config.isFeeRegular);
   const [fixedPrice, setFixedPrice] = useState(config.fixedPrice?.toString() ?? "");
   const [budgetedHours, setBudgetedHours] = useState(config.budgetedHours?.toString() ?? "");
+  const [fixedPriceInvoiceId, setFixedPriceInvoiceId] = useState<string | null>(config.fixedPriceInvoiceId);
 
   // New bucket form
   const [showBucketForm, setShowBucketForm] = useState(false);
@@ -81,15 +89,16 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
     alertThreshold: "80",
     startDate: "",
     endDate: "",
+    invoiceId: null,
   });
 
   // Edit bucket inline
   const [editingBucketId, setEditingBucketId] = useState<string | null>(null);
-  const [editBucketForm, setEditBucketForm] = useState<BucketFormState>({ roleId: "", totalHours: "", alertThreshold: "80", startDate: "", endDate: "" });
+  const [editBucketForm, setEditBucketForm] = useState<BucketFormState>({ roleId: "", totalHours: "", alertThreshold: "80", startDate: "", endDate: "", invoiceId: null });
 
   function startEditBucket(b: ExistingBucket): void {
     setEditingBucketId(b.id);
-    setEditBucketForm({ roleId: b.roleId, totalHours: String(b.totalHours), alertThreshold: String(Math.round(b.alertThreshold * 100)), startDate: b.startDate, endDate: b.endDate });
+    setEditBucketForm({ roleId: b.roleId, totalHours: String(b.totalHours), alertThreshold: String(Math.round(b.alertThreshold * 100)), startDate: b.startDate, endDate: b.endDate, invoiceId: b.invoiceId });
   }
 
   function handleSaveBucketEdit(): void {
@@ -102,6 +111,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         alertThreshold: parseFloat(editBucketForm.alertThreshold) / 100,
         startDate: editBucketForm.startDate || null,
         endDate: editBucketForm.endDate || null,
+        invoiceId: editBucketForm.invoiceId,
       });
       setEditingBucketId(null);
     });
@@ -115,13 +125,27 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         monthlyFee: entry.monthlyFee,
         maxHoursPerMonth: entry.maxHoursPerMonth,
         roleId: newRoleId || null,
+        invoiceId: entry.invoiceId ?? null,
+      });
+    });
+  }
+
+  function handleUpdateFeeInvoice(entry: RegularFeeEntryData, invoiceId: string | null): void {
+    startTransition(async () => {
+      await upsertRegularFeeEntry(projectId, {
+        id: entry.id,
+        label: entry.label,
+        monthlyFee: entry.monthlyFee,
+        maxHoursPerMonth: entry.maxHoursPerMonth,
+        roleId: entry.roleId ?? null,
+        invoiceId,
       });
     });
   }
 
   // New fee entry form
   const [showFeeForm, setShowFeeForm] = useState(false);
-  const [feeForm, setFeeForm] = useState<FeeFormState>({ label: "", monthlyFee: "", maxHoursPerMonth: "", roleId: "" });
+  const [feeForm, setFeeForm] = useState<FeeFormState>({ label: "", monthlyFee: "", maxHoursPerMonth: "", roleId: "", invoiceId: null });
 
   // Close on Escape
   useEffect(() => {
@@ -139,6 +163,7 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         isFeeRegular,
         fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
         budgetedHours: budgetedHours ? parseFloat(budgetedHours) : null,
+        fixedPriceInvoiceId,
       });
       setOpen(false);
     });
@@ -153,9 +178,10 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         alertThreshold: parseFloat(bucketForm.alertThreshold) / 100,
         startDate: bucketForm.startDate || null,
         endDate: bucketForm.endDate || null,
+        invoiceId: bucketForm.invoiceId,
       });
       setShowBucketForm(false);
-      setBucketForm({ roleId: availableRoles[0]?.id ?? "", totalHours: "", alertThreshold: "80", startDate: "", endDate: "" });
+      setBucketForm({ roleId: availableRoles[0]?.id ?? "", totalHours: "", alertThreshold: "80", startDate: "", endDate: "", invoiceId: null });
     });
   }
 
@@ -179,9 +205,10 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
         monthlyFee: parseFloat(feeForm.monthlyFee),
         maxHoursPerMonth: parseFloat(feeForm.maxHoursPerMonth),
         roleId: feeForm.roleId || null,
+        invoiceId: feeForm.invoiceId,
       });
       setShowFeeForm(false);
-      setFeeForm({ label: "", monthlyFee: "", maxHoursPerMonth: "", roleId: "" });
+      setFeeForm({ label: "", monthlyFee: "", maxHoursPerMonth: "", roleId: "", invoiceId: null });
     });
   }
 
@@ -287,6 +314,15 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Factura vinculada</label>
+                <InvoiceCombobox
+                  marca={marca}
+                  value={fixedPriceInvoiceId}
+                  onChange={setFixedPriceInvoiceId}
+                  disabled={isPending}
+                />
+              </div>
             </section>
           )}
 
@@ -327,6 +363,15 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                       <p className="text-xs text-gray-400">
                         {e.monthlyFee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}/mes · {e.maxHoursPerMonth} h/mes
                       </p>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-1">Factura vinculada</p>
+                        <InvoiceCombobox
+                          marca={marca}
+                          value={e.invoiceId ?? null}
+                          onChange={(id) => handleUpdateFeeInvoice(e, id)}
+                          disabled={isPending}
+                        />
+                      </div>
                     </div>
                   ))}
                   {/* Summary row */}
@@ -392,6 +437,15 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Factura vinculada (opcional)</label>
+                    <InvoiceCombobox
+                      marca={marca}
+                      value={feeForm.invoiceId}
+                      onChange={(id) => setFeeForm((prev) => ({ ...prev, invoiceId: id }))}
+                      disabled={isPending}
+                    />
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -489,6 +543,15 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                             />
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Factura vinculada (opcional)</label>
+                          <InvoiceCombobox
+                            marca={marca}
+                            value={editBucketForm.invoiceId}
+                            onChange={(id) => setEditBucketForm((prev) => ({ ...prev, invoiceId: id }))}
+                            disabled={isPending}
+                          />
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -619,6 +682,15 @@ export function ProjectSettingsPanel({ projectId, config, availableRoles }: Prop
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Factura vinculada (opcional)</label>
+                    <InvoiceCombobox
+                      marca={marca}
+                      value={bucketForm.invoiceId}
+                      onChange={(id) => setBucketForm((prev) => ({ ...prev, invoiceId: id }))}
+                      disabled={isPending}
+                    />
                   </div>
                   <div className="flex gap-2">
                     <button

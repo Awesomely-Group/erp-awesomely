@@ -126,12 +126,14 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           </Link>
           <ProjectSettingsPanel
             projectId={project.id}
+            marca={project.workspace.name}
             config={{
               isPrecioCerrado: project.isPrecioCerrado,
               isBolsasHoras: project.isBolsasHoras,
               isFeeRegular: project.isFeeRegular,
               fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
               budgetedHours: project.budgetedHours,
+              fixedPriceInvoiceId: project.fixedPriceInvoiceId ?? null,
               hourBuckets: project.hourBuckets.map((b) => ({
                 id: b.id,
                 roleId: b.roleId,
@@ -142,6 +144,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 active: b.active,
                 startDate: b.startDate?.toISOString().slice(0, 10) ?? "",
                 endDate: b.endDate?.toISOString().slice(0, 10) ?? "",
+                invoiceId: b.invoiceId ?? null,
               })),
               regularFeeEntries: project.regularFeeEntries.map((e) => ({
                 id: e.id,
@@ -150,6 +153,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                 maxHoursPerMonth: e.maxHoursPerMonth,
                 roleId: e.roleId ?? null,
                 roleName: e.role?.name ?? null,
+                invoiceId: e.invoiceId ?? null,
               })),
             }}
             availableRoles={availableRoles.map((r) => ({
