@@ -34,16 +34,14 @@ async function main(): Promise<void> {
     },
   });
 
-  // Filtrar: solo las que realmente tienen marca 100% auto-clasificable y sin ninguna clasificación
+  // Filtrar: solo las que realmente tienen marca 100% auto-clasificable
   const toFix = candidates.filter((inv) => {
     const marcaValues = (inv.marca ?? "").split(",").filter(Boolean);
-    const allAuto = marcaValues.length > 0 && marcaValues.every((m) => AUTO_MARCAS.includes(m));
-    const noClassifications = inv.lines.every((l) => l.classification === null);
-    return allAuto && noClassifications;
+    return marcaValues.length > 0 && marcaValues.every((m) => AUTO_MARCAS.includes(m));
   });
 
   console.log(`Facturas candidatas con marca auto-clasificable en PENDING/PARTIAL: ${candidates.length}`);
-  console.log(`Facturas sin ninguna clasificación de línea (a corregir):            ${toFix.length}`);
+  console.log(`A corregir (marca 100% Awesomely/Gigson):                           ${toFix.length}`);
 
   if (toFix.length === 0) {
     console.log("Nada que corregir.");

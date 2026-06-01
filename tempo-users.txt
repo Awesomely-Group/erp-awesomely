@@ -1,0 +1,32 @@
+Buscando worklogs de 2024-01-01 a 2025-12-31...
+AccountIds únicos encontrados en worklogs: 23
+
+--- USUARIOS QUE HAN LOGADO HORAS EN TEMPO ---
+
+NOMBRE                              ACTIVO   ACCOUNT ID
+--------------------------------------------------------------------------------
+Agus Brocco                         sí       712020:15da4829-5e1e-4682-a625-091d06f8b406
+ALE SAN                             NO       5e830b199e34c00c17d4ea66
+Alejandro Anta                      sí       63970feb3c9bcd363976dd42
+Alejandro Pérez Pérez               NO       70121:f1c0b763-7a58-4ae5-9d2d-c781fdb4acf9
+Besmir Arapi                        NO       5aa5c847d2bbf025fcdf5912
+César Bravo Sánchez                 NO       6358f734c97f5473af703211
+Cristina Campmajó                   NO       712020:c94d79b5-010f-4905-8bc4-502a47354dd3
+Diego Gentile                       NO       712020:58749ee2-ae7c-45c2-b9af-6e5eb6f5e88f
+Héctor Ribes                        NO       557058:9d4d8f3a-d15e-4c4e-910a-c02625359bc3
+Irene Deu                           sí       712020:46a1f268-30dd-4b1c-8052-7b4acb2cb492
+Italo Celle Igreda                  sí       712020:63b60195-d35b-4402-801c-01b55b10309f
+Itziar                              NO       5e904f3c84dec20b817cc949
+Jaume Torres                        sí       712020:27371948-4890-4450-9b6f-95f838cfe401
+Joaquín Bermúdez                    NO       712020:91e6c357-9760-482b-8968-a633a6d14b54
+Jonay Hernandez                     NO       5f9d192ddbf337006ca5b341
+Jonay Hernández                     sí       712020:dba4dc92-56fb-412c-8649-a4a4f4761177
+josegarcia                          NO       712020:883332bd-1e30-4d7f-ae16-d75635ea967b
+Juan Cantón Rodríguez               sí       712020:0a69c909-d3cd-414a-8fd6-aa58b12a6334
+Luisa                               NO       712020:f5cc6800-c868-41e3-8f0a-c8597a0773fd
+Majdi Kokaly Banourah               NO       60c10050d5dde800716f5c72
+Mario Manuel Perera Valdes          NO       712020:e1bb7807-c545-466c-a751-c869e132fe78
+Pedro Bustillo                      NO       712020:6f055593-0ccc-461b-9b96-82f07244967c
+Yago Casas                          NO       712020:05b4a1aa-9a7e-4105-aa22-6c3dbd32ca99
+
+Total: 23
