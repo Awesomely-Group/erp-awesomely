@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -165,19 +165,21 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   const [error, setError] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Set<string>>(new Set());
   const [bucketOverrides, setBucketOverrides] = useState<Record<string, string | null>>({});
-  const bucketConsumed = useMemo(() => {
-    if (!data) return {} as Record<string, number>;
-    const acc: Record<string, number> = {};
-    for (const user of data.users) {
-      for (const issue of user.issues) {
-        const bucketId = bucketOverrides[issue.issueKey] !== undefined
-          ? bucketOverrides[issue.issueKey]
-          : (issue.hourBucketId ?? null);
-        if (bucketId) acc[bucketId] = (acc[bucketId] ?? 0) + issue.totalHours;
-      }
-    }
-    return acc;
-  }, [data, bucketOverrides]);
+  const [allTimeBucketConsumed, setAllTimeBucketConsumed] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!hasTempoToken) return;
+    const today = new Date().toISOString().slice(0, 10);
+    fetch(`/api/projects/${projectId}/hour-buckets?from=2020-01-01&to=${today}`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const body = await r.json() as { buckets: Array<{ id: string; consumedHours: number }> };
+        const map: Record<string, number> = {};
+        for (const b of body.buckets) map[b.id] = b.consumedHours;
+        setAllTimeBucketConsumed(map);
+      })
+      .catch(() => { /* ignore */ });
+  }, [projectId, hasTempoToken]);
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
@@ -364,7 +366,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                               <option value="">— Sin bolsa —</option>
                               {buckets.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${bucketConsumed[b.id] ?? 0}/${b.totalHours}h` : `${b.totalHours}h`}
+                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${allTimeBucketConsumed[b.id] ?? 0}/${b.totalHours}h` : `${b.totalHours}h`}
                                 </option>
                               ))}
                             </select>
