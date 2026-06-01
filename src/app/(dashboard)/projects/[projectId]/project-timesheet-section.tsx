@@ -168,14 +168,14 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
 
   useEffect(() => {
     if (!hasTempoToken || !buckets?.length) return;
-    fetch(`/api/projects/${projectId}/hour-buckets?from=${from}&to=${to}`)
+    fetch(`/api/projects/${projectId}/hour-buckets?from=2020-01-01&to=2099-12-31`)
       .then((r) => (r.ok ? r.json() : null))
       .then((list: { id: string; consumedHours: number }[] | null) => {
         if (!list) return;
         setBucketConsumed(Object.fromEntries(list.map((b) => [b.id, b.consumedHours])));
       })
       .catch(() => null);
-  }, [projectId, from, to, hasTempoToken, buckets?.length]);
+  }, [projectId, hasTempoToken, buckets?.length]);
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
