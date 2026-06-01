@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 
 async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
   const classifications = await prisma.classification.findMany({
-    where: { invoiceLine: { invoiceId } },
+    where: { invoiceLine: { invoiceId }, status: { not: ClassificationStatus.IGNORED } },
     include: { project: { include: { workspace: true } } },
   });
 
@@ -121,6 +121,71 @@ export async function classifyLine({
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   return { classificationId };
+}
+
+export async function ignoreLine({
+  lineId,
+  invoiceId,
+  reason,
+}: {
+  lineId: string;
+  invoiceId: string;
+  reason?: string;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const existing = await prisma.classification.findUnique({
+    where: { invoiceLineId: lineId },
+  });
+
+  let classificationId: string;
+
+  if (existing) {
+    await prisma.classification.update({
+      where: { invoiceLineId: lineId },
+      data: {
+        status: ClassificationStatus.IGNORED,
+        projectId: null,
+        marca: null,
+        notes: reason ?? null,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+      },
+    });
+    classificationId = existing.id;
+  } else {
+    const classification = await prisma.classification.create({
+      data: {
+        invoiceLineId: lineId,
+        status: ClassificationStatus.IGNORED,
+        projectId: null,
+        marca: null,
+        notes: reason ?? null,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+      },
+    });
+    classificationId = classification.id;
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Classification",
+      entityId: classificationId,
+      newValue: { status: "IGNORED", reason: reason ?? null },
+      invoiceId,
+      classificationId,
+    },
+  });
+
+  await prisma.invoiceLine.update({ where: { id: lineId }, data: { notes: null } });
+  await updateInvoiceStatus(invoiceId);
+  await deriveMarcaFromLines(invoiceId);
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
 }
 
 export async function updateClassificationStatus({

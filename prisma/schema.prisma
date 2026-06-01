@@ -338,6 +338,7 @@ enum ClassificationStatus {
   CLASSIFIED
   REVIEWED
   APPROVED
+  IGNORED
 }
 
 model Classification {

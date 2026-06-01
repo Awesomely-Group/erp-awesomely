@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { filterProjectsByMarca } from "@/lib/org";
-import { classifyLine, saveDraftLineNote } from "./actions";
-import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare } from "lucide-react";
+import { classifyLine, ignoreLine, saveDraftLineNote } from "./actions";
+import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare, MinusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectCombobox } from "@/components/project-combobox";
 
@@ -62,6 +62,7 @@ interface Props {
 const STATUS_COLORS: Record<string, string> = {
   CLASSIFIED: "text-blue-600 bg-blue-50 border-blue-200",
   APPROVED: "text-green-600 bg-green-50 border-green-200",
+  IGNORED: "text-gray-400 bg-gray-50 border-gray-200",
 };
 
 const MARCAS = ["Gigson", "Gigson Solutions", "LaTroupe", "Awesomely"] as const;
@@ -107,6 +108,37 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
     });
   }
 
+  function handleIgnore(lineId: string, reason: string): void {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await ignoreLine({ lineId, invoiceId, reason: reason || undefined });
+        setLocalLines((prev) =>
+          prev.map((l) => {
+            if (l.id !== lineId) return l;
+            return {
+              ...l,
+              classification: {
+                id: "",
+                status: "IGNORED",
+                projectId: null,
+                projectName: null,
+                workspaceName: null,
+                marca: null,
+                notes: reason || null,
+              },
+            };
+          })
+        );
+        const nextUnclassified = localLines.find((l) => l.id !== lineId && !l.classification);
+        setExpandedLine(nextUnclassified?.id ?? null);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al ignorar la línea");
+      }
+    });
+  }
+
   return (
     <div className="space-y-2">
       {error && (
@@ -124,6 +156,7 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
           isPending={isPending}
           onToggle={() => setExpandedLine(expandedLine === line.id ? null : line.id)}
           onClassify={(projectId, marca, notes) => handleClassify(line.id, projectId, marca, notes)}
+          onIgnore={(reason) => handleIgnore(line.id, reason)}
           onSaveDraftNote={(notes) => saveDraftLineNote({ lineId: line.id, notes })}
         />
       ))}
@@ -139,6 +172,7 @@ function LineRow({
   isPending,
   onToggle,
   onClassify,
+  onIgnore,
   onSaveDraftNote,
 }: {
   line: Line;
@@ -148,6 +182,7 @@ function LineRow({
   isPending: boolean;
   onToggle: () => void;
   onClassify: (projectId: string | null, marca: string | null, notes: string) => void;
+  onIgnore: (reason: string) => void;
   onSaveDraftNote: (notes: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
@@ -198,7 +233,9 @@ function LineRow({
       >
         <div className="flex items-center gap-3 px-5 pt-4 pb-2">
           <div className="shrink-0">
-            {line.classification ? (
+            {line.classification?.status === "IGNORED" ? (
+              <MinusCircle className="h-5 w-5 text-gray-300" />
+            ) : line.classification ? (
               <CheckCircle className="h-5 w-5 text-green-500" />
             ) : (
               <Circle className="h-5 w-5 text-gray-300" />
@@ -210,7 +247,11 @@ function LineRow({
               <p className="text-xs text-gray-400 truncate mt-0.5">{line.description}</p>
             )}
           </div>
-          {line.classification && classifiedLabel && (
+          {line.classification?.status === "IGNORED" ? (
+            <div className="shrink-0 text-xs font-medium px-2 py-1 rounded-full border text-gray-400 bg-gray-50 border-gray-200">
+              Ignorada
+            </div>
+          ) : line.classification && classifiedLabel ? (
             <div
               className={cn(
                 "shrink-0 text-xs font-medium px-2 py-1 rounded-full border",
@@ -219,7 +260,7 @@ function LineRow({
             >
               {classifiedLabel}
             </div>
-          )}
+          ) : null}
           <ChevronDown
             className={cn(
               "h-4 w-4 text-gray-400 shrink-0 transition-transform",
@@ -265,61 +306,92 @@ function LineRow({
       {/* ── Expanded: classification form ── */}
       {isExpanded && (
         <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-4">
-          <UnifiedClassifier
-            line={line}
-            projects={projects}
-            selectedProject={selectedProject}
-            onProjectChange={handleProjectChange}
-            selectedMarca={selectedMarca}
-            onMarcaChange={handleMarcaChange}
-            isPending={isPending}
-          />
-
-          {notesOpen ? (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  onBlur={(e) => {
-                    if (!line.classification) onSaveDraftNote(e.target.value);
-                  }}
-                  placeholder="Añade una nota..."
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                  disabled={isPending}
-                  autoFocus
-                />
+          {line.classification?.status === "IGNORED" ? (
+            <>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <MinusCircle className="h-4 w-4 text-gray-300 shrink-0" />
+                <span>Esta línea está marcada como ignorada y no se incluye en la clasificación.</span>
+              </div>
+              {line.classification.notes && (
+                <p className="text-xs text-gray-400 italic">Motivo: {line.classification.notes}</p>
+              )}
+              <div className="flex items-center gap-3">
                 <button
-                  type="button"
-                  onClick={() => { setNotes(""); setNotesOpen(false); }}
-                  className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                  onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
+                  disabled={isPending || !selectedMarca}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  Ocultar
+                  Clasificar igualmente
                 </button>
               </div>
-            </div>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={() => setNotesOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              {notes ? `Nota: "${notes.slice(0, 40)}${notes.length > 40 ? "…" : ""}"` : "Añadir nota"}
-            </button>
-          )}
+            <>
+              <UnifiedClassifier
+                line={line}
+                projects={projects}
+                selectedProject={selectedProject}
+                onProjectChange={handleProjectChange}
+                selectedMarca={selectedMarca}
+                onMarcaChange={handleMarcaChange}
+                isPending={isPending}
+              />
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
-              disabled={isPending || !selectedMarca}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
-            </button>
-          </div>
+              {notesOpen ? (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      onBlur={(e) => {
+                        if (!line.classification) onSaveDraftNote(e.target.value);
+                      }}
+                      placeholder="Añade una nota..."
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                      disabled={isPending}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setNotes(""); setNotesOpen(false); }}
+                      className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                    >
+                      Ocultar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setNotesOpen(true)}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {notes ? `Nota: "${notes.slice(0, 40)}${notes.length > 40 ? "…" : ""}"` : "Añadir nota"}
+                </button>
+              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
+                  disabled={isPending || !selectedMarca}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onIgnore(notes)}
+                  disabled={isPending}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Ignorar línea
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

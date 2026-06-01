@@ -495,12 +495,12 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
   } else if (classified < lines.length) {
     status = isAutoClassifiedMarca ? "CLASSIFIED" : "PARTIAL";
   } else {
-    // All classified — use the minimum status of all lines
+    // All classified — use the minimum status of non-ignored lines
     const statuses = lines
       .map((l) => l.classification?.status)
-      .filter(Boolean);
+      .filter((s) => s !== undefined && s !== "IGNORED");
 
-    if (statuses.every((s) => s === "APPROVED")) {
+    if (statuses.length === 0 || statuses.every((s) => s === "APPROVED")) {
       status = "APPROVED";
     } else {
       status = "CLASSIFIED";
