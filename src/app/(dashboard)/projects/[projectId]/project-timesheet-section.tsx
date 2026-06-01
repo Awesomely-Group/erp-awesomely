@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -164,18 +164,19 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   const [error, setError] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Set<string>>(new Set());
   const [bucketOverrides, setBucketOverrides] = useState<Record<string, string | null>>({});
-  const [bucketConsumed, setBucketConsumed] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    if (!hasTempoToken || !buckets?.length) return;
-    fetch(`/api/projects/${projectId}/hour-buckets?from=2020-01-01&to=2099-12-31`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((list: { id: string; consumedHours: number }[] | null) => {
-        if (!list) return;
-        setBucketConsumed(Object.fromEntries(list.map((b) => [b.id, b.consumedHours])));
-      })
-      .catch(() => null);
-  }, [projectId, hasTempoToken, buckets?.length]);
+  const bucketConsumed = useMemo(() => {
+    if (!data) return {} as Record<string, number>;
+    const acc: Record<string, number> = {};
+    for (const user of data.users) {
+      for (const issue of user.issues) {
+        const bucketId = bucketOverrides[issue.issueKey] !== undefined
+          ? bucketOverrides[issue.issueKey]
+          : (issue.hourBucketId ?? null);
+        if (bucketId) acc[bucketId] = (acc[bucketId] ?? 0) + issue.totalHours;
+      }
+    }
+    return acc;
+  }, [data, bucketOverrides]);
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
