@@ -154,7 +154,7 @@ export function ProjectOverviewCharts({
   }
 
   const tempoTotalCost = data?.totalCost ?? 0;
-  const beneficioReal = totalInvoicesEur - tempoTotalCost - totalExpensesEur;
+  const beneficioReal = totalInvoicesEur - totalExpensesEur;
   const margenReal = totalInvoicesEur > 0 ? (beneficioReal / totalInvoicesEur) * 100 : null;
 
   const hasEstimate = data?.estimateCost != null && data.estimateCost > 0;
