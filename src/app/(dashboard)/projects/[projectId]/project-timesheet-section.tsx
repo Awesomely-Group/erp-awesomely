@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -139,6 +139,7 @@ interface BucketInfo {
 
 interface BucketOption {
   id: string;
+  roleId: string;
   roleName: string;
   code: string | null;
   totalHours: number;
@@ -180,6 +181,34 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
       })
       .catch(() => { /* ignore */ });
   }, [projectId, hasTempoToken]);
+
+  const roleIdToBucketId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const b of buckets ?? []) map[b.roleId] = b.id;
+    return map;
+  }, [buckets]);
+
+  const bucketConsumedDisplay = useMemo(() => {
+    const acc: Record<string, number> = { ...allTimeBucketConsumed };
+    if (!data) return acc;
+    for (const user of data.users) {
+      const userRoleId = accountToRole?.[user.accountId];
+      const roleBucketId = userRoleId ? (roleIdToBucketId[userRoleId] ?? null) : null;
+      for (const issue of user.issues) {
+        const newBucketId = bucketOverrides[issue.issueKey];
+        if (newBucketId === undefined) continue;
+        const originalBucketId = issue.hourBucketId ?? roleBucketId ?? null;
+        if (originalBucketId === newBucketId) continue;
+        if (originalBucketId !== null) {
+          acc[originalBucketId] = Math.round(Math.max(0, (acc[originalBucketId] ?? 0) - issue.totalHours) * 100) / 100;
+        }
+        if (newBucketId !== null) {
+          acc[newBucketId] = Math.round(((acc[newBucketId] ?? 0) + issue.totalHours) * 100) / 100;
+        }
+      }
+    }
+    return acc;
+  }, [allTimeBucketConsumed, data, bucketOverrides, accountToRole, roleIdToBucketId]);
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
@@ -366,7 +395,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                               <option value="">— Sin bolsa —</option>
                               {buckets.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${allTimeBucketConsumed[b.id] ?? 0}/${b.totalHours}h` : `${b.totalHours}h`}
+                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${bucketConsumedDisplay[b.id] ?? 0}/${b.totalHours}h` : `${b.totalHours}h`}
                                 </option>
                               ))}
                             </select>
