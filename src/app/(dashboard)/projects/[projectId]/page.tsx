@@ -32,9 +32,15 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
     from = new Date(currentYear, 0, 1);
     to = new Date(currentYear, 11, 31);
   } else {
-    const q = Math.floor(currentMonth / 3);
-    from = new Date(currentYear, q * 3, 1);
-    to = new Date(currentYear, q * 3 + 3, 0);
+    const firstInvoice = await prisma.invoice.findFirst({
+      where: {
+        lines: { some: { classification: { projectId } } },
+      },
+      select: { date: true },
+      orderBy: { date: "asc" },
+    });
+    from = firstInvoice?.date ?? new Date(currentYear, 0, 1);
+    to = now;
   }
 
   const fromStr = format(from, "yyyy-MM-dd");
