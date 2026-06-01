@@ -368,6 +368,11 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                   const currentBucketId = bucketOverrides[issue.issueKey] !== undefined
                     ? bucketOverrides[issue.issueKey]
                     : (issue.hourBucketId ?? null);
+                  // When filtering by bucket, issues visible via role fallback should show that bucket
+                  const displayBucketId = currentBucketId ??
+                    (filterBucketId != null && accountToRole?.[user.accountId] === filterBucketRoleId
+                      ? filterBucketId
+                      : null);
                   return (
                   <React.Fragment key={`${user.accountId}-${issue.issueKey}`}>
                     <tr className="border-t border-gray-100">
@@ -377,7 +382,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                           <span className="text-gray-700 truncate max-w-[280px]">{issue.summary}</span>
                           {isBolsasHoras && buckets && onAssignIssueToBucket && (
                             <select
-                              value={currentBucketId ?? ""}
+                              value={displayBucketId ?? ""}
                               onChange={(e) => {
                                 const val = e.target.value || null;
                                 setBucketOverrides((prev) => ({ ...prev, [issue.issueKey]: val }));
