@@ -27,15 +27,15 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
 
   if (!project) notFound();
 
-  let filterAccountIds: string[] | undefined;
+  let filterBucketId: string | undefined;
+  let filterBucketRoleId: string | undefined;
   let filterBucketName: string | undefined;
   if (bucketId) {
     const bucket = project.hourBuckets.find((b) => b.id === bucketId);
     if (bucket) {
-      filterBucketName = bucket.role.name;
-      filterAccountIds = project.userRoles
-        .filter((ur) => ur.roleId === bucket.roleId)
-        .map((ur) => ur.jiraAccountId);
+      filterBucketId = bucket.id;
+      filterBucketRoleId = bucket.roleId;
+      filterBucketName = bucket.code ? `[${bucket.code}] ${bucket.role.name}` : bucket.role.name;
     }
   }
 
@@ -91,7 +91,8 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
           ])
         )}
         accountToRole={Object.fromEntries(project.userRoles.map((ur) => [ur.jiraAccountId, ur.roleId]))}
-        filterAccountIds={filterAccountIds}
+        filterBucketId={filterBucketId}
+        filterBucketRoleId={filterBucketRoleId}
         filterBucketName={filterBucketName}
         buckets={buckets}
         onAssignIssueToBucket={handleAssignIssueToBucket}

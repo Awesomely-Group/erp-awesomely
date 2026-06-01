@@ -153,12 +153,13 @@ interface HierarchicalTableProps {
   isBolsasHoras?: boolean;
   bucketByRole?: Record<string, BucketInfo>;
   accountToRole?: Record<string, string>;
-  filterAccountIds?: string[];
+  filterBucketId?: string;
+  filterBucketRoleId?: string;
   buckets?: BucketOption[];
   onAssignIssueToBucket?: (issueKey: string, jiraIssueId: number, hourBucketId: string | null) => Promise<void>;
 }
 
-function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds, buckets, onAssignIssueToBucket }: HierarchicalTableProps): React.JSX.Element {
+function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, buckets, onAssignIssueToBucket }: HierarchicalTableProps): React.JSX.Element {
   const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -238,17 +239,39 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
     return <p className="text-sm text-red-500 py-4">Error: {error}</p>;
   }
 
-  const visibleUsers = data
-    ? filterAccountIds
-      ? data.users.filter((u) => filterAccountIds.includes(u.accountId))
+  const visibleUsers: UserWithIssues[] = data
+    ? filterBucketId
+      ? data.users
+          .map((user) => {
+            const effectiveRoleId = accountToRole?.[user.accountId];
+            const filteredIssues = user.issues.filter((issue) => {
+              const currentBucketId =
+                bucketOverrides[issue.issueKey] !== undefined
+                  ? bucketOverrides[issue.issueKey]
+                  : (issue.hourBucketId ?? null);
+              if (currentBucketId === filterBucketId) return true;
+              if (!currentBucketId && effectiveRoleId === filterBucketRoleId) return true;
+              return false;
+            });
+            return {
+              ...user,
+              issues: filteredIssues,
+              totalHours: Math.round(filteredIssues.reduce((s, i) => s + i.totalHours, 0) * 100) / 100,
+              actualCostEur: Math.round(filteredIssues.reduce((s, i) => s + i.actualCostEur, 0) * 100) / 100,
+              estimatedCostEur: filteredIssues.some((i) => i.estimatedCostEur != null)
+                ? Math.round(filteredIssues.reduce((s, i) => s + (i.estimatedCostEur ?? 0), 0) * 100) / 100
+                : null,
+            };
+          })
+          .filter((u) => u.issues.length > 0)
       : data.users
     : [];
 
   if (!data || visibleUsers.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
-        {filterAccountIds && data && data.users.length > 0
-          ? "Ningún usuario de esta bolsa tiene horas en este período"
+        {filterBucketId && data && data.users.length > 0
+          ? "No hay horas registradas en esta bolsa en este período"
           : "Sin horas registradas en este período"}
       </div>
     );
@@ -447,13 +470,14 @@ interface Props {
   isBolsasHoras?: boolean;
   bucketByRole?: Record<string, BucketInfo>;
   accountToRole?: Record<string, string>;
-  filterAccountIds?: string[];
+  filterBucketId?: string;
+  filterBucketRoleId?: string;
   filterBucketName?: string;
   buckets?: BucketOption[];
   onAssignIssueToBucket?: (issueKey: string, jiraIssueId: number, hourBucketId: string | null) => Promise<void>;
 }
 
-export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterAccountIds, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
+export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -467,7 +491,7 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         onTypeChange={setPeriodType}
         onOffsetChange={setPeriodOffset}
       />
-      {filterAccountIds && filterBucketName && (
+      {filterBucketId && filterBucketName && (
         <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm">
           <div className="flex items-center gap-2 text-amber-800">
             <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -492,7 +516,8 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         isBolsasHoras={isBolsasHoras}
         bucketByRole={bucketByRole}
         accountToRole={accountToRole}
-        filterAccountIds={filterAccountIds}
+        filterBucketId={filterBucketId}
+        filterBucketRoleId={filterBucketRoleId}
         buckets={buckets}
         onAssignIssueToBucket={onAssignIssueToBucket}
       />
