@@ -39,7 +39,7 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
     }
   }
 
-  const buckets = project.hourBuckets.map((b) => ({ id: b.id, roleName: b.role.name, code: b.code ?? null }));
+  const buckets = project.hourBuckets.map((b) => ({ id: b.id, roleName: b.role.name, code: b.code ?? null, totalHours: b.totalHours }));
 
   const resolvedProjectId = project.id;
 

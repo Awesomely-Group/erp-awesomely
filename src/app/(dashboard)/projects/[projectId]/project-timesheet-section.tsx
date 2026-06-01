@@ -141,6 +141,7 @@ interface BucketOption {
   id: string;
   roleName: string;
   code: string | null;
+  totalHours: number;
 }
 
 interface HierarchicalTableProps {
@@ -163,6 +164,18 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   const [error, setError] = useState<string | null>(null);
   const [collapsedUsers, setCollapsedUsers] = useState<Set<string>>(new Set());
   const [bucketOverrides, setBucketOverrides] = useState<Record<string, string | null>>({});
+  const [bucketConsumed, setBucketConsumed] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!hasTempoToken || !buckets?.length) return;
+    fetch(`/api/projects/${projectId}/hour-buckets?from=${from}&to=${to}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((list: { id: string; consumedHours: number }[] | null) => {
+        if (!list) return;
+        setBucketConsumed(Object.fromEntries(list.map((b) => [b.id, b.consumedHours])));
+      })
+      .catch(() => null);
+  }, [projectId, from, to, hasTempoToken, buckets?.length]);
 
   function toggleUser(accountId: string): void {
     setCollapsedUsers((prev) => {
@@ -327,7 +340,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                               <option value="">— Sin bolsa —</option>
                               {buckets.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}
+                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${bucketConsumed[b.id] ?? 0}/${b.totalHours}h` : `${b.totalHours}h`}
                                 </option>
                               ))}
                             </select>
