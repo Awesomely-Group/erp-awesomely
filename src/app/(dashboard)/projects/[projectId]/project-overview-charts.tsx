@@ -33,15 +33,30 @@ function KpiCard({
   value,
   sub,
   accent,
+  tooltip,
 }: {
   label: string;
   value: string;
   sub?: string;
   accent?: "red" | "green";
+  tooltip?: string;
 }): React.JSX.Element {
   return (
     <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex flex-col gap-1">
-      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</p>
+      <div className="flex items-center gap-1">
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</p>
+        {tooltip && (
+          <div className="relative group/tip">
+            <svg className="w-3 h-3 text-gray-300 hover:text-gray-500 cursor-help flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+            </svg>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tip:block z-20 w-60 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl pointer-events-none leading-relaxed">
+              {tooltip}
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+            </div>
+          </div>
+        )}
+      </div>
       <p className={`text-2xl font-bold tabular-nums ${
         accent === "red" ? "text-red-600" : accent === "green" ? "text-green-600" : "text-gray-900"
       }`}>
@@ -204,28 +219,33 @@ export function ProjectOverviewCharts({
           label="Ingresos"
           value={formatCurrency(totalInvoicesEur)}
           accent="green"
+          tooltip="Suma de facturas de venta emitidas en el período seleccionado."
         />
         <KpiCard
           label="Gastos (facturas)"
           value={formatCurrency(totalExpensesEur)}
           accent="red"
+          tooltip="Suma de facturas de compra recibidas en el período. Incluye el coste de personal facturado por proveedores y freelancers."
         />
         <KpiCard
           label="Coste real (personal)"
           value={loading ? "…" : formatCurrency(tempoTotalCost)}
           accent="red"
+          tooltip="Coste interno del equipo: horas registradas en Tempo × tarifa/hora de cada persona. Métrica informativa — no se resta del beneficio porque ya está incluido en las facturas de compra."
         />
         <KpiCard
           label="Beneficio real"
           value={loading ? "…" : formatCurrency(beneficioReal)}
           accent={loading ? undefined : beneficioReal >= 0 ? "green" : "red"}
           sub={!loading && margenReal != null ? `${margenReal.toFixed(1)}% margen` : undefined}
+          tooltip="Ingresos − Gastos (facturas). El coste de personal no se resta porque ya está capturado en las facturas de compra."
         />
         <KpiCard
           label="Margen real"
           value={loading ? "…" : margenReal != null ? `${margenReal.toFixed(1)}%` : "—"}
           accent={loading || margenReal == null ? undefined : margenReal >= 0 ? "green" : "red"}
           sub="sobre ingresos"
+          tooltip="Beneficio real / Ingresos × 100. Indica qué porcentaje de los ingresos se convierte en beneficio."
         />
       </div>
 
@@ -254,18 +274,21 @@ export function ProjectOverviewCharts({
               label="Coste estimado"
               value={formatCurrency(data!.estimateCost!)}
               accent="red"
+              tooltip="Estimación del coste de personal basada en las horas estimadas en Jira × la tarifa media real del equipo en este período."
             />
             <KpiCard
               label="Beneficio esperado"
               value={beneficioEsperado != null ? formatCurrency(beneficioEsperado) : "—"}
               accent={beneficioEsperado == null ? undefined : beneficioEsperado >= 0 ? "green" : "red"}
               sub={margenEsperado != null ? `${margenEsperado.toFixed(1)}% margen` : undefined}
+              tooltip="Ingresos − Coste estimado de personal. Beneficio proyectado si el equipo hubiera ajustado exactamente a las estimaciones de Jira."
             />
             <KpiCard
               label="Desviación coste"
               value={desvCoste != null ? `${desvCoste >= 0 ? "+" : ""}${desvCoste.toFixed(1)}%` : "—"}
               accent={desvCoste == null ? undefined : desvCoste > 0 ? "red" : "green"}
               sub={desvCoste != null ? (desvCoste > 0 ? "Por encima del estimado" : "Dentro del estimado") : undefined}
+              tooltip="(Coste real personal − Coste estimado) / Coste estimado × 100. Positivo = el equipo ha tardado más de lo estimado."
             />
             <KpiCard
               label="Desviación beneficio"
@@ -276,6 +299,7 @@ export function ProjectOverviewCharts({
               sub={beneficioEsperado != null && margenEsperado != null && margenReal != null
                 ? `${(margenReal - margenEsperado) >= 0 ? "+" : ""}${(margenReal - margenEsperado).toFixed(1)}pp`
                 : undefined}
+              tooltip="Beneficio real − Beneficio esperado. Diferencia entre lo que realmente se ha ganado y lo que se proyectaba ganar según las estimaciones de Jira."
             />
           </div>
         </>
