@@ -4,25 +4,42 @@ import { PaymentsView } from "./payments-view";
 import { type PaymentInvoice } from "./payment-row";
 import { type PendingInvoice } from "./payments-view";
 
-export default async function PaymentsPage(): Promise<React.JSX.Element> {
-  const invoices = await prisma.invoice.findMany({
-    where: { type: { in: ["PURCHASE", "SALE"] } },
-    include: {
-      company: true,
-      erpPayments: true,
-      verifications: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { status: true, periodMismatch: true },
-      },
-    },
-    orderBy: { dueDate: "asc" },
-  });
+const partnerKey = (companyId: string, contactId: string): string =>
+  `${companyId}:${contactId}`;
 
-  // Collect unique (companyId → Set<holdedContactId>) for PURCHASE invoices
+export default async function PaymentsPage(): Promise<React.JSX.Element> {
+  const [invoices, partnerSuppliers] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { type: { in: ["PURCHASE", "SALE"] } },
+      include: {
+        company: true,
+        erpPayments: true,
+        verifications: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { status: true, periodMismatch: true },
+        },
+      },
+      orderBy: { dueDate: "asc" },
+    }),
+    prisma.supplier.findMany({
+      where: { isPartner: true },
+      select: { holdedContactId: true, companyId: true },
+    }),
+  ]);
+
+  const partnerSet = new Set(
+    partnerSuppliers.map((s) => partnerKey(s.companyId ?? "", s.holdedContactId)),
+  );
+
+  // Collect unique (companyId → Set<holdedContactId>) for partner PURCHASE invoices only
   const contactsByCompany = new Map<string, { apiKey: string; contactIds: Set<string> }>();
   for (const inv of invoices) {
-    if (inv.type === "PURCHASE" && inv.holdedContactId) {
+    if (
+      inv.type === "PURCHASE" &&
+      inv.holdedContactId &&
+      partnerSet.has(partnerKey(inv.companyId, inv.holdedContactId))
+    ) {
       const existing = contactsByCompany.get(inv.companyId);
       if (existing) {
         existing.contactIds.add(inv.holdedContactId);
@@ -70,6 +87,11 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     companyNames.add(inv.company.name);
 
     if (inv.type === "PURCHASE") {
+      const isPartner =
+        inv.holdedContactId != null &&
+        partnerSet.has(partnerKey(inv.companyId, inv.holdedContactId));
+      if (!isPartner) continue;
+
       pendingPayments.push({
         id: inv.id,
         holdedId: inv.holdedId,
