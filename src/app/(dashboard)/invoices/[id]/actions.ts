@@ -116,8 +116,8 @@ export async function classifyLine({
     data: { notes: null },
   });
 
-  await updateInvoiceStatus(invoiceId);
   await deriveMarcaFromLines(invoiceId);
+  await updateInvoiceStatus(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   return { classificationId };
@@ -182,8 +182,8 @@ export async function ignoreLine({
   });
 
   await prisma.invoiceLine.update({ where: { id: lineId }, data: { notes: null } });
-  await updateInvoiceStatus(invoiceId);
   await deriveMarcaFromLines(invoiceId);
+  await updateInvoiceStatus(invoiceId);
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
 }
@@ -379,8 +379,8 @@ export async function bulkUpdateInvoiceProject({
   }
 
   for (const invoiceId of invoiceIds) {
-    await updateInvoiceStatus(invoiceId);
     await deriveMarcaFromLines(invoiceId);
+    await updateInvoiceStatus(invoiceId);
   }
 
   await prisma.auditLog.create({
@@ -433,8 +433,8 @@ export async function bulkIgnoreInvoiceProject({
   }
 
   for (const invoiceId of invoiceIds) {
-    await updateInvoiceStatus(invoiceId);
     await deriveMarcaFromLines(invoiceId);
+    await updateInvoiceStatus(invoiceId);
   }
 
   await prisma.auditLog.create({
