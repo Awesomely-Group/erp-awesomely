@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { PaymentRow, type PaymentInvoice } from "./payment-row";
@@ -43,6 +44,19 @@ function monthLabel(key: string): string {
   const d = new Date(year, month - 1, 1);
   const label = d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function relativeMonthLabel(key: string, currentKey: string): string | null {
+  if (key === "sin-fecha") return null;
+  const [ky, km] = key.split("-").map(Number) as [number, number];
+  const [cy, cm] = currentKey.split("-").map(Number) as [number, number];
+  const diff = (ky - cy) * 12 + (km - cm);
+  if (diff === 0) return null;
+  if (diff === -1) return "Mes pasado";
+  if (diff < -1) return `Hace ${Math.abs(diff)} meses`;
+  if (diff === 1) return "Próximo mes";
+  const daysUntil = Math.round((new Date(ky, km - 1, 1).getTime() - Date.now()) / 86400000);
+  return daysUntil <= 31 ? `En ${daysUntil} días` : `En ${diff} meses`;
 }
 
 // ─── Month + half-month grouping ──────────────────────────────────────────────
@@ -109,33 +123,43 @@ interface MonthSectionHeaderProps {
   subtotal: number;
   isPast: boolean;
   isCurrent: boolean;
+  monthKey: string;
+  isExpanded: boolean;
+  onToggle: () => void;
 }
 
-function MonthSectionHeader({ label, count, subtotal, isPast, isCurrent }: MonthSectionHeaderProps): React.JSX.Element {
-  let bg = "bg-gray-50 text-gray-600 border-gray-100";
-  if (isPast) bg = "bg-red-50 text-red-700 border-red-100";
-  else if (isCurrent) bg = "bg-indigo-50 text-indigo-700 border-indigo-100";
+function MonthSectionHeader({ label, count, subtotal, isPast, isCurrent, monthKey, isExpanded, onToggle }: MonthSectionHeaderProps): React.JSX.Element {
+  let borderColor = "border-l-gray-300";
+  let bg = "bg-gray-50";
+  let textColor = "text-gray-700";
+  if (isPast) { borderColor = "border-l-red-500"; bg = "bg-red-50"; textColor = "text-red-800"; }
+  else if (isCurrent) { borderColor = "border-l-indigo-500"; bg = "bg-indigo-50"; textColor = "text-indigo-800"; }
+
+  const relTime = relativeMonthLabel(monthKey, CURRENT_MONTH);
+  const ChevronIcon = isExpanded ? ChevronDown : ChevronUp;
 
   return (
-    <div className={`flex items-center justify-between px-4 py-2 border-b text-xs font-semibold ${bg}`}>
-      <div className="flex items-center gap-2">
-        <span>{label}</span>
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`w-full flex items-center justify-between px-4 py-3 border-b border-l-4 ${borderColor} ${bg} ${textColor} group transition-all`}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <ChevronIcon className="h-4 w-4 shrink-0 opacity-50 group-hover:opacity-80 transition-opacity" />
+        <span className="text-sm font-semibold">{label}</span>
         {isPast && (
-          <span className="rounded-full bg-red-100 text-red-600 px-1.5 py-0.5 text-[10px] font-medium">
-            Vencido
-          </span>
+          <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium shrink-0">Vencido</span>
         )}
         {isCurrent && (
-          <span className="rounded-full bg-indigo-100 text-indigo-600 px-1.5 py-0.5 text-[10px] font-medium">
-            Este mes
-          </span>
+          <span className="rounded-full bg-indigo-100 text-indigo-700 px-2 py-0.5 text-xs font-medium shrink-0">Este mes</span>
         )}
-        <span className="font-normal text-current opacity-60">
+        {relTime && <span className="text-xs opacity-60 font-normal shrink-0">{relTime}</span>}
+        <span className="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium shrink-0">
           {count} {count === 1 ? "factura" : "facturas"}
         </span>
       </div>
-      <span>{formatCurrency(subtotal)}</span>
-    </div>
+      <span className="text-base font-bold shrink-0 ml-4">{formatCurrency(subtotal)}</span>
+    </button>
   );
 }
 
@@ -147,14 +171,45 @@ interface HalfSectionHeaderProps {
 
 function HalfSectionHeader({ label, count, subtotal }: HalfSectionHeaderProps): React.JSX.Element {
   return (
-    <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-white text-xs text-gray-400">
-      <span className="font-medium text-gray-500">
+    <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50/50 text-xs text-gray-500">
+      <span className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">
         {label}
-        <span className="ml-1.5 font-normal">
+        <span className="ml-2 font-normal normal-case tracking-normal">
           · {count} {count === 1 ? "factura" : "facturas"}
         </span>
       </span>
-      <span>{formatCurrency(subtotal)}</span>
+      <span className="font-medium text-gray-600">{formatCurrency(subtotal)}</span>
+    </div>
+  );
+}
+
+// ─── Collapsible month group ──────────────────────────────────────────────────
+
+interface CollapsibleMonthGroupProps {
+  groupKey: string;
+  label: string;
+  count: number;
+  subtotal: number;
+  isPast: boolean;
+  isCurrent: boolean;
+  children: React.ReactNode;
+}
+
+function CollapsibleMonthGroup({ groupKey, label, count, subtotal, isPast, isCurrent, children }: CollapsibleMonthGroupProps): React.JSX.Element {
+  const [isExpanded, setIsExpanded] = useState(true);
+  return (
+    <div>
+      <MonthSectionHeader
+        label={label}
+        count={count}
+        subtotal={subtotal}
+        isPast={isPast}
+        isCurrent={isCurrent}
+        monthKey={groupKey}
+        isExpanded={isExpanded}
+        onToggle={() => setIsExpanded((v) => !v)}
+      />
+      {isExpanded && children}
     </div>
   );
 }
@@ -364,18 +419,19 @@ export function PaymentsView({
             </p>
           ) : (
             paymentsGroups.map((group) => (
-              <div key={group.key}>
-                <MonthSectionHeader
-                  label={group.label}
-                  count={group.firstHalf.length + group.secondHalf.length}
-                  subtotal={group.subtotal}
-                  isPast={group.isPast}
-                  isCurrent={group.isCurrent}
-                />
+              <CollapsibleMonthGroup
+                key={group.key}
+                groupKey={group.key}
+                label={group.label}
+                count={group.firstHalf.length + group.secondHalf.length}
+                subtotal={group.subtotal}
+                isPast={group.isPast}
+                isCurrent={group.isCurrent}
+              >
                 {group.key !== "sin-fecha" && group.firstHalf.length > 0 && (
                   <>
                     <HalfSectionHeader
-                      label="1 – 15"
+                      label="Del 1 al 15"
                       count={group.firstHalf.length}
                       subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
                     />
@@ -387,7 +443,7 @@ export function PaymentsView({
                 {group.key !== "sin-fecha" && group.secondHalf.length > 0 && (
                   <>
                     <HalfSectionHeader
-                      label="16 – fin de mes"
+                      label="Del 16 al fin de mes"
                       count={group.secondHalf.length}
                       subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
                     />
@@ -399,7 +455,7 @@ export function PaymentsView({
                 {group.key === "sin-fecha" && group.firstHalf.map((inv) => (
                   <PaymentRow key={inv.id} invoice={inv} />
                 ))}
-              </div>
+              </CollapsibleMonthGroup>
             ))
           )}
         </div>
@@ -423,18 +479,19 @@ export function PaymentsView({
             </p>
           ) : (
             collectionsGroups.map((group) => (
-              <div key={group.key}>
-                <MonthSectionHeader
-                  label={group.label}
-                  count={group.firstHalf.length + group.secondHalf.length}
-                  subtotal={group.subtotal}
-                  isPast={group.isPast}
-                  isCurrent={group.isCurrent}
-                />
+              <CollapsibleMonthGroup
+                key={group.key}
+                groupKey={group.key}
+                label={group.label}
+                count={group.firstHalf.length + group.secondHalf.length}
+                subtotal={group.subtotal}
+                isPast={group.isPast}
+                isCurrent={group.isCurrent}
+              >
                 {group.key !== "sin-fecha" && group.firstHalf.length > 0 && (
                   <>
                     <HalfSectionHeader
-                      label="1 – 15"
+                      label="Del 1 al 15"
                       count={group.firstHalf.length}
                       subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
                     />
@@ -444,7 +501,7 @@ export function PaymentsView({
                 {group.key !== "sin-fecha" && group.secondHalf.length > 0 && (
                   <>
                     <HalfSectionHeader
-                      label="16 – fin de mes"
+                      label="Del 16 al fin de mes"
                       count={group.secondHalf.length}
                       subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
                     />
@@ -454,7 +511,7 @@ export function PaymentsView({
                 {group.key === "sin-fecha" && group.firstHalf.map((row) => (
                   <CollectionRow key={row.id} row={row} />
                 ))}
-              </div>
+              </CollapsibleMonthGroup>
             ))
           )}
         </div>
