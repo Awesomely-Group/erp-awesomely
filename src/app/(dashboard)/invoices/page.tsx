@@ -264,6 +264,7 @@ export default async function InvoicesPage({
               accountingMonth: (inv.accountingMonth ?? inv.date).toISOString(),
               currency: inv.currency,
               subtotal: Number(inv.subtotal),
+              subtotalEur: Number(inv.subtotal) * Number(inv.fxRateToEur),
               total: Number(inv.total),
               totalEur: Number(inv.totalEur),
               holdedStatus: inv.holdedStatus ?? null,
