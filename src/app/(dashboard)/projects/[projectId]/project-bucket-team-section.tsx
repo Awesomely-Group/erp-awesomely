@@ -149,7 +149,7 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
                 </div>
                 {e.effectiveRoleId && e.supplierRate != null && (e.projectRate == null || e.projectRate !== e.supplierRate) && (
                   <p className="text-[10px] text-gray-400 mt-0.5 ml-10">
-                    Tarifa proveedor: {e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+                    Coste proveedor: {e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
   				      </p>
                 )}
               </li>

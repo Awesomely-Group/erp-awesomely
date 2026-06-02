@@ -66,7 +66,7 @@ function RoleRow({
             placeholder="0.00"
             className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right"
           />
-          <span className="text-sm text-gray-500">€/h</span>
+          <span className="text-sm text-gray-500">precio/hora</span>
         </div>
         <button
           onClick={handleSave}
@@ -182,7 +182,7 @@ function AddRoleForm({
           required
           className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right"
         />
-        <span className="text-sm text-gray-500">€/h</span>
+        <span className="text-sm text-gray-500">precio/hora</span>
       </div>
       <button
         type="submit"
@@ -229,7 +229,7 @@ export function RolesSection({
   return (
     <div className="bg-white rounded-lg border border-gray-200 mb-6">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Roles y tarifas</h2>
+        <h2 className="text-sm font-semibold text-gray-700">Roles y costes</h2>
         {roles.length > 0 && (
           <span className="text-xs text-gray-400">{roles.length} rol{roles.length !== 1 ? "es" : ""}</span>
         )}

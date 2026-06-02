@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
 import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
-import type { ProjectUserRoleEntry } from "@/app/api/projects/[projectId]/user-roles/route";
-import { setProjectUserRole } from "./actions";
 
 export interface ProjectRow {
   id: string;
@@ -325,129 +323,6 @@ function useMonthCostData(
   return { data, loading };
 }
 
-// ─── Roles panel ─────────────────────────────────────────────────────────────
-
-function RolesPanel({
-  projectId,
-  from,
-  to,
-  onClose,
-}: {
-  projectId: string;
-  from: string;
-  to: string;
-  onClose: () => void;
-}): React.JSX.Element {
-  const [entries, setEntries] = useState<ProjectUserRoleEntry[] | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
-  const [rates, setRates] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    fetch(`/api/projects/${projectId}/user-roles?from=${from}&to=${to}`)
-      .then(async (r) => r.ok ? (await r.json()) as ProjectUserRoleEntry[] : [])
-      .then((data) => {
-        setEntries(data);
-        const initial: Record<string, string> = {};
-        for (const e of data) {
-          initial[e.accountId] = (e.projectRate ?? e.supplierRate ?? "").toString();
-        }
-        setRates(initial);
-      })
-      .catch(() => setEntries([]));
-  }, [projectId, from, to]);
-
-  async function handleRoleChange(accountId: string, roleId: string, rate: string): Promise<void> {
-    if (roleId === "") {
-      setPending(accountId);
-      await setProjectUserRole(projectId, accountId, null);
-      setEntries((prev) =>
-        prev?.map((e) => e.accountId === accountId ? { ...e, effectiveRoleId: null, projectRate: null } : e) ?? null
-      );
-      setPending(null);
-      return;
-    }
-    const entry = entries?.find((e) => e.accountId === accountId);
-    const effectiveRate = rate !== "" ? parseFloat(rate) : (entry?.supplierRate ?? null);
-    setPending(accountId);
-    await setProjectUserRole(projectId, accountId, roleId, effectiveRate);
-    setEntries((prev) =>
-      prev?.map((e) => e.accountId === accountId ? { ...e, effectiveRoleId: roleId, projectRate: effectiveRate } : e) ?? null
-    );
-    setPending(null);
-  }
-
-  async function handleRateBlur(accountId: string, roleId: string | null, rate: string): Promise<void> {
-    if (!roleId) return;
-    const parsed = rate !== "" ? parseFloat(rate) : null;
-    setPending(accountId);
-    await setProjectUserRole(projectId, accountId, roleId, parsed);
-    setEntries((prev) =>
-      prev?.map((e) => e.accountId === accountId ? { ...e, projectRate: parsed } : e) ?? null
-    );
-    setPending(null);
-  }
-
-  return (
-    <div className="absolute right-0 top-full mt-1 z-50 w-96 bg-white rounded-lg shadow-lg border border-gray-200 text-left" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-        <span className="text-xs font-semibold text-gray-600">Tarifas del proyecto</span>
-        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
-      </div>
-      {entries === null ? (
-        <div className="px-3 py-3 text-xs text-gray-400 animate-pulse">Cargando…</div>
-      ) : entries.length === 0 ? (
-        <div className="px-3 py-3 text-xs text-gray-400">Sin horas en este período.</div>
-      ) : (
-        <ul className="max-h-72 overflow-y-auto divide-y divide-gray-50">
-          {entries.map((e) => (
-            <li key={e.accountId} className="px-3 py-2.5">
-              <p className="text-xs font-medium text-gray-700 truncate mb-1.5">{e.displayName}</p>
-              {e.roles.length === 0 ? (
-                <span className="text-xs text-gray-400">Sin roles (configura en Proveedores)</span>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  <select
-                    value={e.effectiveRoleId ?? ""}
-                    disabled={pending === e.accountId}
-                    onChange={(ev) => void handleRoleChange(e.accountId, ev.target.value, rates[e.accountId] ?? "")}
-                    className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-50"
-                  >
-                    <option value="">— Sin tarifa —</option>
-                    {e.roles.map((r) => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
-                    ))}
-                  </select>
-                  {e.effectiveRoleId && (
-                    <>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={rates[e.accountId] ?? ""}
-                        disabled={pending === e.accountId}
-                        onChange={(ev) => setRates((prev) => ({ ...prev, [e.accountId]: ev.target.value }))}
-                        onBlur={(ev) => void handleRateBlur(e.accountId, e.effectiveRoleId, ev.target.value)}
-                        className="w-20 text-xs border border-gray-200 rounded px-2 py-1 disabled:opacity-50 text-right"
-                        placeholder={e.supplierRate?.toString() ?? "0"}
-                      />
-                      <span className="text-xs text-gray-400 flex-shrink-0">€/h</span>
-                    </>
-                  )}
-                </div>
-              )}
-              {e.effectiveRoleId && e.supplierRate != null && (e.projectRate == null || e.projectRate !== e.supplierRate) && (
-                <p className="text-[10px] text-gray-400 mt-0.5">
-                  Tarifa proveedor: {e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 // ─── Project row ──────────────────────────────────────────────────────────────
 
 interface ProjectRowProps {
@@ -471,17 +346,6 @@ function ProjectTableRow({
 }: ProjectRowProps): React.JSX.Element {
   const router = useRouter();
   const { data, loading } = useMonthCostData(project.id, project.hasTempoToken, periodFrom, periodTo);
-  const [rolesOpen, setRolesOpen] = useState(false);
-  const rolesRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!rolesOpen) return;
-    function handleClick(e: MouseEvent): void {
-      if (rolesRef.current && !rolesRef.current.contains(e.target as Node)) setRolesOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [rolesOpen]);
 
   const dash = <span className="text-gray-300">—</span>;
   const spin = <span className="text-gray-300 animate-pulse text-xs">…</span>;
@@ -578,30 +442,6 @@ function ProjectTableRow({
 
       <td className="px-3 py-3 text-right tabular-nums text-sm border-l border-gray-100">{estHoursCell()}</td>
       <td className="px-2 py-3 text-right tabular-nums text-sm">{estCostCell()}</td>
-
-      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-        <div ref={rolesRef} className="relative inline-block">
-          <button
-            type="button"
-            title="Configurar tarifas"
-            onClick={() => setRolesOpen((v) => !v)}
-            className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-500 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
-          {rolesOpen && (
-            <RolesPanel
-              projectId={project.id}
-              from={periodFrom}
-              to={periodTo}
-              onClose={() => setRolesOpen(false)}
-            />
-          )}
-        </div>
-      </td>
 
       <td className="px-4 py-3">
         <svg
@@ -772,7 +612,6 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
               )}
               <th className="px-3 py-3 text-right font-medium text-gray-400 whitespace-nowrap text-xs border-l border-gray-100">Est. h</th>
               <th className="px-2 py-3 text-right font-medium text-gray-400 whitespace-nowrap text-xs">Est. €</th>
-              <th className="px-3 py-3" />
               <th className="px-4 py-3" />
             </tr>
           </thead>

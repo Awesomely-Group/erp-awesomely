@@ -170,14 +170,16 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
           {response.unassignedUsers.length > 0 && (
             <UnassignedAlert users={response.unassignedUsers} />
           )}
-
-          <ProjectBucketTeamSection
-            projectId={projectId}
-            from={from}
-            to={to}
-            bucketRoleIds={response.buckets.map((b) => b.roleId)}
-          />
         </div>
+      )}
+
+      {response !== null && (
+        <ProjectBucketTeamSection
+          projectId={projectId}
+          from={from}
+          to={to}
+          bucketRoleIds={response.buckets.map((b) => b.roleId)}
+        />
       )}
     </div>
   );

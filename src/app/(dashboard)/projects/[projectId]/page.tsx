@@ -8,6 +8,7 @@ import { ProjectInvoicesSection } from "./project-invoices-section";
 import { StatusBadge } from "./status-badge";
 import { ProjectSettingsPanel } from "./project-settings-panel";
 import { ProjectTypesDashboard } from "./project-types-dashboard";
+import { ProjectBucketTeamSection } from "./project-bucket-team-section";
 
 interface Props {
   params: Promise<{ projectId: string }>;
@@ -202,6 +203,16 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           })),
         }}
       />
+
+      {/* Asignación de roles para proyectos sin bolsas de horas */}
+      {!!project.workspace.tempoApiToken && !project.isBolsasHoras && (
+        <ProjectBucketTeamSection
+          projectId={project.id}
+          from={fromStr}
+          to={toStr}
+          bucketRoleIds={[]}
+        />
+      )}
 
       {/* Facturas relacionadas */}
       <ProjectInvoicesSection
