@@ -148,6 +148,7 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
           <option value="">Todos</option>
           <option value={STATUS_FILTER_UNASSIGNED}>Sin asignar</option>
           <option value="PENDING">Sin clasificar</option>
+          <option value="SIN_MARCA">Sin Marca</option>
           <option value="PARTIAL">Parcial</option>
           <option value="CLASSIFIED">Clasificado</option>
           <option value="APPROVED">Aprobado</option>

@@ -230,6 +230,7 @@ enum InvoiceStatus {
   CLASSIFIED
   REVIEWED
   APPROVED
+  SIN_MARCA
 }
 
 model Invoice {

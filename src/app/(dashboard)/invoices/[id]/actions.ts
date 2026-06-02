@@ -396,3 +396,57 @@ export async function bulkUpdateInvoiceProject({
 
   revalidatePath("/invoices");
 }
+
+export async function bulkIgnoreInvoiceProject({
+  invoiceIds,
+}: {
+  invoiceIds: string[];
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+  if (invoiceIds.length === 0) return;
+
+  const lines = await prisma.invoiceLine.findMany({
+    where: { invoiceId: { in: invoiceIds } },
+    select: { id: true, invoiceId: true },
+  });
+
+  for (const line of lines) {
+    await prisma.classification.upsert({
+      where: { invoiceLineId: line.id },
+      create: {
+        invoiceLineId: line.id,
+        projectId: null,
+        marca: null,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+        status: ClassificationStatus.IGNORED,
+      },
+      update: {
+        projectId: null,
+        marca: null,
+        classifiedBy: session.user.email ?? session.user.id,
+        classifiedAt: new Date(),
+        status: ClassificationStatus.IGNORED,
+      },
+    });
+  }
+
+  for (const invoiceId of invoiceIds) {
+    await updateInvoiceStatus(invoiceId);
+    await deriveMarcaFromLines(invoiceId);
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Invoice",
+      entityId: invoiceIds[0],
+      previousValue: { bulk: true, count: invoiceIds.length },
+      newValue: { status: "IGNORED", invoiceIds },
+    },
+  });
+
+  revalidatePath("/invoices");
+}

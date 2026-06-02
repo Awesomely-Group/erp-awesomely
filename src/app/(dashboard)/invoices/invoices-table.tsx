@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { MARCA_OPTIONS } from "@/lib/org";
-import { bulkUpdateInvoiceMarca, bulkUpdateInvoiceProject } from "./[id]/actions";
+import { bulkUpdateInvoiceMarca, bulkUpdateInvoiceProject, bulkIgnoreInvoiceProject } from "./[id]/actions";
 
 function formatMonth(isoDate: string): string {
   return new Date(isoDate).toLocaleDateString("es-ES", {
@@ -19,6 +19,7 @@ const STATUS_LABELS: Record<string, string> = {
   PARTIAL: "Parcial",
   CLASSIFIED: "Clasificado",
   APPROVED: "Aprobado",
+  SIN_MARCA: "Sin Marca",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -26,6 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
   PARTIAL: "bg-amber-100 text-amber-700",
   CLASSIFIED: "bg-blue-100 text-blue-700",
   APPROVED: "bg-green-100 text-green-700",
+  SIN_MARCA: "bg-orange-100 text-orange-700",
 };
 
 const HOLDED_STATUS_LABELS: Record<number, string> = {
@@ -123,6 +125,13 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
     });
   }
 
+  function handleBulkIgnoreProject(): void {
+    startTransition(async () => {
+      await bulkIgnoreInvoiceProject({ invoiceIds: [...selected] });
+      setSelected(new Set());
+    });
+  }
+
   if (invoices.length === 0) {
     return (
       <tr>
@@ -186,6 +195,18 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
                     Se aplicará a todas las líneas de la factura
                   </span>
                 </div>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={handleBulkIgnoreProject}
+                  disabled={isPending}
+                  className="rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white hover:bg-gray-600 disabled:opacity-50"
+                >
+                  {isPending ? "Aplicando…" : "Clasificar sin proyecto"}
+                </button>
+                <span className="text-[10px] text-indigo-400 leading-tight">
+                  Ignora la selección de proyecto
+                </span>
               </div>
               <button
                 onClick={() => setSelected(new Set())}
