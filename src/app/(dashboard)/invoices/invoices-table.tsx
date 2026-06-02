@@ -52,6 +52,7 @@ interface InvoiceRow {
   counterparty: string | null;
   date: string;
   accountingMonth: string;
+  currency: string;
   subtotal: number;
   total: number;
   totalEur: number;
@@ -270,10 +271,10 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
             <td className="px-4 py-3 text-gray-600 capitalize">{formatMonth(inv.accountingMonth)}</td>
             <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
             <td className="px-4 py-3 text-right text-gray-600">
-              {formatCurrency(inv.subtotal)}
+              {formatCurrency(inv.subtotal, inv.currency)}
             </td>
             <td className="px-4 py-3 text-right text-gray-600">
-              {formatCurrency(inv.total)}
+              {formatCurrency(inv.total, inv.currency)}
             </td>
             <td className="px-4 py-3 text-right font-medium">
               {formatCurrency(inv.totalEur)}

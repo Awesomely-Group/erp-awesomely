@@ -243,7 +243,7 @@ export default async function InvoicesPage({
             <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
             <th className="px-4 py-3 text-left font-medium text-gray-600">Mes Referencia</th>
             <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Subtotal</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">Base imp.</th>
             <th className="px-4 py-3 text-right font-medium text-gray-600">Total</th>
             <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
             <th className="px-4 py-3 text-left font-medium text-gray-600">Estado Holded</th>
@@ -262,6 +262,7 @@ export default async function InvoicesPage({
               counterparty: inv.counterparty,
               date: inv.date.toISOString(),
               accountingMonth: (inv.accountingMonth ?? inv.date).toISOString(),
+              currency: inv.currency,
               subtotal: Number(inv.subtotal),
               total: Number(inv.total),
               totalEur: Number(inv.totalEur),
