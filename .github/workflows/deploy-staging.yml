@@ -41,7 +41,7 @@ jobs:
       - name: Build project
         run: pnpm next build
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
 
       - name: Trigger Vercel staging deploy hook
         env:

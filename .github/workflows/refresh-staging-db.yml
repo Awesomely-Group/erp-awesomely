@@ -1,0 +1,33 @@
+name: Refresh staging database from production
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Restore staging branch to production state
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          NEON_STAGING_BRANCH_ID: ${{ secrets.NEON_STAGING_BRANCH_ID }}
+        run: |
+          response=$(curl -fsS -w "\n%{http_code}" -X POST \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_STAGING_BRANCH_ID/restore" \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"source_branch_id": "main"}')
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -1)
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Error restoring staging branch (HTTP $http_code): $body"
+            exit 1
+          fi
+
+          echo "Staging database restored from production (HTTP $http_code)"
