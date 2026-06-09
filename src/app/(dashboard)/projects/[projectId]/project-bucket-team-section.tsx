@@ -18,7 +18,9 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
   const [rates, setRates] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntries(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
     fetch(`/api/projects/${projectId}/user-roles?from=${from}&to=${to}`)
       .then(async (r) => {

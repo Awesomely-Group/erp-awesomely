@@ -118,7 +118,9 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResponse(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
     fetch(`/api/projects/${projectId}/hour-buckets?from=${from}&to=${to}`)
       .then(async (res) => {
@@ -156,7 +158,7 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
       )}
 
       {response !== null && response.buckets.length === 0 && (
-        <p className="text-sm text-gray-400">No hay bolsas configuradas. Usa "Configurar" para añadirlas.</p>
+        <p className="text-sm text-gray-400">No hay bolsas configuradas. Usa &quot;Configurar&quot; para añadirlas.</p>
       )}
 
       {response !== null && response.buckets.length > 0 && (

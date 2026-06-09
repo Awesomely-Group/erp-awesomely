@@ -40,6 +40,7 @@ export function ProjectTypesDashboard({ projectId, from, to, hasTempoToken, conf
 
   useEffect(() => {
     if (!needsTempoData) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTempoData(null);
     fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month-cost`)
       .then(async (res) => {

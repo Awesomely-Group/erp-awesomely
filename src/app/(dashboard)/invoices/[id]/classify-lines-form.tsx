@@ -474,7 +474,7 @@ function UnifiedClassifier({
       </div>
 
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-gray-600">Proyecto Jira <span className="text-gray-400 font-normal">(selecciona un proyecto o "Sin proyecto")</span></label>
+        <label className="block text-xs font-medium text-gray-600">Proyecto Jira <span className="text-gray-400 font-normal">(selecciona un proyecto o &quot;Sin proyecto&quot;)</span></label>
         <ProjectCombobox
           projects={availableProjects}
           value={selectedProject}

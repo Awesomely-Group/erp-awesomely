@@ -48,7 +48,7 @@ export function ProjectRegularFeeSection({ entries, months, totalHours }: Props)
       </div>
 
       {entries.length === 0 ? (
-        <p className="text-sm text-gray-400">No hay fees configurados. Usa "Configurar" para añadirlos.</p>
+        <p className="text-sm text-gray-400">No hay fees configurados. Usa &quot;Configurar&quot; para añadirlos.</p>
       ) : (
         <>
           {/* Per-person fee table */}
