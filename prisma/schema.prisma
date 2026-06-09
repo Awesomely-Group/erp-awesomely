@@ -143,6 +143,7 @@ model JiraProject {
   hourBuckets                  HourBucket[]
   regularFeeEntries            RegularFeeEntry[]
   issueHourBucketAssignments   IssueHourBucketAssignment[]
+  budgets                      Budget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -344,6 +345,8 @@ model Classification {
   invoiceLine   InvoiceLine          @relation(fields: [invoiceLineId], references: [id], onDelete: Cascade)
   projectId     String?
   project       JiraProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  budgetId      String?
+  budget        Budget?              @relation(fields: [budgetId], references: [id], onDelete: SetNull)
   marca         String?
   status        ClassificationStatus @default(CLASSIFIED)
   notes         String?
@@ -361,6 +364,7 @@ model Classification {
   updatedAt DateTime @updatedAt
 
   @@index([projectId])
+  @@index([budgetId])
   @@index([status])
   @@map("classifications")
 }
@@ -498,6 +502,8 @@ model RoleTemplate {
   hourBuckets       HourBucket[]
   projectUserRoles  ProjectUserRole[]
   regularFeeEntries RegularFeeEntry[]
+  budgetLines       BudgetLine[]
+  roleRates         RoleRate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -627,6 +633,8 @@ model Proforma {
   project         JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   notes           String?
 
+  paymentTerms    PaymentTerm[]
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -667,6 +675,138 @@ model Forecast {
   @@index([month])
   @@index([marca])
   @@map("forecasts")
+}
+
+// ─── Presupuestos ─────────────────────────────────────────────────────────────
+
+enum BudgetType {
+  PRECIO_CERRADO
+  BOLSA_DE_HORAS
+  FEE_REGULAR
+
+  @@map("budget_type")
+}
+
+enum BudgetRegion {
+  UK
+  US
+  EU
+  OTHER
+
+  @@map("budget_region")
+}
+
+enum BudgetStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+
+  @@map("budget_status")
+}
+
+enum BudgetTemplate {
+  SOLUTIONS
+  TROUPE
+
+  @@map("budget_template")
+}
+
+enum PaymentTermValueType {
+  PERCENTAGE
+  AMOUNT
+
+  @@map("payment_term_value_type")
+}
+
+model Budget {
+  id        String       @id @default(cuid())
+  projectId String
+  project   JiraProject  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  name           String
+  type           BudgetType
+  region         BudgetRegion   @default(EU)
+  amount         Decimal
+  currency       String         @default("EUR")
+  estimatedHours Float?
+  monthlyFee     Decimal?
+  status         BudgetStatus   @default(DRAFT)
+  template       BudgetTemplate @default(SOLUTIONS)
+  startDate      DateTime?
+  endDate        DateTime?
+  notes          String?
+
+  lines          BudgetLine[]
+  paymentTerms   PaymentTerm[]
+  classifications Classification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@map("budgets")
+}
+
+model BudgetLine {
+  id       String      @id @default(cuid())
+  budgetId String
+  budget   Budget      @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  roleId   String?
+  role     RoleTemplate? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  phase          String
+  task           String
+  estimatedHours Float
+  pvpPerHour     Decimal
+  costPerHour    Decimal
+  sortOrder      Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([budgetId])
+  @@index([roleId])
+  @@map("budget_lines")
+}
+
+model PaymentTerm {
+  id       String               @id @default(cuid())
+  budgetId String
+  budget   Budget               @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  order    Int
+  valueType PaymentTermValueType
+  value    Decimal
+  dueDate  DateTime?
+  description String?
+
+  proformaId String?
+  proforma   Proforma? @relation(fields: [proformaId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([budgetId])
+  @@index([proformaId])
+  @@map("payment_terms")
+}
+
+/// Tarifa PVP por rol y región de cliente. Gestiona el precio de venta (no el coste interno).
+model RoleRate {
+  id     String       @id @default(cuid())
+  roleId String
+  role   RoleTemplate @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  region BudgetRegion
+  pvp    Decimal
+  cost   Decimal
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roleId, region])
+  @@index([roleId])
+  @@map("role_rates")
 }
 
 // ─── Account Mappings ──────────────────────────────────────────────────────────

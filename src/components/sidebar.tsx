@@ -17,6 +17,7 @@ import {
   LineChart,
   BarChart3,
   PanelLeftClose,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
@@ -26,6 +27,7 @@ const navigation = [
   { name: "Facturas", href: "/invoices", icon: FileText },
   { name: "Proformas", href: "/proformas", icon: ClipboardList },
   { name: "Proyectos", href: "/projects", icon: FolderKanban },
+  { name: "Presupuestos", href: "/budgets", icon: BookOpen },
   { name: "Proveedores", href: "/suppliers", icon: Users },
   { name: "Flujo de Caja", href: "/cashflow", icon: TrendingUp },
   { name: "P&L", href: "/pl", icon: BarChart3 },
