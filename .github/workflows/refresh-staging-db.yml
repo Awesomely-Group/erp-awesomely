@@ -16,7 +16,7 @@ jobs:
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
           NEON_STAGING_BRANCH_ID: ${{ secrets.NEON_STAGING_BRANCH_ID }}
         run: |
-          response=$(curl -fsS -w "\n%{http_code}" -X POST \
+          response=$(curl -fsS -L -w "\n%{http_code}" -X POST \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_STAGING_BRANCH_ID/restore" \
             -H "Authorization: Bearer $NEON_API_KEY" \
             -H "Content-Type: application/json" \
