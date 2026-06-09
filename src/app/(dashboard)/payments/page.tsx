@@ -11,6 +11,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
   const [invoices, partnerSuppliers] = await Promise.all([
     prisma.invoice.findMany({
       where: { type: { in: ["PURCHASE", "SALE"] } },
+      omit: { status: true },
       include: {
         company: true,
         erpPayments: true,
