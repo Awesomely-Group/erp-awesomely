@@ -23,7 +23,9 @@ type ProformaRow = {
   dueDate: Date | null;
   holdedStatus: number | null;
   currency: string;
+  fxRateToEur: unknown;
   subtotal: unknown;
+  total: unknown;
   totalEur: unknown;
   marca: string | null;
   projectId: string | null;
@@ -212,7 +214,8 @@ export function ProformasTable({
             <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
             <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
             <th className="px-4 py-3 text-right font-medium text-gray-600 whitespace-nowrap">Subtotal</th>
-            <SortTh label="Total (EUR)" active={sortBy === "totalEur"} sortDir={sortDir} href={buildSortUrl("totalEur")} align="right" className="whitespace-nowrap text-xs" />
+            <th className="px-4 py-3 text-right font-medium text-gray-600 whitespace-nowrap">Total</th>
+            <SortTh label="Total EUR" active={sortBy === "totalEur"} sortDir={sortDir} href={buildSortUrl("totalEur")} align="right" className="whitespace-nowrap text-xs" />
             <th className="px-4 py-3 text-center font-medium text-gray-600">Holded</th>
           </tr>
         </thead>
@@ -273,13 +276,19 @@ export function ProformasTable({
                   marca={pf.marca}
                 />
               </td>
-              <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">
-                {pf.currency !== "EUR" ? (
-                  <span className="text-xs text-gray-400">{pf.currency} </span>
-                ) : null}
-                {formatCurrency(Number(pf.subtotal))}
+              <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
+                <div>{formatCurrency(Number(pf.subtotal), pf.currency)}</div>
+                {pf.currency !== "EUR" && (
+                  <div className="text-xs text-gray-400">{formatCurrency(Number(pf.subtotal) * Number(pf.fxRateToEur))}</div>
+                )}
               </td>
-              <td className="px-4 py-3 text-right font-medium text-green-700 whitespace-nowrap">
+              <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
+                <div>{formatCurrency(Number(pf.total), pf.currency)}</div>
+                {pf.currency !== "EUR" && (
+                  <div className="text-xs text-gray-400">{formatCurrency(Number(pf.totalEur))}</div>
+                )}
+              </td>
+              <td className="px-4 py-3 text-right font-medium whitespace-nowrap">
                 {formatCurrency(Number(pf.totalEur))}
               </td>
               <td className="px-4 py-3 text-center">
