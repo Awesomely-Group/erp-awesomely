@@ -11,7 +11,7 @@ import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 
-const VALID_SORT_KEYS = ["date", "totalEur", "status", "counterparty"] as const;
+const VALID_SORT_KEYS = ["date", "totalEur", "status", "counterparty", "number", "companyName", "accountingMonth", "holdedStatus"] as const;
 type SortKey = (typeof VALID_SORT_KEYS)[number];
 type SortDir = "asc" | "desc";
 
@@ -115,14 +115,15 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
 
   const where = { ...baseWhere, type: activeType };
 
-  const orderBy =
-    sortBy === "totalEur"
-      ? { totalEur: sortDir }
-      : sortBy === "status"
-        ? { status: sortDir }
-        : sortBy === "counterparty"
-          ? { counterparty: sortDir }
-          : { date: sortDir };
+  const orderBy: Prisma.InvoiceOrderByWithRelationInput =
+    sortBy === "totalEur" ? { totalEur: sortDir }
+    : sortBy === "status" ? { status: sortDir }
+    : sortBy === "counterparty" ? { counterparty: sortDir }
+    : sortBy === "number" ? { number: sortDir }
+    : sortBy === "companyName" ? { company: { name: sortDir } }
+    : sortBy === "accountingMonth" ? { accountingMonth: sortDir }
+    : sortBy === "holdedStatus" ? { holdedStatus: sortDir }
+    : { date: sortDir };
 
   const [invoices, total, saleCount, purchaseCount] = await Promise.all([
     prisma.invoice.findMany({
@@ -237,16 +238,16 @@ export default async function InvoicesPage({
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
             <th className="w-8 px-4 py-3" />
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad Legal</th>
+            <SortTh col="number" label="Número" sortBy={sortBy} sortDir={sortDir} href={sortUrl("number")} />
+            <SortTh col="companyName" label="Entidad Legal" sortBy={sortBy} sortDir={sortDir} href={sortUrl("companyName")} />
             <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
             <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Mes Referencia</th>
+            <SortTh col="accountingMonth" label="Mes Referencia" sortBy={sortBy} sortDir={sortDir} href={sortUrl("accountingMonth")} />
             <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
             <th className="px-4 py-3 text-right font-medium text-gray-600">Base imp.</th>
             <th className="px-4 py-3 text-right font-medium text-gray-600">Total</th>
             <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Estado Holded</th>
+            <SortTh col="holdedStatus" label="Estado Holded" sortBy={sortBy} sortDir={sortDir} href={sortUrl("holdedStatus")} />
             <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
           </tr>
         </thead>

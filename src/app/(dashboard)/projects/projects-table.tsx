@@ -610,9 +610,9 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Clave</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Proyecto</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
+              <SortThClick label="Clave" active={sortKey === "jiraKey"} sortDir={sortDir} onClick={() => handleSort("jiraKey")} className="whitespace-nowrap" />
+              <SortThClick label="Proyecto" active={sortKey === "name"} sortDir={sortDir} onClick={() => handleSort("name")} className="whitespace-nowrap" />
+              <SortThClick label="Estado" active={sortKey === "status"} sortDir={sortDir} onClick={() => handleSort("status")} className="whitespace-nowrap" />
               {months.map((m) => (
                 <React.Fragment key={m.key}>
                   <th className="px-3 py-3 text-right font-medium text-gray-600 whitespace-nowrap capitalize">
