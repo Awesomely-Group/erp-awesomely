@@ -264,9 +264,9 @@ export function PaymentsView({
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<"pagos" | "cobros">("pagos");
   const [company, setCompany] = useState("all");
-  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
+  const [selectedMonth, setSelectedMonth] = useState("all");
 
-  const hasFilters = company !== "all" || selectedMonth !== CURRENT_MONTH;
+  const hasFilters = company !== "all" || selectedMonth !== "all";
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
