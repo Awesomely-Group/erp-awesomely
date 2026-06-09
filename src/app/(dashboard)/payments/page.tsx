@@ -4,8 +4,10 @@ import { PaymentsView } from "./payments-view";
 import { type PaymentInvoice } from "./payment-row";
 import { type PendingInvoice } from "./payments-view";
 
-const partnerKey = (companyId: string, contactId: string): string =>
-  `${companyId}:${contactId}`;
+// holdedContactId is not populated on invoices (Holded list endpoint omits it),
+// so we match partners by normalized counterparty name + companyId instead.
+const nameKey = (companyId: string, name: string): string =>
+  `${companyId}:${name.toLowerCase().trim()}`;
 
 export default async function PaymentsPage(): Promise<React.JSX.Element> {
   const [invoices, partnerSuppliers] = await Promise.all([
@@ -25,31 +27,37 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     }),
     prisma.supplier.findMany({
       where: { isPartner: true },
-      select: { holdedContactId: true, companyId: true },
+      select: { holdedContactId: true, companyId: true, name: true },
     }),
   ]);
 
-  const partnerSet = new Set(
-    partnerSuppliers.map((s) => partnerKey(s.companyId ?? "", s.holdedContactId)),
+  const partnerNameSet = new Set(
+    partnerSuppliers.map((s) => nameKey(s.companyId ?? "", s.name)),
+  );
+  // Map name key → supplier's holdedContactId (for IBAN lookup)
+  const supplierContactIdByName = new Map<string, string>(
+    partnerSuppliers
+      .filter((s) => s.holdedContactId)
+      .map((s) => [nameKey(s.companyId ?? "", s.name), s.holdedContactId]),
   );
 
-  // Collect unique (companyId → Set<holdedContactId>) for partner PURCHASE invoices only
+  // Collect unique (companyId → Set<holdedContactId>) for partner PURCHASE invoices
   const contactsByCompany = new Map<string, { apiKey: string; contactIds: Set<string> }>();
   for (const inv of invoices) {
-    if (
-      inv.type === "PURCHASE" &&
-      inv.holdedContactId &&
-      partnerSet.has(partnerKey(inv.companyId, inv.holdedContactId))
-    ) {
-      const existing = contactsByCompany.get(inv.companyId);
-      if (existing) {
-        existing.contactIds.add(inv.holdedContactId);
-      } else {
-        contactsByCompany.set(inv.companyId, {
-          apiKey: inv.company.holdedApiKey,
-          contactIds: new Set([inv.holdedContactId]),
-        });
-      }
+    if (inv.type !== "PURCHASE" || !inv.counterparty) continue;
+    const nk = nameKey(inv.companyId, inv.counterparty);
+    if (!partnerNameSet.has(nk)) continue;
+    const contactId = supplierContactIdByName.get(nk);
+    if (!contactId) continue;
+
+    const existing = contactsByCompany.get(inv.companyId);
+    if (existing) {
+      existing.contactIds.add(contactId);
+    } else {
+      contactsByCompany.set(inv.companyId, {
+        apiKey: inv.company.holdedApiKey,
+        contactIds: new Set([contactId]),
+      });
     }
   }
 
@@ -96,10 +104,10 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     companyNames.add(inv.company.name);
 
     if (inv.type === "PURCHASE") {
-      const isPartner =
-        inv.holdedContactId != null &&
-        partnerSet.has(partnerKey(inv.companyId, inv.holdedContactId));
-      if (!isPartner) continue;
+      const nk = inv.counterparty ? nameKey(inv.companyId, inv.counterparty) : null;
+      if (!nk || !partnerNameSet.has(nk)) continue;
+
+      const supplierContactId = supplierContactIdByName.get(nk);
 
       pendingPayments.push({
         id: inv.id,
@@ -120,9 +128,9 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
           paidBy: p.paidBy,
           notes: p.notes,
         })),
-        contactIban: inv.holdedContactId ? (ibanMap.get(inv.holdedContactId) ?? null) : null,
-        contactHoldedUrl: inv.holdedContactId
-          ? `https://app.holded.com/contacts/${inv.holdedContactId}`
+        contactIban: supplierContactId ? (ibanMap.get(supplierContactId) ?? null) : null,
+        contactHoldedUrl: supplierContactId
+          ? `https://app.holded.com/contacts/${supplierContactId}`
           : null,
       });
     } else {
