@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { Pencil, Trash2, Plus, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SortThClick } from "@/components/sort-th";
 import {
   createAccountMapping,
   updateAccountMapping,
@@ -23,6 +24,9 @@ interface AccountMapping {
 interface Props {
   mappings: AccountMapping[];
 }
+
+type SortKey = "tag" | "description" | "l1" | "accountNumSL" | "accountNameSL" | "accountNumOU" | "accountNameOU";
+type SortDir = "asc" | "desc";
 
 const L1_OPTIONS = ["REVENUE", "COGS", "OPEX", "CAPEX", "AMORT"] as const;
 
@@ -53,8 +57,34 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isPending, startTransition] = useTransition();
+  const [sortKey, setSortKey] = useState<SortKey>("tag");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const filtered = l1Filter ? mappings.filter((m) => m.l1 === l1Filter) : mappings;
+  function handleSort(col: SortKey): void {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("asc");
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const base = l1Filter ? mappings.filter((m) => m.l1 === l1Filter) : mappings;
+    return [...base].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "tag": cmp = a.tag.localeCompare(b.tag); break;
+        case "description": cmp = a.description.localeCompare(b.description); break;
+        case "l1": cmp = a.l1.localeCompare(b.l1); break;
+        case "accountNumSL": cmp = (a.accountNumSL ?? "").localeCompare(b.accountNumSL ?? ""); break;
+        case "accountNameSL": cmp = (a.accountNameSL ?? "").localeCompare(b.accountNameSL ?? ""); break;
+        case "accountNumOU": cmp = (a.accountNumOU ?? "").localeCompare(b.accountNumOU ?? ""); break;
+        case "accountNameOU": cmp = (a.accountNameOU ?? "").localeCompare(b.accountNameOU ?? ""); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [mappings, l1Filter, sortKey, sortDir]);
 
   function startEdit(m: AccountMapping): void {
     setEditingId(m.id);
@@ -231,13 +261,13 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Tag</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Descripción</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">L1</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Num SL</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Cuenta SL</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Num OÜ</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Cuenta OÜ</th>
+              <SortThClick label="Tag" active={sortKey === "tag"} sortDir={sortDir} onClick={() => handleSort("tag")} className="text-xs" />
+              <SortThClick label="Descripción" active={sortKey === "description"} sortDir={sortDir} onClick={() => handleSort("description")} className="text-xs" />
+              <SortThClick label="L1" active={sortKey === "l1"} sortDir={sortDir} onClick={() => handleSort("l1")} className="text-xs" />
+              <SortThClick label="Num SL" active={sortKey === "accountNumSL"} sortDir={sortDir} onClick={() => handleSort("accountNumSL")} className="text-xs" />
+              <SortThClick label="Cuenta SL" active={sortKey === "accountNameSL"} sortDir={sortDir} onClick={() => handleSort("accountNameSL")} className="text-xs" />
+              <SortThClick label="Num OÜ" active={sortKey === "accountNumOU"} sortDir={sortDir} onClick={() => handleSort("accountNumOU")} className="text-xs" />
+              <SortThClick label="Cuenta OÜ" active={sortKey === "accountNameOU"} sortDir={sortDir} onClick={() => handleSort("accountNameOU")} className="text-xs" />
               <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-20">Acciones</th>
             </tr>
           </thead>

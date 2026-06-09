@@ -1,7 +1,9 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { formatDate } from "@/lib/utils";
 import { AuditAction } from "@prisma/client";
+import { SortThClick } from "@/components/sort-th";
 
 const ACTION_LABELS: Record<AuditAction, string> = {
   CREATE: "Creó",
@@ -30,7 +32,35 @@ interface Entry {
   createdAt: Date;
 }
 
+type SortKey = "createdAt" | "userName" | "action" | "entityType";
+type SortDir = "asc" | "desc";
+
 export function AuditLog({ entries }: { entries: Entry[] }): React.JSX.Element {
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function handleSort(col: SortKey): void {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("asc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "createdAt": cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); break;
+        case "userName": cmp = a.userName.localeCompare(b.userName); break;
+        case "action": cmp = a.action.localeCompare(b.action); break;
+        case "entityType": cmp = a.entityType.localeCompare(b.entityType); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [entries, sortKey, sortDir]);
+
   if (entries.length === 0) {
     return (
       <p className="text-sm text-gray-400 py-4">
@@ -44,26 +74,21 @@ export function AuditLog({ entries }: { entries: Entry[] }): React.JSX.Element {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Usuario</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Acción</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad</th>
+            <SortThClick label="Fecha" active={sortKey === "createdAt"} sortDir={sortDir} onClick={() => handleSort("createdAt")} />
+            <SortThClick label="Usuario" active={sortKey === "userName"} sortDir={sortDir} onClick={() => handleSort("userName")} />
+            <SortThClick label="Acción" active={sortKey === "action"} sortDir={sortDir} onClick={() => handleSort("action")} />
+            <SortThClick label="Entidad" active={sortKey === "entityType"} sortDir={sortDir} onClick={() => handleSort("entityType")} />
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => (
-            <tr
-              key={entry.id}
-              className="border-b border-gray-100 last:border-0"
-            >
+          {sorted.map((entry) => (
+            <tr key={entry.id} className="border-b border-gray-100 last:border-0">
               <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                 {formatDate(entry.createdAt)}
               </td>
               <td className="px-4 py-3 text-gray-900">{entry.userName}</td>
               <td className="px-4 py-3">
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACTION_COLORS[entry.action]}`}
-                >
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACTION_COLORS[entry.action]}`}>
                   {ACTION_LABELS[entry.action]}
                 </span>
               </td>

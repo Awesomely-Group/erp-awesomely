@@ -4,6 +4,7 @@ import React, { useState, useMemo, useRef, useEffect, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
+import { SortThClick } from "@/components/sort-th";
 import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
 
 export interface ProjectRow {
@@ -469,6 +470,17 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "">(ProjectStatus.ONGOING);
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
+  const [sortKey, setSortKey] = useState<"jiraKey" | "name" | "status">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function handleSort(col: "jiraKey" | "name" | "status"): void {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("asc");
+    }
+  }
 
   const { from: periodFrom, to: periodTo } = getPeriodRange(periodType, periodOffset);
   const months = useMemo(
@@ -498,7 +510,7 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return allProjects.filter((p) => {
+    const base = allProjects.filter((p) => {
       if (q && !p.name.toLowerCase().includes(q) && !p.jiraKey.toLowerCase().includes(q)) {
         return false;
       }
@@ -506,7 +518,14 @@ export function ProjectsTable({ allProjects, pageTitle, pageSubtitle }: Props): 
       if (filterStatus && p.status !== filterStatus) return false;
       return true;
     });
-  }, [allProjects, search, activeTab, filterStatus]);
+    return [...base].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "jiraKey") cmp = a.jiraKey.localeCompare(b.jiraKey);
+      else if (sortKey === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [allProjects, search, activeTab, filterStatus, sortKey, sortDir]);
 
   return (
     <div className="space-y-4">

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import { SortThClick } from "@/components/sort-th";
 
 const HOLDED_STATUS_LABELS: Record<number, string> = {
   [-1]: "Cancelada",
@@ -36,8 +37,38 @@ interface Props {
   invoices: InvoiceRow[];
 }
 
+type SortKey = "number" | "type" | "companyName" | "counterparty" | "date" | "totalEur" | "holdedStatus";
+type SortDir = "asc" | "desc";
+
 export function ProjectInvoicesSection({ invoices }: Props): React.JSX.Element {
   const [open, setOpen] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function handleSort(col: SortKey): void {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("asc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    return [...invoices].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "number": cmp = (a.number ?? "").localeCompare(b.number ?? ""); break;
+        case "type": cmp = a.type.localeCompare(b.type); break;
+        case "companyName": cmp = a.companyName.localeCompare(b.companyName); break;
+        case "counterparty": cmp = (a.counterparty ?? "").localeCompare(b.counterparty ?? ""); break;
+        case "date": cmp = new Date(a.date).getTime() - new Date(b.date).getTime(); break;
+        case "totalEur": cmp = a.totalEur - b.totalEur; break;
+        case "holdedStatus": cmp = (a.holdedStatus ?? -999) - (b.holdedStatus ?? -999); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [invoices, sortKey, sortDir]);
 
   const totalSale = invoices
     .filter((inv) => inv.type === "SALE")
@@ -77,17 +108,17 @@ export function ProjectInvoicesSection({ invoices }: Props): React.JSX.Element {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Número</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Entidad legal</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Contraparte</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Fecha</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">Total (EUR)</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Estado</th>
+                  <SortThClick label="Número" active={sortKey === "number"} sortDir={sortDir} onClick={() => handleSort("number")} />
+                  <SortThClick label="Tipo" active={sortKey === "type"} sortDir={sortDir} onClick={() => handleSort("type")} />
+                  <SortThClick label="Entidad legal" active={sortKey === "companyName"} sortDir={sortDir} onClick={() => handleSort("companyName")} />
+                  <SortThClick label="Contraparte" active={sortKey === "counterparty"} sortDir={sortDir} onClick={() => handleSort("counterparty")} />
+                  <SortThClick label="Fecha" active={sortKey === "date"} sortDir={sortDir} onClick={() => handleSort("date")} />
+                  <SortThClick label="Total (EUR)" active={sortKey === "totalEur"} sortDir={sortDir} onClick={() => handleSort("totalEur")} align="right" />
+                  <SortThClick label="Estado" active={sortKey === "holdedStatus"} sortDir={sortDir} onClick={() => handleSort("holdedStatus")} />
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => (
+                {sorted.map((inv) => (
                   <tr key={inv.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">

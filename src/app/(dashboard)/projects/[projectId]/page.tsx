@@ -9,19 +9,26 @@ import { StatusBadge } from "./status-badge";
 import { ProjectSettingsPanel } from "./project-settings-panel";
 import { ProjectTypesDashboard } from "./project-types-dashboard";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
+import { ProjectTimesheetSection } from "./project-timesheet-section";
+import { ProjectTabNav, type ProjectTab } from "./project-tab-nav";
+import { assignIssueToBucket } from "../actions";
 
 interface Props {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ from?: string; to?: string; period?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; period?: string; tab?: string }>;
 }
 
 export default async function ProjectDashboardPage({ params, searchParams }: Props): Promise<React.JSX.Element> {
   const { projectId } = await params;
   const sp = await searchParams;
 
+  const activeTab: ProjectTab =
+    sp.tab === "equipo" || sp.tab === "facturas" || sp.tab === "timesheet"
+      ? sp.tab
+      : "dashboard";
+
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
 
   let from: Date;
   let to: Date;
@@ -47,7 +54,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   const fromStr = format(from, "yyyy-MM-dd");
   const toStr = format(to, "yyyy-MM-dd");
 
-  const [project, relatedInvoices, availableRoles] = await Promise.all([
+  const [project, relatedInvoices, availableRoles, userRoles] = await Promise.all([
     prisma.jiraProject.findUnique({
       where: { id: projectId },
       include: {
@@ -74,6 +81,9 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       where: { active: true },
       orderBy: { name: "asc" },
     }),
+    activeTab === "timesheet"
+      ? prisma.projectUserRole.findMany({ where: { projectId } })
+      : Promise.resolve([]),
   ]);
 
   if (!project) notFound();
@@ -92,6 +102,17 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   const totalExpensesEur = relatedInvoices
     .filter((inv) => inv.type === "PURCHASE")
     .reduce((sum, inv) => sum + Number(inv.totalEur), 0);
+
+  const resolvedProjectId = project.id;
+
+  async function handleAssignIssueToBucket(
+    issueKey: string,
+    jiraIssueId: number,
+    hourBucketId: string | null
+  ): Promise<void> {
+    "use server";
+    await assignIssueToBucket(resolvedProjectId, issueKey, jiraIssueId, hourBucketId);
+  }
 
   return (
     <div className="space-y-6">
@@ -121,16 +142,9 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
-          <Link
-            href={`/projects/${projectId}/timesheet`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Ver Timesheet
-          </Link>
+          {activeTab !== "timesheet" && (
+            <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
+          )}
           <ProjectSettingsPanel
             projectId={project.id}
             marca={project.workspace.name}
@@ -172,63 +186,102 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         </div>
       </div>
 
-      {/* Overview charts + KPIs */}
-      <ProjectOverviewCharts
-        projectId={project.id}
-        hasTempoToken={!!project.workspace.tempoApiToken}
-        from={fromStr}
-        to={toStr}
-        totalInvoicesEur={relatedInvoices.filter((inv) => inv.type === "SALE").reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
-        invoicesByMonth={invoicesByMonth}
-        totalExpensesEur={totalExpensesEur}
-      />
+      {/* Tab navigation */}
+      <ProjectTabNav activeTab={activeTab} projectId={projectId} />
 
-      {/* Type-specific sections */}
-      <ProjectTypesDashboard
-        projectId={project.id}
-        from={fromStr}
-        to={toStr}
-        hasTempoToken={!!project.workspace.tempoApiToken}
-        config={{
-          isPrecioCerrado: project.isPrecioCerrado,
-          isBolsasHoras: project.isBolsasHoras,
-          isFeeRegular: project.isFeeRegular,
-          fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
-          budgetedHours: project.budgetedHours,
-          regularFeeEntries: project.regularFeeEntries.map((e) => ({
-            id: e.id,
-            label: e.label,
-            monthlyFee: Number(e.monthlyFee),
-            maxHoursPerMonth: e.maxHoursPerMonth,
-          })),
-        }}
-      />
+      {/* Dashboard tab */}
+      {activeTab === "dashboard" && (
+        <>
+          <ProjectOverviewCharts
+            projectId={project.id}
+            hasTempoToken={!!project.workspace.tempoApiToken}
+            from={fromStr}
+            to={toStr}
+            totalInvoicesEur={relatedInvoices.filter((inv) => inv.type === "SALE").reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
+            invoicesByMonth={invoicesByMonth}
+            totalExpensesEur={totalExpensesEur}
+          />
+          <ProjectTypesDashboard
+            projectId={project.id}
+            from={fromStr}
+            to={toStr}
+            hasTempoToken={!!project.workspace.tempoApiToken}
+            config={{
+              isPrecioCerrado: project.isPrecioCerrado,
+              isBolsasHoras: project.isBolsasHoras,
+              isFeeRegular: project.isFeeRegular,
+              fixedPrice: project.fixedPrice !== null ? Number(project.fixedPrice) : null,
+              budgetedHours: project.budgetedHours,
+              regularFeeEntries: project.regularFeeEntries.map((e) => ({
+                id: e.id,
+                label: e.label,
+                monthlyFee: Number(e.monthlyFee),
+                maxHoursPerMonth: e.maxHoursPerMonth,
+              })),
+            }}
+          />
+        </>
+      )}
 
-      {/* Asignación de roles para proyectos sin bolsas de horas */}
-      {!!project.workspace.tempoApiToken && !project.isBolsasHoras && (
-        <ProjectBucketTeamSection
-          projectId={project.id}
-          from={fromStr}
-          to={toStr}
-          bucketRoleIds={[]}
+      {/* Equipo tab */}
+      {activeTab === "equipo" && (
+        !!project.workspace.tempoApiToken ? (
+          <ProjectBucketTeamSection
+            projectId={project.id}
+            from={fromStr}
+            to={toStr}
+            bucketRoleIds={project.isBolsasHoras ? project.hourBuckets.map((b) => b.roleId) : []}
+          />
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
+            Configura el token de Tempo en la configuración del workspace para ver el equipo
+          </div>
+        )
+      )}
+
+      {/* Facturas tab */}
+      {activeTab === "facturas" && (
+        <ProjectInvoicesSection
+          invoices={relatedInvoices.map((inv) => ({
+            id: inv.id,
+            holdedId: inv.holdedId,
+            type: inv.type,
+            number: inv.number,
+            companyName: inv.company.name,
+            counterparty: inv.counterparty,
+            date: inv.date.toISOString(),
+            totalEur: Number(inv.totalEur),
+            holdedStatus: inv.holdedStatus ?? null,
+          }))}
         />
       )}
 
-      {/* Facturas relacionadas */}
-      <ProjectInvoicesSection
-        invoices={relatedInvoices.map((inv) => ({
-          id: inv.id,
-          holdedId: inv.holdedId,
-          type: inv.type,
-          number: inv.number,
-          companyName: inv.company.name,
-          counterparty: inv.counterparty,
-          date: inv.date.toISOString(),
-          totalEur: Number(inv.totalEur),
-          holdedStatus: inv.holdedStatus ?? null,
-        }))}
-      />
+      {/* Timesheet tab */}
+      {activeTab === "timesheet" && (
+        <ProjectTimesheetSection
+          projectId={project.id}
+          hasTempoToken={!!project.workspace.tempoApiToken}
+          workspaceDomain={project.workspace.domain}
+          isBolsasHoras={project.isBolsasHoras}
+          bucketByRole={Object.fromEntries(
+            project.hourBuckets.map((b) => [
+              b.roleId,
+              { roleName: b.role.name, totalHours: b.totalHours },
+            ])
+          )}
+          accountToRole={Object.fromEntries(userRoles.map((ur) => [ur.jiraAccountId, ur.roleId]))}
+          buckets={project.hourBuckets
+            .filter((b) => b.active)
+            .map((b) => ({
+              id: b.id,
+              roleId: b.roleId,
+              roleName: b.role.name,
+              code: b.code ?? null,
+              totalHours: b.totalHours,
+            }))}
+          onAssignIssueToBucket={handleAssignIssueToBucket}
+        />
+      )}
     </div>
   );
 }
-

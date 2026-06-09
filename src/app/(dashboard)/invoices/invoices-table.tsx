@@ -297,7 +297,10 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
               )}
             </td>
             <td className="px-4 py-3 text-right text-gray-600">
-              {formatCurrency(inv.total, inv.currency)}
+              <div>{formatCurrency(inv.total, inv.currency)}</div>
+              {inv.currency !== "EUR" && (
+                <div className="text-xs text-gray-400">{formatCurrency(inv.totalEur)}</div>
+              )}
             </td>
             <td className="px-4 py-3 text-right font-medium">
               {formatCurrency(inv.totalEur)}
