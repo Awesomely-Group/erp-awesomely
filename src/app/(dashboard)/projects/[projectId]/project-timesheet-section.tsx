@@ -165,6 +165,12 @@ function PeriodSummary({ users, loading }: { users: SummaryUser[]; loading: bool
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-xs">
       <div className="space-y-1.5">
+        <div className="flex items-center gap-3 pb-1.5 border-b border-gray-100">
+          <div className="w-5 h-5 flex-shrink-0" />
+          <span className="w-28" />
+          <span className="text-gray-400 min-w-[64px]">Horas real / est.</span>
+          {hasAnyCost && <span className="text-gray-400 min-w-[80px]">Coste real / est.</span>}
+        </div>
         {users.map((user) => {
           const overH = user.estimateHours > 0 && user.totalHours > user.estimateHours;
           const overCost = user.estimatedCostEur != null && user.actualCostEur > user.estimatedCostEur;
