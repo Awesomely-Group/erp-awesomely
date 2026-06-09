@@ -228,8 +228,6 @@ enum InvoiceStatus {
   PENDING
   PARTIAL
   CLASSIFIED
-  REVIEWED
-  APPROVED
   SIN_MARCA
 }
 
@@ -337,8 +335,6 @@ model InvoiceLine {
 
 enum ClassificationStatus {
   CLASSIFIED
-  REVIEWED
-  APPROVED
   IGNORED
 }
 

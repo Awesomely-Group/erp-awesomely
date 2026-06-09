@@ -484,7 +484,7 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
 
   const classified = lines.filter((l) => l.classification !== null).length;
 
-  let status: "PENDING" | "PARTIAL" | "CLASSIFIED" | "APPROVED" | "SIN_MARCA" = "PENDING";
+  let status: "PENDING" | "PARTIAL" | "CLASSIFIED" | "SIN_MARCA" = "PENDING";
 
   const marcaValues = (invoice?.marca ?? "").split(",").filter(Boolean);
   const isAutoClassifiedMarca =
@@ -502,11 +502,7 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
       .map((l) => l.classification?.status)
       .filter((s) => s !== undefined && s !== "IGNORED");
 
-    if (statuses.length === 0 || statuses.every((s) => s === "APPROVED")) {
-      status = "APPROVED";
-    } else {
-      status = "CLASSIFIED";
-    }
+    status = "CLASSIFIED";
   }
 
   await prisma.invoice.update({

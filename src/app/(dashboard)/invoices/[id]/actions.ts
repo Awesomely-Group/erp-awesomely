@@ -200,27 +200,16 @@ export async function updateClassificationStatus({
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  const validStatus = ["CLASSIFIED", "APPROVED"] as const;
+  const validStatus = ["CLASSIFIED"] as const;
   if (!validStatus.includes(status as (typeof validStatus)[number])) {
     throw new Error("Invalid status");
   }
 
   const typedStatus = status as ClassificationStatus;
 
-  const updateData: {
-    status: ClassificationStatus;
-    approvedBy?: string;
-    approvedAt?: Date;
-  } = { status: typedStatus };
-
-  if (typedStatus === ClassificationStatus.APPROVED) {
-    updateData.approvedBy = session.user.email ?? session.user.id;
-    updateData.approvedAt = new Date();
-  }
-
   await prisma.classification.update({
     where: { id: classificationId },
-    data: updateData,
+    data: { status: typedStatus },
   });
 
   const action = AuditAction.APPROVE;

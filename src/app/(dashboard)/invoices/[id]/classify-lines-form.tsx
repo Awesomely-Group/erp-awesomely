@@ -61,7 +61,6 @@ interface Props {
 
 const STATUS_COLORS: Record<string, string> = {
   CLASSIFIED: "text-blue-600 bg-blue-50 border-blue-200",
-  APPROVED: "text-green-600 bg-green-50 border-green-200",
   IGNORED: "text-gray-400 bg-gray-50 border-gray-200",
 };
 

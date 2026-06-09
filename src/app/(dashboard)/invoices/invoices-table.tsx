@@ -18,7 +18,6 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
   PARTIAL: "Parcial",
   CLASSIFIED: "Clasificado",
-  APPROVED: "Aprobado",
   SIN_MARCA: "Sin Marca",
 };
 
@@ -26,7 +25,6 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-red-100 text-red-700",
   PARTIAL: "bg-amber-100 text-amber-700",
   CLASSIFIED: "bg-blue-100 text-blue-700",
-  APPROVED: "bg-green-100 text-green-700",
   SIN_MARCA: "bg-orange-100 text-orange-700",
 };
 

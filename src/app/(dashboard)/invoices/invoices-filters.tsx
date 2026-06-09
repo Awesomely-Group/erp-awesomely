@@ -151,7 +151,6 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
           <option value="SIN_MARCA">Sin Marca</option>
           <option value="PARTIAL">Parcial</option>
           <option value="CLASSIFIED">Clasificado</option>
-          <option value="APPROVED">Aprobado</option>
         </select>
       </div>
 
