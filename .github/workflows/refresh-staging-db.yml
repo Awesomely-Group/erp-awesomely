@@ -16,18 +16,30 @@ jobs:
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
           NEON_STAGING_BRANCH_ID: ${{ secrets.NEON_STAGING_BRANCH_ID }}
         run: |
-          response=$(curl -fsS -L -w "\n%{http_code}" -X POST \
+          # Obtener el ID real del branch de producción (main)
+          branches=$(curl -sS -L \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            -H "Authorization: Bearer $NEON_API_KEY")
+          echo "Branches response: $branches"
+
+          main_branch_id=$(echo "$branches" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "Main branch ID: $main_branch_id"
+
+          # Restaurar el branch de staging desde producción
+          response=$(curl -sS -L -w "\n%{http_code}" -X POST \
             "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_STAGING_BRANCH_ID/restore" \
             -H "Authorization: Bearer $NEON_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"source_branch_id": "main"}')
+            -d "{\"source_branch_id\": \"$main_branch_id\"}")
 
           http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "Response (HTTP $http_code): $body"
 
           if [ "$http_code" -ne 200 ]; then
-            echo "Error restoring staging branch (HTTP $http_code): $body"
+            echo "Error restoring staging branch"
             exit 1
           fi
 
-          echo "Staging database restored from production (HTTP $http_code)"
+          echo "Staging database restored from production successfully"
