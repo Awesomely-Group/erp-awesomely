@@ -103,7 +103,34 @@ function PeriodSelector({ periodType, periodOffset, onTypeChange, onOffsetChange
   );
 }
 
-// ─── Period summary ───────────────────────────────────────────────────────────
+// ─── Hierarchical timesheet ───────────────────────────────────────────────────
+
+interface WorklogDetail { description: string; issueKey: string; hours: number; }
+interface IssueWithWorklogs { issueKey: string; jiraIssueId: number; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; actualCostEur: number; estimatedCostEur: number | null; hourBucketId?: string; }
+interface UserWithIssues { accountId: string; displayName: string; totalHours: number; ratePerHour: number; actualCostEur: number; estimatedCostEur: number | null; issues: IssueWithWorklogs[]; }
+interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; totalActualCostEur: number; totalEstimatedCostEur: number; }
+
+function formatEur(amount: number): string {
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(amount);
+}
+
+function IssueIcon(): React.JSX.Element {
+  return (
+    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function WorklogIcon(): React.JSX.Element {
+  return (
+    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 16 16">
+      <rect width="16" height="16" rx="3" fill="#22c55e" />
+      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
 
 interface SummaryUser {
   accountId: string;
@@ -114,6 +141,8 @@ interface SummaryUser {
   estimatedCostEur: number | null;
   ratePerHour: number;
 }
+
+// ─── Period summary ───────────────────────────────────────────────────────────
 
 function PeriodSummary({ users, loading }: { users: SummaryUser[]; loading: boolean }): React.JSX.Element | null {
   if (!loading && users.length === 0) return null;
@@ -182,35 +211,6 @@ function PeriodSummary({ users, loading }: { users: SummaryUser[]; loading: bool
         )}
       </div>
     </div>
-  );
-}
-
-// ─── Hierarchical timesheet ───────────────────────────────────────────────────
-
-interface WorklogDetail { description: string; issueKey: string; hours: number; }
-interface IssueWithWorklogs { issueKey: string; jiraIssueId: number; summary: string; totalHours: number; originalEstimateHours: number | null; worklogs: WorklogDetail[]; actualCostEur: number; estimatedCostEur: number | null; hourBucketId?: string; }
-interface UserWithIssues { accountId: string; displayName: string; totalHours: number; ratePerHour: number; actualCostEur: number; estimatedCostEur: number | null; issues: IssueWithWorklogs[]; }
-interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; totalActualCostEur: number; totalEstimatedCostEur: number; }
-
-function formatEur(amount: number): string {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(amount);
-}
-
-function IssueIcon(): React.JSX.Element {
-  return (
-    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" viewBox="0 0 16 16" fill="none">
-      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function WorklogIcon(): React.JSX.Element {
-  return (
-    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 16 16">
-      <rect width="16" height="16" rx="3" fill="#22c55e" />
-      <path d="M4.5 8.5l2 2L11.5 5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </svg>
   );
 }
 
@@ -395,6 +395,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   if (error) {
     return <p className="text-sm text-red-500 py-4">Error: {error}</p>;
   }
+
 
   if (!data || visibleUsers.length === 0) {
     return (

@@ -138,7 +138,7 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
               <span>
-                Tarifa: {supplier.hourlyRate != null ? `${supplier.hourlyRate.toFixed(2)} €/h` : <span className="text-gray-400">no configurada</span>}
+                Tarifa: {supplier.hourlyRate != null ? `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(supplier.hourlyRate))} €/h` : <span className="text-gray-400">no configurada</span>}
               </span>
               <JiraUserList
                 supplierId={supplier.id}
