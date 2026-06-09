@@ -113,6 +113,50 @@ async function getDashboardCashflow(
   return Array.from(pointMap.values());
 }
 
+async function getAlerts() {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const fourteenDaysLater = new Date(now);
+  fourteenDaysLater.setDate(fourteenDaysLater.getDate() + 14);
+
+  const [
+    unclassified,
+    overdueCollection,
+    overduePayment,
+    proformasDueSoon,
+    proformasOverdue,
+  ] = await Promise.all([
+    prisma.invoice.count({
+      where: { status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] } },
+    }),
+    prisma.invoice.aggregate({
+      where: { type: "SALE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
+      _count: true,
+      _sum: { totalEur: true },
+    }),
+    prisma.invoice.aggregate({
+      where: { type: "PURCHASE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
+      _count: true,
+      _sum: { totalEur: true },
+    }),
+    prisma.proforma.count({
+      where: { dueDate: { gte: now, lte: fourteenDaysLater } },
+    }),
+    prisma.proforma.count({
+      where: { dueDate: { lt: now } },
+    }),
+  ]);
+
+  return {
+    unclassified,
+    overdueCollection: { count: overdueCollection._count, total: Number(overdueCollection._sum.totalEur ?? 0) },
+    overduePayment: { count: overduePayment._count, total: Number(overduePayment._sum.totalEur ?? 0) },
+    proformasDueSoon,
+    proformasOverdue,
+  };
+}
+
 async function getDashboardStats(where: PrismaTypes.InvoiceWhereInput = {}) {
   const pendingWhere: Prisma.InvoiceWhereInput = {
     ...where,
@@ -155,10 +199,11 @@ export default async function DashboardPage({
   const params = await searchParams;
   const invoiceWhere = buildDashboardInvoiceWhere(params);
 
-  const [session, stats, cashflowMonthly] = await Promise.all([
+  const [session, stats, cashflowMonthly, alerts] = await Promise.all([
     auth(),
     getDashboardStats(invoiceWhere),
     getDashboardCashflow(params),
+    getAlerts(),
   ]);
 
   const hasFilters = Boolean(
@@ -238,17 +283,40 @@ export default async function DashboardPage({
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">
-          Estado del sistema
+          Alertas operativas
         </h2>
-        <div className="space-y-3">
-          <StatusRow
-            label="Total facturas (según filtros)"
-            value={stats.totalInvoices.toString()}
+        <div className="space-y-2">
+          <AlertRow
+            label="Facturas sin clasificar"
+            count={alerts.unclassified}
+            href="/invoices?status=PENDING"
+            severity={alerts.unclassified > 0 ? "warning" : "ok"}
           />
-          <StatusRow
-            label="Facturas pendientes de clasificar"
-            value={stats.pendingClassification.toString()}
-            badge="warning"
+          <AlertRow
+            label="Facturas de venta atrasadas (+30 días)"
+            count={alerts.overdueCollection.count}
+            amount={alerts.overdueCollection.total}
+            href="/invoices?type=SALE&status=PENDING"
+            severity={alerts.overdueCollection.count > 0 ? "error" : "ok"}
+          />
+          <AlertRow
+            label="Pagos pendientes atrasados (+30 días)"
+            count={alerts.overduePayment.count}
+            amount={alerts.overduePayment.total}
+            href="/invoices?type=PURCHASE&status=PENDING"
+            severity={alerts.overduePayment.count > 0 ? "warning" : "ok"}
+          />
+          <AlertRow
+            label="Proformas vencidas sin emitir"
+            count={alerts.proformasOverdue}
+            href="/proformas"
+            severity={alerts.proformasOverdue > 0 ? "error" : "ok"}
+          />
+          <AlertRow
+            label="Proformas a emitir en los próximos 14 días"
+            count={alerts.proformasDueSoon}
+            href="/proformas"
+            severity={alerts.proformasDueSoon > 0 ? "warning" : "ok"}
           />
         </div>
       </div>
@@ -256,29 +324,47 @@ export default async function DashboardPage({
   );
 }
 
-function StatusRow({
+function AlertRow({
   label,
-  value,
-  badge,
+  count,
+  amount,
+  href,
+  severity,
 }: {
   label: string;
-  value: string;
-  badge?: "warning" | "ok";
+  count: number;
+  amount?: number;
+  href: string;
+  severity: "ok" | "warning" | "error";
 }): React.JSX.Element {
+  const colors = {
+    ok: "bg-green-50 text-green-700",
+    warning: "bg-amber-100 text-amber-700",
+    error: "bg-red-100 text-red-700",
+  };
+  const dot = {
+    ok: "bg-green-400",
+    warning: "bg-amber-400",
+    error: "bg-red-500",
+  };
+
   return (
-    <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span
-        className={`text-sm font-medium px-2 py-0.5 rounded-full ${
-          badge === "warning"
-            ? "bg-amber-100 text-amber-700"
-            : badge === "ok"
-              ? "bg-green-100 text-green-700"
-              : "text-gray-900"
-        }`}
-      >
-        {value}
-      </span>
-    </div>
+    <a
+      href={href}
+      className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors border border-gray-100 group"
+    >
+      <div className="flex items-center gap-2.5">
+        <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot[severity]}`} />
+        <span className="text-sm text-gray-700 group-hover:text-gray-900">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {amount != null && amount > 0 && (
+          <span className="text-xs text-gray-400">{formatCurrency(amount)}</span>
+        )}
+        <span className={`text-sm font-semibold px-2 py-0.5 rounded-full ${colors[severity]}`}>
+          {count}
+        </span>
+      </div>
+    </a>
   );
 }
