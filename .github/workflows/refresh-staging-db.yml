@@ -10,36 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Restore staging branch to production state
+      - name: Install PostgreSQL client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Restore staging from production
         env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
-          NEON_STAGING_BRANCH_ID: ${{ secrets.NEON_STAGING_BRANCH_ID }}
+          DATABASE_URL_PROD: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
-          # Obtener el ID real del branch de producción (main)
-          branches=$(curl -sS -L \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
-            -H "Authorization: Bearer $NEON_API_KEY")
-          echo "Branches response: $branches"
+          echo "Dropping staging schema..."
+          psql "$DATABASE_URL_STAGING" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;"
 
-          main_branch_id=$(echo "$branches" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-          echo "Main branch ID: $main_branch_id"
+          echo "Dumping production and restoring to staging..."
+          pg_dump "$DATABASE_URL_PROD" | psql "$DATABASE_URL_STAGING"
 
-          # Restaurar el branch de staging desde producción
-          response=$(curl -sS -L -w "\n%{http_code}" -X POST \
-            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_STAGING_BRANCH_ID/restore" \
-            -H "Authorization: Bearer $NEON_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"source_branch_id\": \"$main_branch_id\"}")
-
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -n -1)
-
-          echo "Response (HTTP $http_code): $body"
-
-          if [ "$http_code" -ne 200 ]; then
-            echo "Error restoring staging branch"
-            exit 1
-          fi
-
-          echo "Staging database restored from production successfully"
+          echo "Staging database refreshed successfully"
