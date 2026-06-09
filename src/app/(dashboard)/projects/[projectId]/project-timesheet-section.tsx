@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -132,6 +132,88 @@ function WorklogIcon(): React.JSX.Element {
   );
 }
 
+interface SummaryUser {
+  accountId: string;
+  displayName: string;
+  totalHours: number;
+  estimateHours: number;
+  actualCostEur: number;
+  estimatedCostEur: number | null;
+  ratePerHour: number;
+}
+
+// ─── Period summary ───────────────────────────────────────────────────────────
+
+function PeriodSummary({ users, loading }: { users: SummaryUser[]; loading: boolean }): React.JSX.Element | null {
+  if (!loading && users.length === 0) return null;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2 animate-pulse">
+        <div className="h-4 bg-gray-100 rounded w-60" />
+        <div className="h-4 bg-gray-100 rounded w-52" />
+      </div>
+    );
+  }
+
+  const totalH = Math.round(users.reduce((s, u) => s + u.totalHours, 0) * 100) / 100;
+  const totalEstH = Math.round(users.reduce((s, u) => s + u.estimateHours, 0) * 100) / 100;
+  const totalActCost = Math.round(users.reduce((s, u) => s + u.actualCostEur, 0) * 100) / 100;
+  const totalEstCost = Math.round(users.reduce((s, u) => s + (u.estimatedCostEur ?? 0), 0) * 100) / 100;
+  const hasAnyCost = users.some((u) => u.ratePerHour > 0);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-xs">
+      <div className="space-y-1.5">
+        {users.map((user) => {
+          const overH = user.estimateHours > 0 && user.totalHours > user.estimateHours;
+          const overCost = user.estimatedCostEur != null && user.actualCostEur > user.estimatedCostEur;
+          return (
+            <div key={user.accountId} className="flex items-center gap-3">
+              <div className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                {user.displayName[0]?.toUpperCase() ?? "?"}
+              </div>
+              <span className="font-medium text-gray-700 w-28 truncate">{user.displayName}</span>
+              <div className="flex items-baseline gap-1 min-w-[64px]">
+                <span className={`tabular-nums font-semibold ${overH ? "text-red-600" : "text-gray-900"}`}>{user.totalHours}h</span>
+                {user.estimateHours > 0 && <span className="text-gray-400">/ {user.estimateHours}h</span>}
+              </div>
+              {hasAnyCost && (
+                <div className="flex items-baseline gap-1 min-w-[80px]">
+                  <span className={`tabular-nums font-semibold ${overCost ? "text-red-600" : "text-gray-700"}`}>
+                    {user.ratePerHour > 0 ? formatEur(user.actualCostEur) : "—"}
+                  </span>
+                  {user.estimatedCostEur != null && user.ratePerHour > 0 && (
+                    <span className="text-gray-400">/ {formatEur(user.estimatedCostEur)}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {users.length > 1 && (
+          <div className="flex items-center gap-3 pt-1.5 border-t border-gray-100">
+            <div className="w-5 h-5 flex-shrink-0" />
+            <span className="font-semibold text-gray-800 w-28">Total</span>
+            <div className="flex items-baseline gap-1 min-w-[64px]">
+              <span className={`tabular-nums font-semibold ${totalEstH > 0 && totalH > totalEstH ? "text-red-600" : "text-gray-900"}`}>{totalH}h</span>
+              {totalEstH > 0 && <span className="text-gray-400">/ {totalEstH}h</span>}
+            </div>
+            {hasAnyCost && totalActCost > 0 && (
+              <div className="flex items-baseline gap-1 min-w-[80px]">
+                <span className={`tabular-nums font-semibold ${totalEstCost > 0 && totalActCost > totalEstCost ? "text-red-600" : "text-gray-700"}`}>
+                  {formatEur(totalActCost)}
+                </span>
+                {totalEstCost > 0 && <span className="text-gray-400">/ {formatEur(totalEstCost)}</span>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface BucketInfo {
   roleName: string;
   totalHours: number;
@@ -158,9 +240,10 @@ interface HierarchicalTableProps {
   filterBucketRoleId?: string;
   buckets?: BucketOption[];
   onAssignIssueToBucket?: (issueKey: string, jiraIssueId: number, hourBucketId: string | null) => Promise<void>;
+  onSummaryChange?: (summary: { users: SummaryUser[]; loading: boolean }) => void;
 }
 
-function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, buckets, onAssignIssueToBucket }: HierarchicalTableProps): React.JSX.Element {
+function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, buckets, onAssignIssueToBucket, onSummaryChange }: HierarchicalTableProps): React.JSX.Element {
   const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -270,33 +353,48 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
     return <p className="text-sm text-red-500 py-4">Error: {error}</p>;
   }
 
-  const visibleUsers: UserWithIssues[] = data
-    ? filterBucketId
-      ? data.users
-          .map((user) => {
-            const effectiveRoleId = accountToRole?.[user.accountId];
-            const filteredIssues = user.issues.filter((issue) => {
-              const currentBucketId =
-                bucketOverrides[issue.issueKey] !== undefined
-                  ? bucketOverrides[issue.issueKey]
-                  : (issue.hourBucketId ?? null);
-              if (currentBucketId === filterBucketId) return true;
-              if (!currentBucketId && effectiveRoleId === filterBucketRoleId) return true;
-              return false;
-            });
-            return {
-              ...user,
-              issues: filteredIssues,
-              totalHours: Math.round(filteredIssues.reduce((s, i) => s + i.totalHours, 0) * 100) / 100,
-              actualCostEur: Math.round(filteredIssues.reduce((s, i) => s + i.actualCostEur, 0) * 100) / 100,
-              estimatedCostEur: filteredIssues.some((i) => i.estimatedCostEur != null)
-                ? Math.round(filteredIssues.reduce((s, i) => s + (i.estimatedCostEur ?? 0), 0) * 100) / 100
-                : null,
-            };
-          })
-          .filter((u) => u.issues.length > 0)
-      : data.users
-    : [];
+  const visibleUsers = useMemo<UserWithIssues[]>(() => {
+    if (!data) return [];
+    if (!filterBucketId) return data.users;
+    return data.users
+      .map((user) => {
+        const effectiveRoleId = accountToRole?.[user.accountId];
+        const filteredIssues = user.issues.filter((issue) => {
+          const currentBucketId =
+            bucketOverrides[issue.issueKey] !== undefined
+              ? bucketOverrides[issue.issueKey]
+              : (issue.hourBucketId ?? null);
+          if (currentBucketId === filterBucketId) return true;
+          if (!currentBucketId && effectiveRoleId === filterBucketRoleId) return true;
+          return false;
+        });
+        return {
+          ...user,
+          issues: filteredIssues,
+          totalHours: Math.round(filteredIssues.reduce((s, i) => s + i.totalHours, 0) * 100) / 100,
+          actualCostEur: Math.round(filteredIssues.reduce((s, i) => s + i.actualCostEur, 0) * 100) / 100,
+          estimatedCostEur: filteredIssues.some((i) => i.estimatedCostEur != null)
+            ? Math.round(filteredIssues.reduce((s, i) => s + (i.estimatedCostEur ?? 0), 0) * 100) / 100
+            : null,
+        };
+      })
+      .filter((u) => u.issues.length > 0);
+  }, [data, filterBucketId, bucketOverrides, accountToRole, filterBucketRoleId]);
+
+  useEffect(() => {
+    onSummaryChange?.({
+      loading,
+      users: visibleUsers.map((u) => ({
+        accountId: u.accountId,
+        displayName: u.displayName,
+        totalHours: u.totalHours,
+        estimateHours: Math.round(u.issues.reduce((s, i) => s + (i.originalEstimateHours ?? 0), 0) * 100) / 100,
+        actualCostEur: u.actualCostEur,
+        estimatedCostEur: u.estimatedCostEur,
+        ratePerHour: u.ratePerHour,
+      })),
+    });
+  }, [loading, visibleUsers, onSummaryChange]);
 
   if (!data || visibleUsers.length === 0) {
     return (
@@ -516,17 +614,27 @@ interface Props {
 export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
+  const [summaryUsers, setSummaryUsers] = useState<SummaryUser[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(hasTempoToken);
 
   const { from, to } = getPeriodRange(periodType, periodOffset);
 
+  const handleSummaryChange = useCallback((summary: { users: SummaryUser[]; loading: boolean }) => {
+    setSummaryUsers(summary.users);
+    setSummaryLoading(summary.loading);
+  }, []);
+
   return (
     <div className="space-y-3">
-      <PeriodSelector
-        periodType={periodType}
-        periodOffset={periodOffset}
-        onTypeChange={setPeriodType}
-        onOffsetChange={setPeriodOffset}
-      />
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <PeriodSelector
+          periodType={periodType}
+          periodOffset={periodOffset}
+          onTypeChange={setPeriodType}
+          onOffsetChange={setPeriodOffset}
+        />
+        {hasTempoToken && <PeriodSummary users={summaryUsers} loading={summaryLoading} />}
+      </div>
       {filterBucketId && filterBucketName && (
         <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm">
           <div className="flex items-center gap-2 text-amber-800">
@@ -556,6 +664,7 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
         filterBucketRoleId={filterBucketRoleId}
         buckets={buckets}
         onAssignIssueToBucket={onAssignIssueToBucket}
+        onSummaryChange={handleSummaryChange}
       />
     </div>
   );

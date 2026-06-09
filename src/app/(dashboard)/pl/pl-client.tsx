@@ -11,7 +11,7 @@ interface PlTableProps {
 function fmtCell(n: number): string {
   if (n === 0) return "—";
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2).replace(".", ",")}M`;
+  if (abs >= 1_000_000) return `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n / 1_000_000)}M`;
   if (abs >= 1_000)     return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(n);
   return `${Math.round(n)}`;
 }

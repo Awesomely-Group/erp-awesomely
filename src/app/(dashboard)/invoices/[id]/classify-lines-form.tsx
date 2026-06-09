@@ -186,6 +186,7 @@ function LineRow({
   onSaveDraftNote: (notes: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
+  const [projectChosen, setProjectChosen] = useState(!!line.classification);
   const initialNotes = line.classification?.notes ?? line.notes ?? "";
   const [notes, setNotes] = useState(initialNotes);
   const [notesOpen, setNotesOpen] = useState(!!initialNotes);
@@ -197,6 +198,7 @@ function LineRow({
   );
 
   function handleProjectChange(id: string): void {
+    setProjectChosen(true);
     setSelectedProject(id);
     if (id) {
       const project = projects.find((p) => p.id === id);
@@ -318,7 +320,7 @@ function LineRow({
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
-                  disabled={isPending || !selectedMarca}
+                  disabled={isPending || !selectedMarca || !projectChosen}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Clasificar igualmente
@@ -376,7 +378,7 @@ function LineRow({
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
-                  disabled={isPending || !selectedMarca}
+                  disabled={isPending || !selectedMarca || (!line.classification && !projectChosen)}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
@@ -473,7 +475,7 @@ function UnifiedClassifier({
       </div>
 
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-gray-600">Proyecto Jira (opcional)</label>
+        <label className="block text-xs font-medium text-gray-600">Proyecto Jira <span className="text-gray-400 font-normal">(selecciona un proyecto o "Sin proyecto")</span></label>
         <ProjectCombobox
           projects={availableProjects}
           value={selectedProject}
