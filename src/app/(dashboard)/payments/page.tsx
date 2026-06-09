@@ -54,21 +54,29 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
 
   // Batch-fetch IBAN for each unique contact (parallel per company)
   const ibanMap = new Map<string, string | null>();
-  await Promise.all(
-    [...contactsByCompany.values()].map(async ({ apiKey, contactIds }) => {
-      const client = new HoldedClient(apiKey);
-      await Promise.all(
-        [...contactIds].map(async (contactId) => {
-          try {
-            const { iban } = await client.getContactWithBankData(contactId);
-            ibanMap.set(contactId, iban);
-          } catch {
-            ibanMap.set(contactId, null);
-          }
-        }),
-      );
-    }),
-  );
+  try {
+    await Promise.all(
+      [...contactsByCompany.values()].map(async ({ apiKey, contactIds }) => {
+        const client = new HoldedClient(apiKey);
+        try {
+          await Promise.all(
+            [...contactIds].map(async (contactId) => {
+              try {
+                const { iban } = await client.getContactWithBankData(contactId);
+                ibanMap.set(contactId, iban);
+              } catch {
+                ibanMap.set(contactId, null);
+              }
+            }),
+          );
+        } catch {
+          for (const id of contactIds) ibanMap.set(id, null);
+        }
+      }),
+    );
+  } catch {
+    // Holded unavailable — page renders without IBAN data
+  }
 
   const pendingPayments: PaymentInvoice[] = [];
   const pendingCollections: PendingInvoice[] = [];

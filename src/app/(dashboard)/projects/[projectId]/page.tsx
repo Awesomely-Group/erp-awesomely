@@ -12,6 +12,7 @@ import { ProjectBucketTeamSection } from "./project-bucket-team-section";
 import { ProjectTimesheetSection } from "./project-timesheet-section";
 import { ProjectTabNav, type ProjectTab } from "./project-tab-nav";
 import { assignIssueToBucket } from "../actions";
+import { TimesheetSummaryProvider, TimesheetSummarySlot } from "./timesheet-summary-context";
 
 interface Props {
   params: Promise<{ projectId: string }>;
@@ -115,6 +116,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   }
 
   return (
+    <TimesheetSummaryProvider initialLoading={activeTab === "timesheet" && !!project.workspace.tempoApiToken}>
     <div className="space-y-6">
       {/* Breadcrumb */}
       <Link
@@ -145,6 +147,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
           {activeTab !== "timesheet" && (
             <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
           )}
+          {activeTab === "timesheet" && <TimesheetSummarySlot />}
           <ProjectSettingsPanel
             projectId={project.id}
             marca={project.workspace.name}
@@ -283,5 +286,6 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         />
       )}
     </div>
+    </TimesheetSummaryProvider>
   );
 }

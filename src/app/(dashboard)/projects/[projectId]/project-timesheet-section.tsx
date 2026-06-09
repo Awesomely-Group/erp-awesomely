@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useTimesheetSummary, type SummaryUser } from "./timesheet-summary-context";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -129,94 +130,6 @@ function WorklogIcon(): React.JSX.Element {
       <rect width="16" height="16" rx="3" fill="#22c55e" />
       <path d="M4.5 8.5l2 2L11.5 5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
-  );
-}
-
-interface SummaryUser {
-  accountId: string;
-  displayName: string;
-  totalHours: number;
-  estimateHours: number;
-  actualCostEur: number;
-  estimatedCostEur: number | null;
-  ratePerHour: number;
-}
-
-// ─── Period summary ───────────────────────────────────────────────────────────
-
-function PeriodSummary({ users, loading }: { users: SummaryUser[]; loading: boolean }): React.JSX.Element | null {
-  if (!loading && users.length === 0) return null;
-
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-2 animate-pulse">
-        <div className="h-4 bg-gray-100 rounded w-60" />
-        <div className="h-4 bg-gray-100 rounded w-52" />
-      </div>
-    );
-  }
-
-  const totalH = Math.round(users.reduce((s, u) => s + u.totalHours, 0) * 100) / 100;
-  const totalEstH = Math.round(users.reduce((s, u) => s + u.estimateHours, 0) * 100) / 100;
-  const totalActCost = Math.round(users.reduce((s, u) => s + u.actualCostEur, 0) * 100) / 100;
-  const totalEstCost = Math.round(users.reduce((s, u) => s + (u.estimatedCostEur ?? 0), 0) * 100) / 100;
-  const hasAnyCost = users.some((u) => u.ratePerHour > 0);
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-xs">
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-3 pb-1.5 border-b border-gray-100">
-          <div className="w-5 h-5 flex-shrink-0" />
-          <span className="w-28" />
-          <span className="text-gray-400 min-w-[64px]">Horas real / est.</span>
-          {hasAnyCost && <span className="text-gray-400 min-w-[80px]">Coste real / est.</span>}
-        </div>
-        {users.map((user) => {
-          const overH = user.estimateHours > 0 && user.totalHours > user.estimateHours;
-          const overCost = user.estimatedCostEur != null && user.actualCostEur > user.estimatedCostEur;
-          return (
-            <div key={user.accountId} className="flex items-center gap-3">
-              <div className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                {user.displayName[0]?.toUpperCase() ?? "?"}
-              </div>
-              <span className="font-medium text-gray-700 w-28 truncate">{user.displayName}</span>
-              <div className="flex items-baseline gap-1 min-w-[64px]">
-                <span className={`tabular-nums font-semibold ${overH ? "text-red-600" : "text-gray-900"}`}>{user.totalHours}h</span>
-                {user.estimateHours > 0 && <span className="text-gray-400">/ {user.estimateHours}h</span>}
-              </div>
-              {hasAnyCost && (
-                <div className="flex items-baseline gap-1 min-w-[80px]">
-                  <span className={`tabular-nums font-semibold ${overCost ? "text-red-600" : "text-gray-700"}`}>
-                    {user.ratePerHour > 0 ? formatEur(user.actualCostEur) : "—"}
-                  </span>
-                  {user.estimatedCostEur != null && user.ratePerHour > 0 && (
-                    <span className="text-gray-400">/ {formatEur(user.estimatedCostEur)}</span>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {users.length > 1 && (
-          <div className="flex items-center gap-3 pt-1.5 border-t border-gray-100">
-            <div className="w-5 h-5 flex-shrink-0" />
-            <span className="font-semibold text-gray-800 w-28">Total</span>
-            <div className="flex items-baseline gap-1 min-w-[64px]">
-              <span className={`tabular-nums font-semibold ${totalEstH > 0 && totalH > totalEstH ? "text-red-600" : "text-gray-900"}`}>{totalH}h</span>
-              {totalEstH > 0 && <span className="text-gray-400">/ {totalEstH}h</span>}
-            </div>
-            {hasAnyCost && totalActCost > 0 && (
-              <div className="flex items-baseline gap-1 min-w-[80px]">
-                <span className={`tabular-nums font-semibold ${totalEstCost > 0 && totalActCost > totalEstCost ? "text-red-600" : "text-gray-700"}`}>
-                  {formatEur(totalActCost)}
-                </span>
-                {totalEstCost > 0 && <span className="text-gray-400">/ {formatEur(totalEstCost)}</span>}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -621,27 +534,22 @@ interface Props {
 export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
-  const [summaryUsers, setSummaryUsers] = useState<SummaryUser[]>([]);
-  const [summaryLoading, setSummaryLoading] = useState(hasTempoToken);
+  const { setData } = useTimesheetSummary();
 
   const { from, to } = getPeriodRange(periodType, periodOffset);
 
   const handleSummaryChange = useCallback((summary: { users: SummaryUser[]; loading: boolean }) => {
-    setSummaryUsers(summary.users);
-    setSummaryLoading(summary.loading);
-  }, []);
+    setData(summary.users, summary.loading);
+  }, [setData]);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <PeriodSelector
-          periodType={periodType}
-          periodOffset={periodOffset}
-          onTypeChange={setPeriodType}
-          onOffsetChange={setPeriodOffset}
-        />
-        {hasTempoToken && <PeriodSummary users={summaryUsers} loading={summaryLoading} />}
-      </div>
+      <PeriodSelector
+        periodType={periodType}
+        periodOffset={periodOffset}
+        onTypeChange={setPeriodType}
+        onOffsetChange={setPeriodOffset}
+      />
       {filterBucketId && filterBucketName && (
         <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm">
           <div className="flex items-center gap-2 text-amber-800">
