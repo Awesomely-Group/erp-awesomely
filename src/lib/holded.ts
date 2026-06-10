@@ -92,8 +92,9 @@ export interface AccountEntry {
 
 export interface HoldedCreateDocumentPayload {
   date: number;
+  contactId?: string;
+  contactName?: string;
   currency?: string;
-  desc?: string;
   notes?: string;
   products: Array<{
     name: string;

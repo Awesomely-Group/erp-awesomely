@@ -75,6 +75,7 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
     where: { id: budgetId },
     include: {
       company: true,
+      project: { select: { name: true } },
       lines: { orderBy: [{ phase: "asc" }, { sortOrder: "asc" }] },
     },
   });
@@ -98,6 +99,7 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
   try {
     result = await client.createDocument("salesorder", {
       date: Math.floor(Date.now() / 1000),
+      contactName: budget.project.name,
       currency: budget.currency,
       notes: budget.notes ?? undefined,
       products,
