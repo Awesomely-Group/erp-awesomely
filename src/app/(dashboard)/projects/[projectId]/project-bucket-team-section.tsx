@@ -118,7 +118,13 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
                         onChange={(ev) => void handleRoleChange(e.accountId, ev.target.value)}
                         className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
                       >
-                        <option value="">— Sin bolsa —</option>
+                        <option value="">
+                          {e.defaultRoleName != null && e.supplierRate != null
+                            ? `${e.defaultRoleName} · ${e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h`
+                            : e.defaultRoleName != null
+                              ? e.defaultRoleName
+                              : "— Sin bolsa —"}
+                        </option>
                         {e.roles.map((r) => (
                           <option key={r.id} value={r.id}>
                             {r.name}{bucketRoleIds.includes(r.id) ? " ●" : ""}

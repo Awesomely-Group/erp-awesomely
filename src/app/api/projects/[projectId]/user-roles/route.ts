@@ -16,6 +16,7 @@ export interface ProjectUserRoleEntry {
   effectiveRoleId: string | null;
   supplierRate: number | null;
   projectRate: number | null;
+  defaultRoleName: string | null;
 }
 
 export async function GET(
@@ -72,7 +73,7 @@ export async function GET(
       select: {
         jiraUsers: { select: { accountId: true } },
         hourlyRate: true,
-        defaultRole: { select: { ratePerHour: true } },
+        defaultRole: { select: { name: true, ratePerHour: true } },
       },
     }),
   ]);
@@ -107,6 +108,7 @@ export async function GET(
       effectiveRoleId: override?.roleId ?? null,
       supplierRate,
       projectRate: override?.ratePerHour != null ? Number(override.ratePerHour) : null,
+      defaultRoleName: supplier?.defaultRole?.name ?? null,
     };
   });
 
