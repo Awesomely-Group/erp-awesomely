@@ -26,6 +26,7 @@ interface CreateBudgetPayload {
   endDate?: string | null;
   notes?: string | null;
   companyId?: string | null;
+  clientName?: string | null;
 }
 
 export async function createBudget(payload: CreateBudgetPayload): Promise<{ id: string }> {
@@ -47,6 +48,7 @@ export async function createBudget(payload: CreateBudgetPayload): Promise<{ id: 
       endDate: payload.endDate ? new Date(payload.endDate) : null,
       notes: payload.notes ?? null,
       companyId: payload.companyId ?? null,
+      clientName: payload.clientName ?? null,
     },
     select: { id: true },
   });
@@ -99,7 +101,7 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
   try {
     result = await client.createDocument("salesorder", {
       date: Math.floor(Date.now() / 1000),
-      contactName: budget.project.name,
+      contactName: budget.clientName ?? budget.project.name,
       currency: budget.currency,
       notes: budget.notes ?? undefined,
       products,

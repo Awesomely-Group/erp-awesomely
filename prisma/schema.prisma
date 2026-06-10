@@ -739,6 +739,8 @@ model Budget {
   endDate        DateTime?
   notes          String?
 
+  clientName     String?
+
   companyId      String?
   company        Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
   holdedDocId    String?

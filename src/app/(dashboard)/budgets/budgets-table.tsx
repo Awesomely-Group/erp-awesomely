@@ -140,6 +140,7 @@ function NewBudgetModal({
         endDate: (fd.get("endDate") as string) || null,
         notes: (fd.get("notes") as string) || null,
         companyId,
+        clientName: (fd.get("clientName") as string) || null,
       });
       onClose();
       router.push(`/budgets/${id}`);
@@ -163,13 +164,21 @@ function NewBudgetModal({
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
               <input
                 name="name"
                 required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="ej: Lotte — Habitaciones"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Cliente</label>
+              <input
+                name="clientName"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="ej: Lotte Hotel"
               />
             </div>
             <div className="col-span-2">
