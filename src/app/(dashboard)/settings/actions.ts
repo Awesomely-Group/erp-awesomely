@@ -8,6 +8,7 @@ import {
   canManageSsoAllowlist,
   normalizeEmail,
 } from "@/lib/sso-allowlist";
+import { randomBytes, createHash } from "crypto";
 
 export async function createCompany(data: FormData): Promise<void> {
   const session = await auth();
@@ -240,4 +241,77 @@ export async function deleteAccountMapping(id: string): Promise<void> {
   await prisma.accountMapping.delete({ where: { id } });
 
   revalidatePath("/settings");
+}
+
+// ─── API Keys ─────────────────────────────────────────────────────────────────
+
+export type ApiKeyFormState =
+  | { error?: string; newKey?: string }
+  | undefined;
+
+export async function createApiKey(
+  _prev: ApiKeyFormState,
+  formData: FormData
+): Promise<ApiKeyFormState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "No autorizado" };
+
+  const name = (formData.get("name") as string)?.trim();
+  if (!name) return { error: "El nombre es obligatorio" };
+  if (name.length > 64) return { error: "El nombre no puede superar 64 caracteres" };
+
+  const rawKey = "erp_" + randomBytes(24).toString("hex");
+  const keyHash = createHash("sha256").update(rawKey).digest("hex");
+  const keyPrefix = rawKey.slice(0, 12);
+
+  await prisma.apiKey.create({
+    data: {
+      name,
+      keyHash,
+      keyPrefix,
+      createdById: session.user.id,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.CREATE,
+      entityType: "ApiKey",
+      entityId: keyPrefix,
+      newValue: { name, keyPrefix },
+    },
+  });
+
+  revalidatePath("/settings");
+  return { newKey: rawKey };
+}
+
+export async function deleteApiKey(
+  _prev: ApiKeyFormState,
+  formData: FormData
+): Promise<ApiKeyFormState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "No autorizado" };
+
+  const id = formData.get("id") as string;
+  if (!id) return { error: "Falta id" };
+
+  const row = await prisma.apiKey.findUnique({ where: { id } });
+  if (!row) return { error: "API key no encontrada" };
+
+  await prisma.apiKey.delete({ where: { id } });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.DELETE,
+      entityType: "ApiKey",
+      entityId: row.keyPrefix,
+      previousValue: { name: row.name, keyPrefix: row.keyPrefix },
+    },
+  });
+
+  revalidatePath("/settings");
+  return undefined;
 }

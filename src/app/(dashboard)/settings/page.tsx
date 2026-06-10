@@ -5,6 +5,7 @@ import { AuditLog } from "./audit-log";
 import { SsoAllowlistSection } from "./sso-allowlist";
 import { AccountMappingTable } from "./account-mapping-table";
 import { RoleTemplatesSection } from "./role-templates-section";
+import { ApiKeysSection } from "./api-keys";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
   const [companies, workspaces, auditLogs, accountMappings, roleTemplates] = await Promise.all([
@@ -85,6 +86,10 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
 
       <div className="max-w-3xl">
         <SsoAllowlistSection />
+      </div>
+
+      <div className="max-w-3xl">
+        <ApiKeysSection />
       </div>
 
       {/* Roles de proveedor */}

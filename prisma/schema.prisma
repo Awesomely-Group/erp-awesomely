@@ -17,6 +17,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  apiKeys       ApiKey[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -807,6 +808,23 @@ model RoleRate {
   @@unique([roleId, region])
   @@index([roleId])
   @@map("role_rates")
+}
+
+// ─── API Keys ─────────────────────────────────────────────────────────────────
+
+/// Claves de API para acceso programático (MCP, integraciones externas). El valor real
+/// se muestra una sola vez al crearla; aquí se almacena únicamente el hash SHA-256.
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+
+  @@map("api_keys")
 }
 
 // ─── Account Mappings ──────────────────────────────────────────────────────────
