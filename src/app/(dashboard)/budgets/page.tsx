@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { BudgetsTable } from "./budgets-table";
-import type { BudgetRow } from "./budgets-table";
+import type { BudgetRow, Workspace } from "./budgets-table";
+
+const WORKSPACE_ORDER = ["la troupe", "gigson solutions", "awesomely"];
 
 export default async function BudgetsPage(): Promise<React.JSX.Element> {
-  const [budgets, projects] = await Promise.all([
+  const [budgets, dbWorkspaces] = await Promise.all([
     prisma.budget.findMany({
       include: {
         project: { select: { id: true, name: true, jiraKey: true } },
@@ -12,12 +14,29 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
       },
       orderBy: { createdAt: "desc" },
     }),
-    prisma.jiraProject.findMany({
+    prisma.jiraWorkspace.findMany({
       where: { active: true },
-      select: { id: true, name: true, jiraKey: true },
-      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        projects: {
+          where: { active: true },
+          select: { id: true, name: true, jiraKey: true },
+          orderBy: { name: "asc" },
+        },
+      },
     }),
   ]);
+
+  const hasAwesomely = dbWorkspaces.some((w) => w.name.toLowerCase().includes("awesomely"));
+  const workspaces: Workspace[] = [
+    ...(dbWorkspaces as Workspace[]),
+    ...(hasAwesomely ? [] : [{ id: null, name: "Awesomely", projects: [] }]),
+  ].sort((a, b) => {
+    const ai = WORKSPACE_ORDER.indexOf(a.name.toLowerCase());
+    const bi = WORKSPACE_ORDER.indexOf(b.name.toLowerCase());
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
 
   const rows: BudgetRow[] = budgets.map((b) => {
     const totalEstimatedHours = b.lines.reduce((sum, l) => sum + l.estimatedHours, 0);
@@ -55,7 +74,7 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
 
   return (
     <div className="space-y-6">
-      <BudgetsTable rows={rows} projects={projects} />
+      <BudgetsTable rows={rows} workspaces={workspaces} />
     </div>
   );
 }

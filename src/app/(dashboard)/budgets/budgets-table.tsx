@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { BudgetType, BudgetRegion, BudgetStatus, BudgetTemplate } from "@prisma/client";
-import { Plus } from "lucide-react";
+import { Plus, ChevronDown } from "lucide-react";
 import { createBudget, updateBudgetStatus } from "./actions";
 
 export type BudgetRow = {
@@ -63,12 +63,10 @@ const REGION_LABELS: Record<BudgetRegion, string> = {
   OTHER: "Otro",
 };
 
-const TEMPLATE_LABELS: Record<BudgetTemplate, string> = {
-  SOLUTIONS: "Solutions",
-  TROUPE: "Troupe",
-};
+const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK"];
 
 type Project = { id: string; name: string; jiraKey: string };
+export type Workspace = { id: string | null; name: string; projects: Project[] };
 
 function StatusSelect({
   budgetId,
@@ -102,14 +100,16 @@ function StatusSelect({
 }
 
 function NewBudgetModal({
-  projects,
+  workspace,
   onClose,
 }: {
-  projects: Project[];
+  workspace: Workspace;
   onClose: () => void;
 }): React.JSX.Element {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+
+  const template: BudgetTemplate = workspace.name.toLowerCase().includes("troupe") ? "TROUPE" : "SOLUTIONS";
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
@@ -131,7 +131,7 @@ function NewBudgetModal({
           type === "FEE_REGULAR" && fd.get("monthlyFee")
             ? parseFloat(fd.get("monthlyFee") as string)
             : null,
-        template: fd.get("template") as BudgetTemplate,
+        template,
         startDate: (fd.get("startDate") as string) || null,
         endDate: (fd.get("endDate") as string) || null,
         notes: (fd.get("notes") as string) || null,
@@ -140,6 +140,8 @@ function NewBudgetModal({
       router.push(`/budgets/${id}`);
     });
   }
+
+  const hasProjects = workspace.projects.length > 0;
 
   return (
     <div
@@ -150,7 +152,10 @@ function NewBudgetModal({
         className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-gray-900">Nuevo presupuesto</h2>
+        <h2 className="text-lg font-semibold text-gray-900">
+          Nuevo presupuesto
+          <span className="text-gray-400 font-normal"> — {workspace.name}</span>
+        </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -164,18 +169,24 @@ function NewBudgetModal({
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-600 mb-1">Proyecto</label>
-              <select
-                name="projectId"
-                required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">Selecciona proyecto…</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    [{p.jiraKey}] {p.name}
-                  </option>
-                ))}
-              </select>
+              {hasProjects ? (
+                <select
+                  name="projectId"
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Selecciona proyecto…</option>
+                  {workspace.projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      [{p.jiraKey}] {p.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm text-gray-400 italic py-2">
+                  Este workspace aún no tiene proyectos de Jira configurados.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
@@ -215,11 +226,15 @@ function NewBudgetModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Divisa</label>
-              <input
+              <select
                 name="currency"
                 defaultValue="EUR"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Horas estimadas</label>
@@ -242,18 +257,6 @@ function NewBudgetModal({
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="ej: 3500"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Template</label>
-              <select
-                name="template"
-                defaultValue="SOLUTIONS"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {(Object.keys(TEMPLATE_LABELS) as BudgetTemplate[]).map((t) => (
-                  <option key={t} value={t}>{TEMPLATE_LABELS[t]}</option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Fecha inicio</label>
@@ -290,7 +293,7 @@ function NewBudgetModal({
             </button>
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || !hasProjects}
               className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
               {pending ? "Creando…" : "Crear presupuesto"}
@@ -304,19 +307,15 @@ function NewBudgetModal({
 
 export function BudgetsTable({
   rows,
-  projects = [],
+  workspaces = [],
 }: {
   rows: BudgetRow[];
-  projects?: Project[];
+  workspaces?: Workspace[];
 }): React.JSX.Element {
   const router = useRouter();
-  const [showModal, setShowModal] = useState(false);
-
-  const projectsForModal: Project[] = projects.length > 0
-    ? projects
-    : Array.from(
-        new Map(rows.map((r) => [r.projectId, { id: r.projectId, name: r.projectName, jiraKey: r.projectKey }])).values()
-      );
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="space-y-6">
@@ -325,24 +324,36 @@ export function BudgetsTable({
           <h1 className="text-2xl font-bold text-gray-900">Presupuestos</h1>
           <p className="text-sm text-gray-500 mt-1">Gestión de presupuestos por proyecto</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+        <div
+          ref={dropdownRef}
+          className="relative"
+          onMouseEnter={() => setDropdownOpen(true)}
+          onMouseLeave={() => setDropdownOpen(false)}
         >
-          <Plus className="h-4 w-4" />
-          Nuevo presupuesto
-        </button>
+          <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+            <Plus className="h-4 w-4" />
+            Nuevo presupuesto
+            <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+          </button>
+          {dropdownOpen && workspaces.length > 0 && (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+              {workspaces.map((w) => (
+                <button
+                  key={w.id ?? w.name}
+                  onClick={() => { setSelectedWorkspace(w); setDropdownOpen(false); }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  {w.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 px-6 py-16 text-center">
           <p className="text-gray-400 text-sm">No hay presupuestos todavía.</p>
-          <button
-            onClick={() => setShowModal(true)}
-            className="mt-4 text-sm text-indigo-600 hover:underline"
-          >
-            Crea el primero
-          </button>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -354,7 +365,6 @@ export function BudgetsTable({
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Tipo</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Región</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Template</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 whitespace-nowrap">Importe</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 whitespace-nowrap">Margen bruto</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 whitespace-nowrap">H. estimadas</th>
@@ -383,7 +393,6 @@ export function BudgetsTable({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">{REGION_LABELS[row.region]}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{TEMPLATE_LABELS[row.template]}</td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">
                         {formatCurrency(row.amount, row.currency)}
                       </td>
@@ -417,10 +426,10 @@ export function BudgetsTable({
         </div>
       )}
 
-      {showModal && (
+      {selectedWorkspace && (
         <NewBudgetModal
-          projects={projectsForModal}
-          onClose={() => setShowModal(false)}
+          workspace={selectedWorkspace}
+          onClose={() => setSelectedWorkspace(null)}
         />
       )}
     </div>
