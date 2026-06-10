@@ -14,6 +14,7 @@ export default async function BudgetDetailPage({
       where: { id: budgetId },
       include: {
         project: { select: { id: true, name: true, jiraKey: true } },
+        company: { select: { id: true, name: true } },
         lines: {
           include: { role: { select: { id: true, name: true } } },
           orderBy: [{ phase: "asc" }, { sortOrder: "asc" }],

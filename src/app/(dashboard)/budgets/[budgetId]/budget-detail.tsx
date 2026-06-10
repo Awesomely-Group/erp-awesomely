@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, holdedSalesOrderUrl } from "@/lib/utils";
 import {
   BudgetType,
   BudgetRegion,
@@ -10,12 +10,13 @@ import {
   BudgetTemplate,
   PaymentTermValueType,
 } from "@prisma/client";
-import { ArrowLeft, Plus, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, ExternalLink } from "lucide-react";
 import {
   upsertBudgetLine,
   deleteBudgetLine,
   upsertPaymentTerm,
   deletePaymentTerm,
+  createHoldedQuote,
 } from "../actions";
 
 type Role = { id: string; name: string };
@@ -57,7 +58,9 @@ type BudgetData = {
   startDate: Date | null;
   endDate: Date | null;
   notes: string | null;
+  holdedDocId: string | null;
   project: { id: string; name: string; jiraKey: string };
+  company: { id: string; name: string } | null;
   lines: BudgetLineData[];
   paymentTerms: PaymentTermData[];
 };
@@ -340,6 +343,7 @@ export function BudgetDetail({
   const [editingTermId, setEditingTermId] = useState<string | null>(null);
   const [deletingLineId, startLineDelete] = useTransition();
   const [deletingTermId, startTermDelete] = useTransition();
+  const [creatingHolded, startHoldedCreate] = useTransition();
 
   const totalPvp = budget.lines.reduce(
     (sum, l) => sum + l.estimatedHours * Number(l.pvpPerHour),
@@ -368,16 +372,54 @@ export function BudgetDetail({
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 truncate">{budget.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 truncate flex items-center gap-2">
+            {budget.name}
+            {budget.holdedDocId && (
+              <a
+                href={holdedSalesOrderUrl(budget.holdedDocId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-base text-gray-400 hover:text-indigo-600 transition-colors flex-shrink-0"
+                title="Ver presupuesto en Holded"
+              >
+                ↗
+              </a>
+            )}
+          </h1>
           <p className="text-sm text-gray-500">
             <span className="font-mono text-gray-400">{budget.project.jiraKey}</span>
             {" "}·{" "}{budget.project.name}
+            {budget.company && (
+              <span className="ml-2 text-xs text-gray-400">· {budget.company.name}</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_COLORS[budget.status]}`}>
             {STATUS_LABELS[budget.status]}
           </span>
+          {!budget.holdedDocId && (
+            <button
+              onClick={() => startHoldedCreate(async () => { await createHoldedQuote(budget.id); })}
+              disabled={creatingHolded || !budget.company}
+              title={!budget.company ? "Asigna una empresa al presupuesto" : "Crear presupuesto en Holded"}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              {creatingHolded ? "Creando…" : "Crear en Holded"}
+            </button>
+          )}
+          {budget.holdedDocId && (
+            <a
+              href={holdedSalesOrderUrl(budget.holdedDocId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Ver en Holded
+            </a>
+          )}
         </div>
       </div>
 

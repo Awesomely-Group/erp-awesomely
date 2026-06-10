@@ -79,6 +79,7 @@ model Company {
   suppliers    Supplier[]
   syncLogs     SyncLog[]
   proformas    Proforma[]
+  budgets      Budget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -738,6 +739,10 @@ model Budget {
   endDate        DateTime?
   notes          String?
 
+  companyId      String?
+  company        Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  holdedDocId    String?
+
   lines          BudgetLine[]
   paymentTerms   PaymentTerm[]
   classifications Classification[]
@@ -747,6 +752,7 @@ model Budget {
 
   @@index([projectId])
   @@index([status])
+  @@index([companyId])
   @@map("budgets")
 }
 

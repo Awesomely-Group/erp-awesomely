@@ -90,11 +90,43 @@ export interface AccountEntry {
   balance?: number;
 }
 
+export interface HoldedCreateDocumentPayload {
+  date: number;
+  currency?: string;
+  desc?: string;
+  notes?: string;
+  products: Array<{
+    name: string;
+    units: number;
+    price: number;
+    tax?: number;
+    discount?: number;
+  }>;
+}
+
 export class HoldedClient {
   private readonly apiKey: string;
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+  }
+
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    const url = `${HOLDED_BASE_URL}${path}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { key: this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<T>;
+  }
+
+  async createDocument(
+    docType: string,
+    payload: HoldedCreateDocumentPayload
+  ): Promise<{ id: string; docNumber?: string }> {
+    return this.post(`/documents/${docType}`, payload);
   }
 
   private async fetchFromBase<T>(baseUrl: string, path: string, params?: Record<string, string>): Promise<T> {

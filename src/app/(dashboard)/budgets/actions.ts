@@ -10,6 +10,7 @@ import {
   PaymentTermValueType,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { HoldedClient } from "@/lib/holded";
 
 interface CreateBudgetPayload {
   projectId: string;
@@ -24,6 +25,7 @@ interface CreateBudgetPayload {
   startDate?: string | null;
   endDate?: string | null;
   notes?: string | null;
+  companyId?: string | null;
 }
 
 export async function createBudget(payload: CreateBudgetPayload): Promise<{ id: string }> {
@@ -44,6 +46,7 @@ export async function createBudget(payload: CreateBudgetPayload): Promise<{ id: 
       startDate: payload.startDate ? new Date(payload.startDate) : null,
       endDate: payload.endDate ? new Date(payload.endDate) : null,
       notes: payload.notes ?? null,
+      companyId: payload.companyId ?? null,
     },
     select: { id: true },
   });
@@ -61,6 +64,49 @@ export async function updateBudgetStatus(
 
   await prisma.budget.update({ where: { id: budgetId }, data: { status } });
   revalidatePath("/budgets");
+  revalidatePath(`/budgets/${budgetId}`);
+}
+
+export async function createHoldedQuote(budgetId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const budget = await prisma.budget.findUnique({
+    where: { id: budgetId },
+    include: {
+      company: true,
+      lines: { orderBy: [{ phase: "asc" }, { sortOrder: "asc" }] },
+    },
+  });
+
+  if (!budget) throw new Error("Budget not found");
+  if (!budget.company) throw new Error("No company assigned to this budget");
+
+  const client = new HoldedClient(budget.company.holdedApiKey);
+
+  const products =
+    budget.lines.length > 0
+      ? budget.lines.map((l) => ({
+          name: `${l.phase} — ${l.task}`,
+          units: l.estimatedHours,
+          price: Number(l.pvpPerHour),
+          tax: 0,
+        }))
+      : [{ name: budget.name, units: 1, price: Number(budget.amount), tax: 0 }];
+
+  const result = await client.createDocument("salesorder", {
+    date: Math.floor(Date.now() / 1000),
+    currency: budget.currency,
+    desc: budget.name,
+    notes: budget.notes ?? undefined,
+    products,
+  });
+
+  await prisma.budget.update({
+    where: { id: budgetId },
+    data: { holdedDocId: result.id },
+  });
+
   revalidatePath(`/budgets/${budgetId}`);
 }
 

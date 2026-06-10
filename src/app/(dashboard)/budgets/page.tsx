@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { BudgetsTable } from "./budgets-table";
-import type { BudgetRow, Workspace } from "./budgets-table";
+import type { BudgetRow, Workspace, Company } from "./budgets-table";
 
 const WORKSPACE_ORDER = ["la troupe", "gigson solutions", "awesomely"];
 
 export default async function BudgetsPage(): Promise<React.JSX.Element> {
-  const [budgets, dbWorkspaces] = await Promise.all([
+  const [budgets, dbWorkspaces, companies] = await Promise.all([
     prisma.budget.findMany({
       include: {
         project: { select: { id: true, name: true, jiraKey: true } },
@@ -26,6 +26,11 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
         },
       },
     }),
+    prisma.company.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }) as Promise<Company[]>,
   ]);
 
   const hasAwesomely = dbWorkspaces.some((w) => w.name.toLowerCase().includes("awesomely"));
@@ -74,7 +79,7 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
 
   return (
     <div className="space-y-6">
-      <BudgetsTable rows={rows} workspaces={workspaces} />
+      <BudgetsTable rows={rows} workspaces={workspaces} companies={companies} />
     </div>
   );
 }

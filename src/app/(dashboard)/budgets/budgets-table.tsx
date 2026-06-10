@@ -67,6 +67,7 @@ const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK"];
 
 type Project = { id: string; name: string; jiraKey: string };
 export type Workspace = { id: string | null; name: string; projects: Project[] };
+export type Company = { id: string; name: string };
 
 function StatusSelect({
   budgetId,
@@ -101,9 +102,11 @@ function StatusSelect({
 
 function NewBudgetModal({
   workspace,
+  companies,
   onClose,
 }: {
   workspace: Workspace;
+  companies: Company[];
   onClose: () => void;
 }): React.JSX.Element {
   const router = useRouter();
@@ -115,6 +118,7 @@ function NewBudgetModal({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const type = fd.get("type") as BudgetType;
+    const companyId = (fd.get("companyId") as string) || null;
     startTransition(async () => {
       const { id } = await createBudget({
         projectId: fd.get("projectId") as string,
@@ -135,6 +139,7 @@ function NewBudgetModal({
         startDate: (fd.get("startDate") as string) || null,
         endDate: (fd.get("endDate") as string) || null,
         notes: (fd.get("notes") as string) || null,
+        companyId,
       });
       onClose();
       router.push(`/budgets/${id}`);
@@ -187,6 +192,18 @@ function NewBudgetModal({
                   Este workspace aún no tiene proyectos de Jira configurados.
                 </p>
               )}
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Empresa</label>
+              <select
+                name="companyId"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Sin empresa asignada</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
@@ -308,9 +325,11 @@ function NewBudgetModal({
 export function BudgetsTable({
   rows,
   workspaces = [],
+  companies = [],
 }: {
   rows: BudgetRow[];
   workspaces?: Workspace[];
+  companies?: Company[];
 }): React.JSX.Element {
   const router = useRouter();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -429,6 +448,7 @@ export function BudgetsTable({
       {selectedWorkspace && (
         <NewBudgetModal
           workspace={selectedWorkspace}
+          companies={companies}
           onClose={() => setSelectedWorkspace(null)}
         />
       )}
