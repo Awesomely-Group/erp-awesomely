@@ -344,6 +344,7 @@ export function BudgetDetail({
   const [deletingLineId, startLineDelete] = useTransition();
   const [deletingTermId, startTermDelete] = useTransition();
   const [creatingHolded, startHoldedCreate] = useTransition();
+  const [holdedError, setHoldedError] = useState<string | null>(null);
 
   const totalPvp = budget.lines.reduce(
     (sum, l) => sum + l.estimatedHours * Number(l.pvpPerHour),
@@ -399,15 +400,26 @@ export function BudgetDetail({
             {STATUS_LABELS[budget.status]}
           </span>
           {!budget.holdedDocId && (
-            <button
-              onClick={() => startHoldedCreate(async () => { await createHoldedQuote(budget.id); })}
-              disabled={creatingHolded || !budget.company}
-              title={!budget.company ? "Asigna una empresa al presupuesto" : "Crear presupuesto en Holded"}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              {creatingHolded ? "Creando…" : "Crear en Holded"}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={() => {
+                  setHoldedError(null);
+                  startHoldedCreate(async () => {
+                    const res = await createHoldedQuote(budget.id);
+                    if (res.error) setHoldedError(res.error);
+                  });
+                }}
+                disabled={creatingHolded || !budget.company}
+                title={!budget.company ? "Asigna una empresa al presupuesto" : "Crear presupuesto en Holded"}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                {creatingHolded ? "Creando…" : "Crear en Holded"}
+              </button>
+              {holdedError && (
+                <p className="text-xs text-red-500 max-w-xs text-right">{holdedError}</p>
+              )}
+            </div>
           )}
           {budget.holdedDocId && (
             <a

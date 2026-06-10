@@ -67,9 +67,9 @@ export async function updateBudgetStatus(
   revalidatePath(`/budgets/${budgetId}`);
 }
 
-export async function createHoldedQuote(budgetId: string): Promise<void> {
+export async function createHoldedQuote(budgetId: string): Promise<{ error?: string }> {
   const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  if (!session?.user) return { error: "Unauthorized" };
 
   const budget = await prisma.budget.findUnique({
     where: { id: budgetId },
@@ -79,8 +79,8 @@ export async function createHoldedQuote(budgetId: string): Promise<void> {
     },
   });
 
-  if (!budget) throw new Error("Budget not found");
-  if (!budget.company) throw new Error("No company assigned to this budget");
+  if (!budget) return { error: "Presupuesto no encontrado" };
+  if (!budget.company) return { error: "No hay empresa asignada a este presupuesto" };
 
   const client = new HoldedClient(budget.company.holdedApiKey);
 
@@ -94,13 +94,18 @@ export async function createHoldedQuote(budgetId: string): Promise<void> {
         }))
       : [{ name: budget.name, units: 1, price: Number(budget.amount), tax: 0 }];
 
-  const result = await client.createDocument("salesorder", {
-    date: Math.floor(Date.now() / 1000),
-    currency: budget.currency,
-    desc: budget.name,
-    notes: budget.notes ?? undefined,
-    products,
-  });
+  let result: { id: string };
+  try {
+    result = await client.createDocument("salesorder", {
+      date: Math.floor(Date.now() / 1000),
+      currency: budget.currency,
+      notes: budget.notes ?? undefined,
+      products,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error al crear el documento en Holded";
+    return { error: msg };
+  }
 
   await prisma.budget.update({
     where: { id: budgetId },
@@ -108,6 +113,7 @@ export async function createHoldedQuote(budgetId: string): Promise<void> {
   });
 
   revalidatePath(`/budgets/${budgetId}`);
+  return {};
 }
 
 interface UpsertBudgetLinePayload {
