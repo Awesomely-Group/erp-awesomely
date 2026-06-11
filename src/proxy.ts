@@ -9,10 +9,22 @@ export default auth((req) => {
   const isLoginPage = req.nextUrl.pathname === "/login";
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
 
-  const isApiInternal = req.nextUrl.pathname === "/api/sync" ||
-    req.nextUrl.pathname === "/api/debug-accounts" ||
-    req.nextUrl.pathname === "/api/notify/proformas" ||
-    req.nextUrl.pathname === "/api/mcp";
+  const p = req.nextUrl.pathname;
+
+  const isApiInternal =
+    p === "/api/sync" ||
+    p === "/api/debug-accounts" ||
+    p === "/api/notify/proformas" ||
+    p === "/api/mcp" ||
+    p === "/api/kpis" ||
+    p === "/api/projects" ||
+    p.startsWith("/api/projects/") ||
+    p === "/api/invoices" ||
+    (p.startsWith("/api/invoices/") && p.endsWith("/classify")) ||
+    p === "/api/cashflow" ||
+    p === "/api/forecasts" ||
+    p === "/api/suppliers/verifications" ||
+    p.startsWith("/api/webhooks/");
 
   if (isApiAuth || isApiInternal) return NextResponse.next();
   if (!isLoggedIn && !isLoginPage) {
