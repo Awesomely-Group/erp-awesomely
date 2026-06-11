@@ -7,6 +7,7 @@ import {
   BudgetRegion,
   BudgetStatus,
   BudgetTemplate,
+  BudgetLineType,
   PaymentTermValueType,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -115,19 +116,33 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
 }
 
 function buildHoldedProducts(budget: {
-  lines: { phase: string; task: string; estimatedHours: number; pvpPerHour: unknown }[];
+  lines: {
+    lineType: BudgetLineType;
+    phase: string | null;
+    task: string | null;
+    estimatedHours: number | null;
+    pvpPerHour: unknown;
+    concept: string | null;
+    quantity: unknown;
+    unitPrice: unknown;
+  }[];
   name: string;
   amount: unknown;
-}): Array<{ name: string; units: number; price: number; tax: number }> {
+}): Array<{ name: string; units: number; price: number; subtotal: number }> {
   if (budget.lines.length > 0) {
-    return budget.lines.map((l) => ({
-      name: `${l.phase} — ${l.task}`,
-      units: l.estimatedHours,
-      price: Number(l.pvpPerHour),
-      tax: 0,
-    }));
+    return budget.lines.map((l) => {
+      if (l.lineType === "ACTIVIDAD") {
+        const units = Number(l.quantity ?? 1);
+        const price = Number(l.unitPrice ?? 0);
+        return { name: l.concept ?? budget.name, units, price, subtotal: units * price };
+      }
+      const units = l.estimatedHours ?? 0;
+      const price = Number(l.pvpPerHour ?? 0);
+      return { name: `${l.phase ?? ""} — ${l.task ?? ""}`, units, price, subtotal: units * price };
+    });
   }
-  return [{ name: budget.name, units: 1, price: Number(budget.amount), tax: 0 }];
+  const p = Number(budget.amount);
+  return [{ name: budget.name, units: 1, price: p, subtotal: p }];
 }
 
 export async function syncHoldedQuote(budgetId: string): Promise<{ error?: string }> {
@@ -226,12 +241,18 @@ export async function deleteBudget(budgetId: string): Promise<void> {
 interface UpsertBudgetLinePayload {
   id?: string;
   budgetId: string;
-  phase: string;
-  task: string;
+  lineType: BudgetLineType;
+  // ROL
+  phase?: string | null;
+  task?: string | null;
   roleId?: string | null;
-  estimatedHours: number;
-  pvpPerHour: number;
-  costPerHour: number;
+  estimatedHours?: number | null;
+  pvpPerHour?: number | null;
+  costPerHour?: number | null;
+  // ACTIVIDAD
+  concept?: string | null;
+  quantity?: number | null;
+  unitPrice?: number | null;
   sortOrder?: number;
 }
 
@@ -239,32 +260,24 @@ export async function upsertBudgetLine(payload: UpsertBudgetLinePayload): Promis
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
+  const data = {
+    lineType: payload.lineType,
+    phase: payload.phase ?? null,
+    task: payload.task ?? null,
+    roleId: payload.roleId ?? null,
+    estimatedHours: payload.estimatedHours ?? null,
+    pvpPerHour: payload.pvpPerHour ?? null,
+    costPerHour: payload.costPerHour ?? null,
+    concept: payload.concept ?? null,
+    quantity: payload.quantity ?? null,
+    unitPrice: payload.unitPrice ?? null,
+    sortOrder: payload.sortOrder ?? 0,
+  };
+
   if (payload.id) {
-    await prisma.budgetLine.update({
-      where: { id: payload.id },
-      data: {
-        phase: payload.phase,
-        task: payload.task,
-        roleId: payload.roleId ?? null,
-        estimatedHours: payload.estimatedHours,
-        pvpPerHour: payload.pvpPerHour,
-        costPerHour: payload.costPerHour,
-        sortOrder: payload.sortOrder ?? 0,
-      },
-    });
+    await prisma.budgetLine.update({ where: { id: payload.id }, data });
   } else {
-    await prisma.budgetLine.create({
-      data: {
-        budgetId: payload.budgetId,
-        phase: payload.phase,
-        task: payload.task,
-        roleId: payload.roleId ?? null,
-        estimatedHours: payload.estimatedHours,
-        pvpPerHour: payload.pvpPerHour,
-        costPerHour: payload.costPerHour,
-        sortOrder: payload.sortOrder ?? 0,
-      },
-    });
+    await prisma.budgetLine.create({ data: { budgetId: payload.budgetId, ...data } });
   }
 
   revalidatePath(`/budgets/${payload.budgetId}`);

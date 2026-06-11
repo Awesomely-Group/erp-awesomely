@@ -107,6 +107,7 @@ export interface HoldedCreateDocumentPayload {
     name: string;
     units: number;
     price: number;
+    subtotal?: number;
     tax?: number;
     discount?: number;
   }>;

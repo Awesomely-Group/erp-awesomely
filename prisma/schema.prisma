@@ -721,6 +721,13 @@ enum PaymentTermValueType {
   @@map("payment_term_value_type")
 }
 
+enum BudgetLineType {
+  ROL
+  ACTIVIDAD
+
+  @@map("budget_line_type")
+}
+
 model Budget {
   id        String       @id @default(cuid())
   projectId String
@@ -761,18 +768,26 @@ model Budget {
 }
 
 model BudgetLine {
-  id       String      @id @default(cuid())
+  id       String         @id @default(cuid())
   budgetId String
-  budget   Budget      @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  budget   Budget         @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  lineType BudgetLineType @default(ROL)
   roleId   String?
-  role     RoleTemplate? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  role     RoleTemplate?  @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
-  phase          String
-  task           String
-  estimatedHours Float
-  pvpPerHour     Decimal
-  costPerHour    Decimal
-  sortOrder      Int     @default(0)
+  // ROL fields
+  phase          String?
+  task           String?
+  estimatedHours Float?
+  pvpPerHour     Decimal?
+  costPerHour    Decimal?
+
+  // ACTIVIDAD fields
+  concept   String?
+  quantity  Decimal?
+  unitPrice Decimal?
+
+  sortOrder Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -8,6 +8,7 @@ import {
   BudgetRegion,
   BudgetStatus,
   BudgetTemplate,
+  BudgetLineType,
   PaymentTermValueType,
 } from "@prisma/client";
 import { ArrowLeft, Plus, Trash2, Pencil, ExternalLink, Settings } from "lucide-react";
@@ -26,13 +27,19 @@ type Role = { id: string; name: string };
 
 type BudgetLineData = {
   id: string;
-  phase: string;
-  task: string;
+  lineType: BudgetLineType;
+  // ROL
+  phase: string | null;
+  task: string | null;
   roleId: string | null;
   role: Role | null;
-  estimatedHours: number;
+  estimatedHours: number | null;
   pvpPerHour: unknown;
   costPerHour: unknown;
+  // ACTIVIDAD
+  concept: string | null;
+  quantity: unknown;
+  unitPrice: unknown;
   sortOrder: number;
   updatedAt: Date;
 };
@@ -113,114 +120,128 @@ function LineForm({
   onDone: () => void;
 }): React.JSX.Element {
   const [pending, startTransition] = useTransition();
+  const [lineType, setLineType] = useState<BudgetLineType>(existing?.lineType ?? "ROL");
+  const [qty, setQty] = useState<number>(existing ? Number(existing.quantity ?? 1) : 1);
+  const [price, setPrice] = useState<number>(existing ? Number(existing.unitPrice ?? 0) : 0);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
-      await upsertBudgetLine({
-        id: existing?.id,
-        budgetId,
-        phase: fd.get("phase") as string,
-        task: fd.get("task") as string,
-        roleId: (fd.get("roleId") as string) || null,
-        estimatedHours: parseFloat(fd.get("estimatedHours") as string),
-        pvpPerHour: parseFloat(fd.get("pvpPerHour") as string),
-        costPerHour: parseFloat(fd.get("costPerHour") as string),
-        sortOrder: existing?.sortOrder ?? 0,
-      });
+      if (lineType === "ROL") {
+        await upsertBudgetLine({
+          id: existing?.id,
+          budgetId,
+          lineType: "ROL",
+          phase: fd.get("phase") as string,
+          task: fd.get("task") as string,
+          roleId: (fd.get("roleId") as string) || null,
+          estimatedHours: parseFloat(fd.get("estimatedHours") as string),
+          pvpPerHour: parseFloat(fd.get("pvpPerHour") as string),
+          costPerHour: parseFloat(fd.get("costPerHour") as string),
+          sortOrder: existing?.sortOrder ?? 0,
+        });
+      } else {
+        await upsertBudgetLine({
+          id: existing?.id,
+          budgetId,
+          lineType: "ACTIVIDAD",
+          concept: fd.get("concept") as string,
+          unitPrice: parseFloat(fd.get("unitPrice") as string),
+          quantity: parseFloat(fd.get("quantity") as string),
+          sortOrder: existing?.sortOrder ?? 0,
+        });
+      }
       onDone();
     });
   }
 
   return (
     <tr className="bg-indigo-50">
-      <td colSpan={7} className="px-4 py-3">
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Fase</label>
-            <input
-              name="phase"
-              defaultValue={existing?.phase}
-              required
-              placeholder="ej: Habitaciones"
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-28"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Tarea</label>
-            <input
-              name="task"
-              defaultValue={existing?.task}
-              required
-              placeholder="ej: Renders 3D"
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-36"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Rol</label>
-            <select
-              name="roleId"
-              defaultValue={existing?.roleId ?? ""}
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-32"
-            >
-              <option value="">Sin rol</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Horas</label>
-            <input
-              name="estimatedHours"
-              type="number"
-              step="0.5"
-              min="0"
-              defaultValue={existing?.estimatedHours}
-              required
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-16"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">PVP/h</label>
-            <input
-              name="pvpPerHour"
-              type="number"
-              step="0.01"
-              min="0"
-              defaultValue={existing ? Number(existing.pvpPerHour) : undefined}
-              required
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-20"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Coste/h</label>
-            <input
-              name="costPerHour"
-              type="number"
-              step="0.01"
-              min="0"
-              defaultValue={existing ? Number(existing.costPerHour) : undefined}
-              required
-              className="rounded border border-gray-300 px-2 py-1 text-xs w-20"
-            />
-          </div>
-          <div className="flex gap-1">
-            <button
-              type="submit"
-              disabled={pending}
-              className="px-3 py-1 text-xs font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {pending ? "…" : existing ? "Guardar" : "Añadir"}
-            </button>
-            <button
-              type="button"
-              onClick={onDone}
-              className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900 rounded hover:bg-gray-100"
-            >
-              Cancelar
-            </button>
+      <td colSpan={8} className="px-4 py-3">
+        <form onSubmit={handleSubmit} className="space-y-2">
+          {/* Selector de tipo — solo en líneas nuevas */}
+          {!existing && (
+            <div className="flex gap-1 mb-1">
+              <button
+                type="button"
+                onClick={() => setLineType("ROL")}
+                className={`px-3 py-1 text-xs rounded font-medium border transition-colors ${lineType === "ROL" ? "bg-indigo-600 text-white border-indigo-600" : "text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+              >
+                Línea por rol
+              </button>
+              <button
+                type="button"
+                onClick={() => setLineType("ACTIVIDAD")}
+                className={`px-3 py-1 text-xs rounded font-medium border transition-colors ${lineType === "ACTIVIDAD" ? "bg-indigo-600 text-white border-indigo-600" : "text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+              >
+                Línea actividad
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 items-end">
+            {lineType === "ROL" ? (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Fase</label>
+                  <input name="phase" defaultValue={existing?.phase ?? ""} required placeholder="ej: Habitaciones" className="rounded border border-gray-300 px-2 py-1 text-xs w-28" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Tarea</label>
+                  <input name="task" defaultValue={existing?.task ?? ""} required placeholder="ej: Renders 3D" className="rounded border border-gray-300 px-2 py-1 text-xs w-36" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Rol</label>
+                  <select name="roleId" defaultValue={existing?.roleId ?? ""} className="rounded border border-gray-300 px-2 py-1 text-xs w-32">
+                    <option value="">Sin rol</option>
+                    {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Horas</label>
+                  <input name="estimatedHours" type="number" step="0.5" min="0" defaultValue={existing?.estimatedHours ?? ""} required className="rounded border border-gray-300 px-2 py-1 text-xs w-16" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">PVP/h</label>
+                  <input name="pvpPerHour" type="number" step="0.01" min="0" defaultValue={existing ? Number(existing.pvpPerHour) : undefined} required className="rounded border border-gray-300 px-2 py-1 text-xs w-20" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Coste/h</label>
+                  <input name="costPerHour" type="number" step="0.01" min="0" defaultValue={existing ? Number(existing.costPerHour) : undefined} required className="rounded border border-gray-300 px-2 py-1 text-xs w-20" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Concepto</label>
+                  <input name="concept" defaultValue={existing?.concept ?? ""} required placeholder="ej: Licencia anual" className="rounded border border-gray-300 px-2 py-1 text-xs w-48" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Precio</label>
+                  <input name="unitPrice" type="number" step="0.01" min="0" defaultValue={existing ? Number(existing.unitPrice) : 0} required onChange={(e) => setPrice(parseFloat(e.target.value) || 0)} className="rounded border border-gray-300 px-2 py-1 text-xs w-24" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Unidades</label>
+                  <input name="quantity" type="number" step="0.01" min="0" defaultValue={existing ? Number(existing.quantity) : 1} required onChange={(e) => setQty(parseFloat(e.target.value) || 0)} className="rounded border border-gray-300 px-2 py-1 text-xs w-20" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Subtotal</label>
+                  <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs w-24 text-gray-700 font-medium">
+                    {formatCurrency(qty * price)}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-1">
+              <button type="submit" disabled={pending} className="px-3 py-1 text-xs font-medium bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+                {pending ? "…" : existing ? "Guardar" : "Añadir"}
+              </button>
+              <button type="button" onClick={onDone} className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900 rounded hover:bg-gray-100">
+                Cancelar
+              </button>
+            </div>
           </div>
         </form>
       </td>
@@ -615,15 +636,18 @@ export function BudgetDetail({
     !!budget.holdedDocId &&
     (!budget.holdedSyncedAt || maxContentDate > new Date(budget.holdedSyncedAt));
 
-  const totalPvp = budget.lines.reduce(
-    (sum, l) => sum + l.estimatedHours * Number(l.pvpPerHour),
-    0
-  );
-  const totalCost = budget.lines.reduce(
-    (sum, l) => sum + l.estimatedHours * Number(l.costPerHour),
-    0
-  );
-  const totalHours = budget.lines.reduce((sum, l) => sum + l.estimatedHours, 0);
+  const totalPvp = budget.lines.reduce((sum, l) => {
+    if (l.lineType === "ACTIVIDAD") return sum + Number(l.quantity ?? 1) * Number(l.unitPrice ?? 0);
+    return sum + (l.estimatedHours ?? 0) * Number(l.pvpPerHour ?? 0);
+  }, 0);
+  const totalCost = budget.lines.reduce((sum, l) => {
+    if (l.lineType === "ACTIVIDAD") return sum;
+    return sum + (l.estimatedHours ?? 0) * Number(l.costPerHour ?? 0);
+  }, 0);
+  const totalHours = budget.lines.reduce((sum, l) => {
+    if (l.lineType === "ACTIVIDAD") return sum;
+    return sum + (l.estimatedHours ?? 0);
+  }, 0);
   const grossMargin = totalPvp > 0 ? ((totalPvp - totalCost) / totalPvp) * 100 : null;
 
   const budgetAmount = Number(budget.amount);
@@ -788,12 +812,12 @@ export function BudgetDetail({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50 text-xs">
-                <th className="px-4 py-2 text-left font-medium text-gray-600">Fase</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Fase / Concepto</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-600">Tarea</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-600">Rol</th>
-                <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">Horas</th>
-                <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">PVP/h</th>
-                <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">Total PVP</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">Horas / Uds.</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">PVP/h · Precio</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">Total</th>
                 <th className="px-4 py-2 text-right font-medium text-gray-600 whitespace-nowrap">Margen</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -810,39 +834,62 @@ export function BudgetDetail({
                   />
                 ) : (
                   <tr key={line.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-600 text-xs">{line.phase}</td>
-                    <td className="px-4 py-2.5 text-gray-900 text-xs">{line.task}</td>
-                    <td className="px-4 py-2.5 text-xs">
-                      {line.role ? (
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-gray-100 text-gray-600">
-                          {line.role.name}
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
-                      {line.estimatedHours.toLocaleString("es-ES")} h
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
-                      {formatCurrency(Number(line.pvpPerHour))}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-medium text-gray-900 text-xs">
-                      {formatCurrency(line.estimatedHours * Number(line.pvpPerHour))}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-xs">
-                      {(() => {
-                        const pvp = line.estimatedHours * Number(line.pvpPerHour);
-                        const cost = line.estimatedHours * Number(line.costPerHour);
-                        const m = pvp > 0 ? ((pvp - cost) / pvp) * 100 : null;
-                        if (m === null) return <span className="text-gray-300">—</span>;
-                        return (
-                          <span className={m >= 30 ? "text-green-600" : m >= 15 ? "text-yellow-600" : "text-red-600"}>
-                            {m.toFixed(0)}%
-                          </span>
-                        );
-                      })()}
-                    </td>
+                    {line.lineType === "ACTIVIDAD" ? (
+                      <>
+                        <td className="px-4 py-2.5 text-gray-900 text-xs font-medium">
+                          {line.concept ?? "—"}
+                          <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-purple-50 text-purple-600 border border-purple-100">actividad</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs"><span className="text-gray-300">—</span></td>
+                        <td className="px-4 py-2.5 text-xs"><span className="text-gray-300">—</span></td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
+                          {Number(line.quantity ?? 1).toLocaleString("es-ES")} uds.
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
+                          {formatCurrency(Number(line.unitPrice ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-900 text-xs">
+                          {formatCurrency(Number(line.quantity ?? 1) * Number(line.unitPrice ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs"><span className="text-gray-300">—</span></td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-2.5 text-gray-600 text-xs">{line.phase}</td>
+                        <td className="px-4 py-2.5 text-gray-900 text-xs">{line.task}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {line.role ? (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-gray-100 text-gray-600">
+                              {line.role.name}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
+                          {(line.estimatedHours ?? 0).toLocaleString("es-ES")} h
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
+                          {formatCurrency(Number(line.pvpPerHour ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-900 text-xs">
+                          {formatCurrency((line.estimatedHours ?? 0) * Number(line.pvpPerHour ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs">
+                          {(() => {
+                            const pvp = (line.estimatedHours ?? 0) * Number(line.pvpPerHour ?? 0);
+                            const cost = (line.estimatedHours ?? 0) * Number(line.costPerHour ?? 0);
+                            const m = pvp > 0 ? ((pvp - cost) / pvp) * 100 : null;
+                            if (m === null) return <span className="text-gray-300">—</span>;
+                            return (
+                              <span className={m >= 30 ? "text-green-600" : m >= 15 ? "text-yellow-600" : "text-red-600"}>
+                                {m.toFixed(0)}%
+                              </span>
+                            );
+                          })()}
+                        </td>
+                      </>
+                    )}
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1 justify-end">
                         <button

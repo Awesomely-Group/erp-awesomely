@@ -9,7 +9,7 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
     prisma.budget.findMany({
       include: {
         project: { select: { id: true, name: true, jiraKey: true } },
-        lines: { select: { estimatedHours: true, pvpPerHour: true, costPerHour: true } },
+        lines: { select: { lineType: true, estimatedHours: true, pvpPerHour: true, costPerHour: true, quantity: true, unitPrice: true } },
         paymentTerms: { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -44,15 +44,15 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
   });
 
   const rows: BudgetRow[] = budgets.map((b) => {
-    const totalEstimatedHours = b.lines.reduce((sum, l) => sum + l.estimatedHours, 0);
-    const totalPvp = b.lines.reduce(
-      (sum, l) => sum + l.estimatedHours * Number(l.pvpPerHour),
-      0
-    );
-    const totalCost = b.lines.reduce(
-      (sum, l) => sum + l.estimatedHours * Number(l.costPerHour),
-      0
-    );
+    const totalEstimatedHours = b.lines.reduce((sum, l) => sum + (l.estimatedHours ?? 0), 0);
+    const totalPvp = b.lines.reduce((sum, l) => {
+      if (l.lineType === "ACTIVIDAD") return sum + Number(l.quantity ?? 1) * Number(l.unitPrice ?? 0);
+      return sum + (l.estimatedHours ?? 0) * Number(l.pvpPerHour ?? 0);
+    }, 0);
+    const totalCost = b.lines.reduce((sum, l) => {
+      if (l.lineType === "ACTIVIDAD") return sum;
+      return sum + (l.estimatedHours ?? 0) * Number(l.costPerHour ?? 0);
+    }, 0);
     return {
       id: b.id,
       name: b.name,
