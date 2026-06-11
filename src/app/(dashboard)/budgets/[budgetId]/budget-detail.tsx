@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatDate, holdedSalesOrderUrl } from "@/lib/utils";
+import { formatCurrency, formatDate, holdedEstimateUrl } from "@/lib/utils";
 import {
   BudgetType,
   BudgetRegion,
@@ -386,15 +386,23 @@ function BudgetSettingsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex justify-end bg-black/30"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-white w-full max-w-md h-full overflow-y-auto shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 space-y-5">
-          <h2 className="text-base font-semibold text-gray-900">Ajustes del presupuesto</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">Ajustes del presupuesto</h2>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -526,14 +534,7 @@ function BudgetSettingsModal({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Cancelar
-              </button>
+            <div className="flex justify-end pt-1">
               <button
                 type="submit"
                 disabled={saving}
@@ -632,7 +633,7 @@ export function BudgetDetail({
             {budget.name}
             {budget.holdedDocId && (
               <a
-                href={holdedSalesOrderUrl(budget.holdedDocId)}
+                href={holdedEstimateUrl(budget.holdedDocId)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-base text-gray-400 hover:text-indigo-600 transition-colors flex-shrink-0"
@@ -678,7 +679,7 @@ export function BudgetDetail({
           )}
           {budget.holdedDocId && (
             <a
-              href={holdedSalesOrderUrl(budget.holdedDocId)}
+              href={holdedEstimateUrl(budget.holdedDocId)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"

@@ -101,7 +101,7 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
 
   let result: { id: string };
   try {
-    result = await client.createDocument("salesorder", {
+    result = await client.createDocument("estimate", {
       date: Math.floor(Date.now() / 1000),
       ...(budget.holdedContactId
         ? { contactId: budget.holdedContactId }

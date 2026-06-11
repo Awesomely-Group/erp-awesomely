@@ -33,8 +33,8 @@ export function holdedProformaUrl(holdedId: string): string {
   return `https://app.holded.com/sales/proforms#open:proform-${holdedId}`;
 }
 
-export function holdedSalesOrderUrl(holdedId: string): string {
-  return `https://app.holded.com/sales/salesorders#open:salesorder-${holdedId}`;
+export function holdedEstimateUrl(holdedId: string): string {
+  return `https://app.holded.com/sales/estimates#open:estimate-${holdedId}`;
 }
 
 const TAG_TO_BRAND: Record<string, string> = {
