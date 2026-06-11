@@ -232,7 +232,7 @@ function NewBudgetModal({
         name: fd.get("name") as string,
         type,
         region: fd.get("region") as BudgetRegion,
-        amount: parseFloat(fd.get("amount") as string) || 0,
+        amount: 0,
         currency: fd.get("currency") as string,
         estimatedHours:
           type !== "FEE_REGULAR" && fd.get("estimatedHours")
@@ -346,18 +346,6 @@ function NewBudgetModal({
                   <option key={r} value={r}>{REGION_LABELS[r]}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Importe acordado</label>
-              <input
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="0,00"
-              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Divisa</label>

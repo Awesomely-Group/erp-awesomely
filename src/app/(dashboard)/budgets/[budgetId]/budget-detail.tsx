@@ -707,26 +707,6 @@ export function BudgetDetail({
         />
       )}
 
-      {/* Meta info */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Tipo</p>
-          <p className="text-sm font-medium text-gray-900">{TYPE_LABELS[budget.type]}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Región</p>
-          <p className="text-sm font-medium text-gray-900">{REGION_LABELS[budget.region]}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Importe acordado</p>
-          <p className="text-sm font-semibold text-gray-900">{formatCurrency(budgetAmount, budget.currency)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Template</p>
-          <p className="text-sm font-medium text-gray-900">{budget.template}</p>
-        </div>
-      </div>
-
       {/* KPI summary */}
       {budget.lines.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
