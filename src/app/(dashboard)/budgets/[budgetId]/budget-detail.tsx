@@ -417,13 +417,13 @@ function BudgetSettingsModal({
                 />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Empresa</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Entidad legal</label>
                 <select
                   name="companyId"
                   defaultValue={budget.company?.id ?? ""}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="">Sin empresa asignada</option>
+                  <option value="">Sin entidad asignada</option>
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -665,7 +665,7 @@ export function BudgetDetail({
                   });
                 }}
                 disabled={creatingHolded || !budget.company}
-                title={!budget.company ? "Asigna una empresa al presupuesto" : "Crear presupuesto en Holded"}
+                title={!budget.company ? "Asigna una entidad legal al presupuesto" : "Crear presupuesto en Holded"}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ExternalLink className="h-3.5 w-3.5" />

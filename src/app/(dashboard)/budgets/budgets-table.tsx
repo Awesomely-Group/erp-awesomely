@@ -303,13 +303,13 @@ function NewBudgetModal({
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Empresa</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Entidad legal</label>
               <select
                 value={selectedCompanyId ?? ""}
                 onChange={(e) => setSelectedCompanyId(e.target.value || null)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="">Sin empresa asignada</option>
+                <option value="">Sin entidad asignada</option>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
