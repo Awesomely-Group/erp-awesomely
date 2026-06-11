@@ -1,8 +1,15 @@
-// Holded API v1 client
-// Docs: https://developers.holded.com/
+// Holded API client — supports v1 and v2 via HOLDED_API_VERSION env var
+// Docs: https://www.holded.com/es/desarrolladores
 
-const HOLDED_BASE_URL = "https://api.holded.com/api/invoicing/v1";
-const HOLDED_ACCOUNTING_BASE_URL = "https://api.holded.com/api/accounting/v1";
+const IS_V2 = process.env.HOLDED_API_VERSION === "v2";
+
+const HOLDED_BASE_URL = IS_V2
+  ? "https://api.holded.com/api/v2"
+  : "https://api.holded.com/api/invoicing/v1";
+
+const HOLDED_ACCOUNTING_BASE_URL = IS_V2
+  ? "https://api.holded.com/api/v2"
+  : "https://api.holded.com/api/accounting/v1";
 
 const HOLDED_SYNC_FROM_YEAR = process.env.HOLDED_SYNC_FROM_YEAR
   ? parseInt(process.env.HOLDED_SYNC_FROM_YEAR, 10)
@@ -67,7 +74,7 @@ export interface HoldedAccountingAccount {
   balance?: number;
 }
 
-/** Row from GET /accounting/v1/chartofaccounts (preferred over legacy /account). */
+/** Row from chart of accounts endpoint. */
 interface HoldedChartAccountRow {
   id?: string;
   /** Numeric account code */
@@ -112,22 +119,58 @@ export class HoldedClient {
     this.apiKey = apiKey;
   }
 
+  private authHeaders(): Record<string, string> {
+    return IS_V2
+      ? { Authorization: `Bearer ${this.apiKey}` }
+      : { key: this.apiKey };
+  }
+
   private async post<T>(path: string, body: unknown): Promise<T> {
     const url = `${HOLDED_BASE_URL}${path}`;
     const res = await fetch(url, {
       method: "POST",
-      headers: { key: this.apiKey, "Content-Type": "application/json" },
+      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
   }
 
+  private async put<T>(path: string, body: unknown): Promise<T> {
+    const url = `${HOLDED_BASE_URL}${path}`;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<T>;
+  }
+
+  private v2DocPath(docType: string): string {
+    const map: Record<string, string> = { estimate: "estimates", proform: "proformas" };
+    return map[docType] ?? `${docType}s`;
+  }
+
   async createDocument(
     docType: string,
     payload: HoldedCreateDocumentPayload
   ): Promise<{ id: string; docNumber?: string }> {
+    if (IS_V2) {
+      return this.post(`/${this.v2DocPath(docType)}`, payload);
+    }
     return this.post(`/documents/${docType}`, payload);
+  }
+
+  async updateDocument(
+    docType: string,
+    docId: string,
+    payload: HoldedCreateDocumentPayload
+  ): Promise<{ id: string }> {
+    if (IS_V2) {
+      return this.put(`/${this.v2DocPath(docType)}/${docId}`, payload);
+    }
+    return this.put(`/documents/${docType}/${docId}`, payload);
   }
 
   private async fetchFromBase<T>(baseUrl: string, path: string, params?: Record<string, string>): Promise<T> {
@@ -138,7 +181,7 @@ export class HoldedClient {
 
     const res = await fetch(url.toString(), {
       headers: {
-        key: this.apiKey,
+        ...this.authHeaders(),
         "Content-Type": "application/json",
       },
       next: { revalidate: 0 },
@@ -172,13 +215,30 @@ export class HoldedClient {
     return n != null ? String(n).trim() : "";
   }
 
-  /**
-   * Full chart via chartofaccounts + pagination. Falls back to a single request without page/limit if the API rejects paging.
-   */
   private async fetchAllChartOfAccounts(): Promise<HoldedChartAccountRow[]> {
     const PAGE_SIZE = 100;
-    const MAX_PAGES = 100;
     const merged: HoldedChartAccountRow[] = [];
+
+    if (IS_V2) {
+      // v2: /accounting-accounts with standard offset pagination
+      let offset = 0;
+      while (true) {
+        const raw = await this.fetch<unknown>("/accounting-accounts", {
+          limit: String(PAGE_SIZE),
+          offset: String(offset),
+          includeEmpty: "1",
+        });
+        const batch = this.normalizeChartList(raw);
+        if (batch.length === 0) break;
+        merged.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return merged;
+    }
+
+    // v1: /chartofaccounts with page-based pagination and prevFirstId workaround
+    const MAX_PAGES = 100;
     let prevFirstId: string | undefined;
 
     const fetchNoPagination = async (): Promise<HoldedChartAccountRow[]> => {
@@ -186,7 +246,7 @@ export class HoldedClient {
       url.searchParams.set("includeEmpty", "1");
       const res = await fetch(url.toString(), {
         headers: {
-          key: this.apiKey,
+          ...this.authHeaders(),
           "Content-Type": "application/json",
         },
         next: { revalidate: 0 },
@@ -205,7 +265,7 @@ export class HoldedClient {
 
       const res = await fetch(url.toString(), {
         headers: {
-          key: this.apiKey,
+          ...this.authHeaders(),
           "Content-Type": "application/json",
         },
         next: { revalidate: 0 },
@@ -245,8 +305,8 @@ export class HoldedClient {
     if (params?.starttmp) stringParams.starttmp = params.starttmp.toString();
     if (params?.endtmp) stringParams.endtmp = params.endtmp.toString();
 
-    const res = await this.fetch<HoldedInvoice[]>("/documents/invoice", stringParams);
-    return res;
+    const path = IS_V2 ? "/invoices" : "/documents/invoice";
+    return this.fetch<HoldedInvoice[]>(path, stringParams);
   }
 
   async getPurchaseInvoices(params?: {
@@ -259,8 +319,8 @@ export class HoldedClient {
     if (params?.starttmp) stringParams.starttmp = params.starttmp.toString();
     if (params?.endtmp) stringParams.endtmp = params.endtmp.toString();
 
-    const res = await this.fetch<HoldedInvoice[]>("/documents/purchase", stringParams);
-    return res;
+    const path = IS_V2 ? "/purchases" : "/documents/purchase";
+    return this.fetch<HoldedInvoice[]>(path, stringParams);
   }
 
   /**
@@ -337,37 +397,44 @@ export class HoldedClient {
     }
   }
 
-  /**
-   * Fetches ALL invoices of a given type from Holded.
-   *
-   * IMPORTANT: Holded's ?page= parameter does not work — it always returns
-   * the same ~100 most-recent documents regardless of the page number.
-   * The only way to retrieve the full history is to iterate over quarterly
-   * time windows using starttmp/endtmp and deduplicate by ID.
-   *
-   * Windows start from HOLDED_SYNC_FROM_YEAR (default 2024) up to today.
-   * Each window is one quarter (≤ ~100 invoices in practice).
-   */
   async getSupplierContacts(): Promise<HoldedSupplierContact[]> {
-    // The Contacts API v1 returns HTML instead of JSON when called with an API key.
-    // The invoicing contacts endpoint works correctly and includes a string `type` field
-    // ("client", "supplier", "both") — filter on that to exclude pure clients.
-    //
-    // Holded may return only a subset of contacts per request (observed limit ~100).
-    // Paginate page-by-page until we get an empty batch. If Holded ignores ?page= and
-    // always returns the same first page, prevFirstId detection stops the loop early.
     const PAGE_SIZE = 500;
-    const MAX_PAGES = 20;
     const all = new Map<string, HoldedSupplierContact>();
+
+    type RawContact = {
+      id: string;
+      name: string;
+      type?: string;
+      defaults?: { paymentMethod?: string | number };
+    };
+
+    if (IS_V2) {
+      // v2: standard offset pagination — /contacts works properly
+      let offset = 0;
+      while (true) {
+        const batch = await this.fetch<RawContact[]>("/contacts", {
+          limit: String(PAGE_SIZE),
+          offset: String(offset),
+        });
+        if (batch.length === 0) break;
+        for (const c of batch) {
+          if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
+            const pm = c.defaults?.paymentMethod;
+            all.set(c.id, { id: c.id, name: c.name, paymentMethod: typeof pm === "string" && pm ? pm : undefined });
+          }
+        }
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return [...all.values()];
+    }
+
+    // v1: page-based with prevFirstId workaround (page param unreliable)
+    const MAX_PAGES = 20;
     let prevFirstId: string | undefined;
 
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const batch = await this.fetch<Array<{
-        id: string;
-        name: string;
-        type?: string;
-        defaults?: { paymentMethod?: string | number };
-      }>>(
+      const batch = await this.fetch<RawContact[]>(
         "/contacts",
         { page: String(page), limit: String(PAGE_SIZE) }
       );
@@ -380,7 +447,6 @@ export class HoldedClient {
 
       for (const c of batch) {
         if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
-          // paymentMethod is a string ID when set, or 0 (number) when not set
           const pm = c.defaults?.paymentMethod;
           all.set(c.id, { id: c.id, name: c.name, paymentMethod: typeof pm === "string" && pm ? pm : undefined });
         }
@@ -412,29 +478,52 @@ export class HoldedClient {
 
   async getClientContacts(query?: string): Promise<Array<{ id: string; name: string }>> {
     const PAGE_SIZE = 500;
-    const MAX_PAGES = 10;
     const all = new Map<string, string>();
-    let prevFirstId: string | undefined;
 
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const batch = await this.fetch<Array<{ id: string; name: string; type?: string }>>(
-        "/contacts",
-        { page: String(page), limit: String(PAGE_SIZE) }
-      );
+    type RawContact = { id: string; name: string; type?: string };
 
-      if (batch.length === 0) break;
-
-      const firstId = batch[0]?.id;
-      if (page > 1 && firstId !== undefined && firstId === prevFirstId) break;
-      prevFirstId = firstId;
-
-      for (const c of batch) {
-        if ((c.type === "client" || c.type === "both") && !all.has(c.id)) {
-          all.set(c.id, c.name);
+    if (IS_V2) {
+      // v2: standard offset pagination
+      let offset = 0;
+      while (true) {
+        const batch = await this.fetch<RawContact[]>("/contacts", {
+          limit: String(PAGE_SIZE),
+          offset: String(offset),
+        });
+        if (batch.length === 0) break;
+        for (const c of batch) {
+          if ((c.type === "client" || c.type === "both") && !all.has(c.id)) {
+            all.set(c.id, c.name);
+          }
         }
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
       }
+    } else {
+      // v1: page-based with prevFirstId workaround
+      const MAX_PAGES = 10;
+      let prevFirstId: string | undefined;
 
-      if (batch.length < PAGE_SIZE) break;
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const batch = await this.fetch<RawContact[]>(
+          "/contacts",
+          { page: String(page), limit: String(PAGE_SIZE) }
+        );
+
+        if (batch.length === 0) break;
+
+        const firstId = batch[0]?.id;
+        if (page > 1 && firstId !== undefined && firstId === prevFirstId) break;
+        prevFirstId = firstId;
+
+        for (const c of batch) {
+          if ((c.type === "client" || c.type === "both") && !all.has(c.id)) {
+            all.set(c.id, c.name);
+          }
+        }
+
+        if (batch.length < PAGE_SIZE) break;
+      }
     }
 
     const results = [...all.entries()].map(([id, name]) => ({ id, name }));
@@ -444,6 +533,26 @@ export class HoldedClient {
   }
 
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
+    if (IS_V2) {
+      // v2: /proformas with standard offset pagination
+      const PAGE_SIZE = 500;
+      const all: HoldedInvoice[] = [];
+      let offset = 0;
+      while (true) {
+        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>("/proformas", {
+          limit: String(PAGE_SIZE),
+          offset: String(offset),
+        });
+        const batch: HoldedInvoice[] = Array.isArray(raw) ? raw : (raw.data ?? []);
+        if (batch.length === 0) break;
+        all.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return all;
+    }
+
+    // v1: quarterly time windows workaround (page param does not work reliably)
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];
 
@@ -481,6 +590,27 @@ export class HoldedClient {
   }
 
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
+    if (IS_V2) {
+      // v2: dedicated routes with standard offset pagination
+      const path = type === "invoice" ? "/invoices" : "/purchases";
+      const PAGE_SIZE = 500;
+      const all: HoldedInvoice[] = [];
+      let offset = 0;
+      while (true) {
+        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(path, {
+          limit: String(PAGE_SIZE),
+          offset: String(offset),
+        });
+        const batch: HoldedInvoice[] = Array.isArray(raw) ? raw : (raw.data ?? []);
+        if (batch.length === 0) break;
+        all.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return all;
+    }
+
+    // v1: quarterly time windows workaround (page param does not work reliably)
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];
 
@@ -490,7 +620,6 @@ export class HoldedClient {
     for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
       for (let quarter = 0; quarter < 4; quarter++) {
         const windowStart = new Date(year, quarter * 3, 1);
-        // Stop opening future windows beyond today
         if (windowStart > now) break;
 
         const windowEnd = new Date(year, (quarter + 1) * 3, 1);

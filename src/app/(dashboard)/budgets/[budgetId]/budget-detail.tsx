@@ -17,6 +17,7 @@ import {
   upsertPaymentTerm,
   deletePaymentTerm,
   createHoldedQuote,
+  syncHoldedQuote,
   updateBudget,
   deleteBudget,
 } from "../actions";
@@ -33,6 +34,7 @@ type BudgetLineData = {
   pvpPerHour: unknown;
   costPerHour: unknown;
   sortOrder: number;
+  updatedAt: Date;
 };
 
 type PaymentTermData = {
@@ -61,7 +63,9 @@ type BudgetData = {
   endDate: Date | null;
   notes: string | null;
   holdedDocId: string | null;
+  holdedSyncedAt: Date | null;
   clientName: string | null;
+  updatedAt: Date;
   project: { id: string; name: string; jiraKey: string };
   company: { id: string; name: string } | null;
   lines: BudgetLineData[];
@@ -599,8 +603,17 @@ export function BudgetDetail({
   const [deletingLineId, startLineDelete] = useTransition();
   const [deletingTermId, startTermDelete] = useTransition();
   const [creatingHolded, startHoldedCreate] = useTransition();
+  const [syncingHolded, startHoldedSync] = useTransition();
   const [holdedError, setHoldedError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  const maxContentDate = budget.lines.reduce(
+    (max, l) => (new Date(l.updatedAt) > max ? new Date(l.updatedAt) : max),
+    new Date(budget.updatedAt)
+  );
+  const hasHoldedChanges =
+    !!budget.holdedDocId &&
+    (!budget.holdedSyncedAt || maxContentDate > new Date(budget.holdedSyncedAt));
 
   const totalPvp = budget.lines.reduce(
     (sum, l) => sum + l.estimatedHours * Number(l.pvpPerHour),
@@ -672,21 +685,45 @@ export function BudgetDetail({
                 <ExternalLink className="h-3.5 w-3.5" />
                 {creatingHolded ? "Creando…" : "Crear en Holded"}
               </button>
-              {holdedError && (
+              {holdedError && !budget.holdedDocId && (
                 <p className="text-xs text-red-500 max-w-xs text-right">{holdedError}</p>
               )}
             </div>
           )}
           {budget.holdedDocId && (
-            <a
-              href={holdedEstimateUrl(budget.holdedDocId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Ver en Holded
-            </a>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                {hasHoldedChanges && (
+                  <button
+                    onClick={() => {
+                      setHoldedError(null);
+                      startHoldedSync(async () => {
+                        const res = await syncHoldedQuote(budget.id);
+                        if (res.error) setHoldedError(res.error);
+                      });
+                    }}
+                    disabled={syncingHolded}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                    title="Hay cambios sin sincronizar con Holded"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {syncingHolded ? "Actualizando…" : "Actualizar en Holded"}
+                  </button>
+                )}
+                <a
+                  href={holdedEstimateUrl(budget.holdedDocId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ver en Holded
+                </a>
+              </div>
+              {holdedError && (
+                <p className="text-xs text-red-500 max-w-xs text-right">{holdedError}</p>
+              )}
+            </div>
           )}
           <button
             onClick={() => setShowSettings(true)}

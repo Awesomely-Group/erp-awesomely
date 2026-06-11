@@ -89,16 +89,6 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
 
   const client = new HoldedClient(budget.company.holdedApiKey);
 
-  const products =
-    budget.lines.length > 0
-      ? budget.lines.map((l) => ({
-          name: `${l.phase} — ${l.task}`,
-          units: l.estimatedHours,
-          price: Number(l.pvpPerHour),
-          tax: 0,
-        }))
-      : [{ name: budget.name, units: 1, price: Number(budget.amount), tax: 0 }];
-
   let result: { id: string };
   try {
     result = await client.createDocument("estimate", {
@@ -108,7 +98,7 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
         : { contactName: budget.clientName ?? budget.project.name }),
       currency: budget.currency,
       notes: budget.notes ?? undefined,
-      products,
+      products: buildHoldedProducts(budget),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error al crear el documento en Holded";
@@ -117,7 +107,66 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
 
   await prisma.budget.update({
     where: { id: budgetId },
-    data: { holdedDocId: result.id },
+    data: { holdedDocId: result.id, holdedSyncedAt: new Date() },
+  });
+
+  revalidatePath(`/budgets/${budgetId}`);
+  return {};
+}
+
+function buildHoldedProducts(budget: {
+  lines: { phase: string; task: string; estimatedHours: number; pvpPerHour: unknown }[];
+  name: string;
+  amount: unknown;
+}): Array<{ name: string; units: number; price: number; tax: number }> {
+  if (budget.lines.length > 0) {
+    return budget.lines.map((l) => ({
+      name: `${l.phase} — ${l.task}`,
+      units: l.estimatedHours,
+      price: Number(l.pvpPerHour),
+      tax: 0,
+    }));
+  }
+  return [{ name: budget.name, units: 1, price: Number(budget.amount), tax: 0 }];
+}
+
+export async function syncHoldedQuote(budgetId: string): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "Unauthorized" };
+
+  const budget = await prisma.budget.findUnique({
+    where: { id: budgetId },
+    include: {
+      company: true,
+      project: { select: { name: true } },
+      lines: { orderBy: [{ phase: "asc" }, { sortOrder: "asc" }] },
+    },
+  });
+
+  if (!budget) return { error: "Presupuesto no encontrado" };
+  if (!budget.company) return { error: "No hay empresa asignada a este presupuesto" };
+  if (!budget.holdedDocId) return { error: "El presupuesto no tiene documento en Holded" };
+
+  const client = new HoldedClient(budget.company.holdedApiKey);
+
+  try {
+    await client.updateDocument("estimate", budget.holdedDocId, {
+      date: Math.floor(Date.now() / 1000),
+      ...(budget.holdedContactId
+        ? { contactId: budget.holdedContactId }
+        : { contactName: budget.clientName ?? budget.project.name }),
+      currency: budget.currency,
+      notes: budget.notes ?? undefined,
+      products: buildHoldedProducts(budget),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error al actualizar el documento en Holded";
+    return { error: msg };
+  }
+
+  await prisma.budget.update({
+    where: { id: budgetId },
+    data: { holdedSyncedAt: new Date() },
   });
 
   revalidatePath(`/budgets/${budgetId}`);

@@ -745,6 +745,7 @@ model Budget {
   companyId      String?
   company        Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
   holdedDocId    String?
+  holdedSyncedAt DateTime?
 
   lines          BudgetLine[]
   paymentTerms   PaymentTerm[]
