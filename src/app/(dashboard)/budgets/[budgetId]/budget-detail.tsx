@@ -10,13 +10,15 @@ import {
   BudgetTemplate,
   PaymentTermValueType,
 } from "@prisma/client";
-import { ArrowLeft, Plus, Trash2, Pencil, ExternalLink } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, ExternalLink, Settings } from "lucide-react";
 import {
   upsertBudgetLine,
   deleteBudgetLine,
   upsertPaymentTerm,
   deletePaymentTerm,
   createHoldedQuote,
+  updateBudget,
+  deleteBudget,
 } from "../actions";
 
 type Role = { id: string; name: string };
@@ -59,11 +61,14 @@ type BudgetData = {
   endDate: Date | null;
   notes: string | null;
   holdedDocId: string | null;
+  clientName: string | null;
   project: { id: string; name: string; jiraKey: string };
   company: { id: string; name: string } | null;
   lines: BudgetLineData[];
   paymentTerms: PaymentTermData[];
 };
+
+type Company = { id: string; name: string };
 
 const TYPE_LABELS: Record<BudgetType, string> = {
   PRECIO_CERRADO: "Precio Cerrado",
@@ -329,12 +334,261 @@ function PaymentTermForm({
   );
 }
 
+const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK"];
+
+function BudgetSettingsModal({
+  budget,
+  companies,
+  onClose,
+  onDeleted,
+}: {
+  budget: BudgetData;
+  companies: Company[];
+  onClose: () => void;
+  onDeleted: () => void;
+}): React.JSX.Element {
+  const [saving, startSave] = useTransition();
+  const [deleting, startDelete] = useTransition();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startSave(async () => {
+      await updateBudget({
+        id: budget.id,
+        name: fd.get("name") as string,
+        type: fd.get("type") as BudgetType,
+        region: fd.get("region") as BudgetRegion,
+        amount: parseFloat(fd.get("amount") as string) || 0,
+        currency: fd.get("currency") as string,
+        estimatedHours: fd.get("estimatedHours") ? parseFloat(fd.get("estimatedHours") as string) : null,
+        monthlyFee: fd.get("monthlyFee") ? parseFloat(fd.get("monthlyFee") as string) : null,
+        startDate: (fd.get("startDate") as string) || null,
+        endDate: (fd.get("endDate") as string) || null,
+        notes: (fd.get("notes") as string) || null,
+        companyId: (fd.get("companyId") as string) || null,
+        clientName: (fd.get("clientName") as string) || null,
+      });
+      onClose();
+    });
+  }
+
+  function handleDelete(): void {
+    startDelete(async () => {
+      await deleteBudget(budget.id);
+      onDeleted();
+    });
+  }
+
+  const toInputDate = (d: Date | null): string =>
+    d ? new Date(d).toISOString().slice(0, 10) : "";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 space-y-5">
+          <h2 className="text-base font-semibold text-gray-900">Ajustes del presupuesto</h2>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+                <input
+                  name="name"
+                  required
+                  defaultValue={budget.name}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cliente</label>
+                <input
+                  name="clientName"
+                  defaultValue={budget.clientName ?? ""}
+                  placeholder="Nombre del cliente en Holded"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Empresa</label>
+                <select
+                  name="companyId"
+                  defaultValue={budget.company?.id ?? ""}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Sin empresa asignada</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+                <select
+                  name="type"
+                  defaultValue={budget.type}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="PRECIO_CERRADO">Precio Cerrado</option>
+                  <option value="BOLSA_DE_HORAS">Bolsa de Horas</option>
+                  <option value="FEE_REGULAR">Fee Regular</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Región</label>
+                <select
+                  name="region"
+                  defaultValue={budget.region}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="EU">EU</option>
+                  <option value="UK">UK</option>
+                  <option value="US">US</option>
+                  <option value="OTHER">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Importe acordado</label>
+                <input
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  defaultValue={Number(budget.amount)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Divisa</label>
+                <select
+                  name="currency"
+                  defaultValue={budget.currency}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Horas estimadas</label>
+                <input
+                  name="estimatedHours"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  defaultValue={budget.estimatedHours ?? ""}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fee mensual</label>
+                <input
+                  name="monthlyFee"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={budget.monthlyFee != null ? Number(budget.monthlyFee) : ""}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fecha inicio</label>
+                <input
+                  name="startDate"
+                  type="date"
+                  defaultValue={toInputDate(budget.startDate)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fecha fin</label>
+                <input
+                  name="endDate"
+                  type="date"
+                  defaultValue={toInputDate(budget.endDate)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Notas internas</label>
+                <textarea
+                  name="notes"
+                  rows={2}
+                  defaultValue={budget.notes ?? ""}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {saving ? "Guardando…" : "Guardar cambios"}
+              </button>
+            </div>
+          </form>
+
+          {/* Danger zone */}
+          <div className="border-t border-gray-200 pt-4 space-y-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Zona de peligro</p>
+            {!confirmDelete ? (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                Eliminar presupuesto
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">¿Seguro? Esta acción no se puede deshacer.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="flex-1 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {deleting ? "Eliminando…" : "Sí, eliminar"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BudgetDetail({
   budget,
   roles,
+  companies = [],
 }: {
   budget: BudgetData;
   roles: Role[];
+  companies?: Company[];
 }): React.JSX.Element {
   const router = useRouter();
   const [addingLine, setAddingLine] = useState(false);
@@ -345,6 +599,7 @@ export function BudgetDetail({
   const [deletingTermId, startTermDelete] = useTransition();
   const [creatingHolded, startHoldedCreate] = useTransition();
   const [holdedError, setHoldedError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const totalPvp = budget.lines.reduce(
     (sum, l) => sum + l.estimatedHours * Number(l.pvpPerHour),
@@ -432,8 +687,24 @@ export function BudgetDetail({
               Ver en Holded
             </a>
           )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            title="Ajustes del presupuesto"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
         </div>
       </div>
+
+      {showSettings && (
+        <BudgetSettingsModal
+          budget={budget}
+          companies={companies}
+          onClose={() => setShowSettings(false)}
+          onDeleted={() => router.push("/budgets")}
+        />
+      )}
 
       {/* Meta info */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

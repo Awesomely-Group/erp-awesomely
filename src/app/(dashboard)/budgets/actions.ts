@@ -124,6 +124,56 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
   return {};
 }
 
+interface UpdateBudgetPayload {
+  id: string;
+  name: string;
+  type: BudgetType;
+  region: BudgetRegion;
+  amount: number;
+  currency: string;
+  estimatedHours?: number | null;
+  monthlyFee?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
+  companyId?: string | null;
+  clientName?: string | null;
+}
+
+export async function updateBudget(payload: UpdateBudgetPayload): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.budget.update({
+    where: { id: payload.id },
+    data: {
+      name: payload.name,
+      type: payload.type,
+      region: payload.region,
+      amount: payload.amount,
+      currency: payload.currency,
+      estimatedHours: payload.estimatedHours ?? null,
+      monthlyFee: payload.monthlyFee ?? null,
+      startDate: payload.startDate ? new Date(payload.startDate) : null,
+      endDate: payload.endDate ? new Date(payload.endDate) : null,
+      notes: payload.notes ?? null,
+      companyId: payload.companyId ?? null,
+      clientName: payload.clientName ?? null,
+    },
+  });
+
+  revalidatePath(`/budgets/${payload.id}`);
+  revalidatePath("/budgets");
+}
+
+export async function deleteBudget(budgetId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.budget.delete({ where: { id: budgetId } });
+  revalidatePath("/budgets");
+}
+
 interface UpsertBudgetLinePayload {
   id?: string;
   budgetId: string;

@@ -9,7 +9,7 @@ export default async function BudgetDetailPage({
 }): Promise<React.JSX.Element> {
   const { budgetId } = await params;
 
-  const [budget, roles] = await Promise.all([
+  const [budget, roles, companies] = await Promise.all([
     prisma.budget.findUnique({
       where: { id: budgetId },
       include: {
@@ -30,9 +30,14 @@ export default async function BudgetDetailPage({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.company.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   if (!budget) notFound();
 
-  return <BudgetDetail budget={budget} roles={roles} />;
+  return <BudgetDetail budget={budget} roles={roles} companies={companies} />;
 }
