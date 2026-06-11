@@ -410,6 +410,39 @@ export class HoldedClient {
     return { iban, paymentMethod };
   }
 
+  async getClientContacts(query?: string): Promise<Array<{ id: string; name: string }>> {
+    const PAGE_SIZE = 500;
+    const MAX_PAGES = 10;
+    const all = new Map<string, string>();
+    let prevFirstId: string | undefined;
+
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const batch = await this.fetch<Array<{ id: string; name: string; type?: string }>>(
+        "/contacts",
+        { page: String(page), limit: String(PAGE_SIZE) }
+      );
+
+      if (batch.length === 0) break;
+
+      const firstId = batch[0]?.id;
+      if (page > 1 && firstId !== undefined && firstId === prevFirstId) break;
+      prevFirstId = firstId;
+
+      for (const c of batch) {
+        if ((c.type === "client" || c.type === "both") && !all.has(c.id)) {
+          all.set(c.id, c.name);
+        }
+      }
+
+      if (batch.length < PAGE_SIZE) break;
+    }
+
+    const results = [...all.entries()].map(([id, name]) => ({ id, name }));
+    if (!query) return results;
+    const q = query.toLowerCase();
+    return results.filter((c) => c.name.toLowerCase().includes(q));
+  }
+
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];

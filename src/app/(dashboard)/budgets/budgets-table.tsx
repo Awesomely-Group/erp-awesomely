@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useState, useRef, useTransition, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { BudgetType, BudgetRegion, BudgetStatus, BudgetTemplate } from "@prisma/client";
@@ -100,6 +100,112 @@ function StatusSelect({
   );
 }
 
+type HoldedContact = { id: string; name: string };
+
+function ContactCombobox({
+  companyId,
+  selected,
+  onSelect,
+}: {
+  companyId: string | null;
+  selected: HoldedContact | null;
+  onSelect: (c: HoldedContact | null) => void;
+}): React.JSX.Element {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<HoldedContact[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const search = useCallback(
+    async (q: string) => {
+      if (!companyId) { setResults([]); return; }
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ companyId, q });
+        const res = await fetch(`/api/holded/contacts?${params}`);
+        const data: HoldedContact[] = await res.json();
+        setResults(data.slice(0, 50));
+        setOpen(true);
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [companyId]
+  );
+
+  useEffect(() => {
+    if (selected) return;
+    const timer = setTimeout(() => { void search(query); }, 300);
+    return () => clearTimeout(timer);
+  }, [query, search, selected]);
+
+  // Reset when company changes
+  useEffect(() => {
+    onSelect(null);
+    setQuery("");
+    setResults([]);
+  }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent): void {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>): void {
+    onSelect(null);
+    setQuery(e.target.value);
+  }
+
+  function handleInputFocus(): void {
+    if (!companyId) return;
+    if (results.length === 0 && !query) void search("");
+    setOpen(true);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        value={selected ? selected.name : query}
+        onChange={handleInputChange}
+        onFocus={handleInputFocus}
+        disabled={!companyId}
+        placeholder={companyId ? "Busca un contacto de Holded…" : "Selecciona empresa primero"}
+        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-400"
+      />
+      {loading && (
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">…</span>
+      )}
+      {open && results.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {results.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => { onSelect(c); setOpen(false); setQuery(""); }}
+              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 transition-colors"
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && !loading && results.length === 0 && query && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-sm px-3 py-2 text-xs text-gray-400">
+          Sin resultados
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewBudgetModal({
   workspace,
   companies,
@@ -111,6 +217,8 @@ function NewBudgetModal({
 }): React.JSX.Element {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<HoldedContact | null>(null);
 
   const template: BudgetTemplate = workspace.name.toLowerCase().includes("troupe") ? "TROUPE" : "SOLUTIONS";
 
@@ -118,7 +226,6 @@ function NewBudgetModal({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const type = fd.get("type") as BudgetType;
-    const companyId = (fd.get("companyId") as string) || null;
     startTransition(async () => {
       const { id } = await createBudget({
         projectId: fd.get("projectId") as string,
@@ -139,8 +246,9 @@ function NewBudgetModal({
         startDate: (fd.get("startDate") as string) || null,
         endDate: (fd.get("endDate") as string) || null,
         notes: (fd.get("notes") as string) || null,
-        companyId,
-        clientName: (fd.get("clientName") as string) || null,
+        companyId: selectedCompanyId,
+        clientName: selectedContact?.name ?? null,
+        holdedContactId: selectedContact?.id ?? null,
       });
       onClose();
       router.push(`/budgets/${id}`);
@@ -164,21 +272,13 @@ function NewBudgetModal({
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
               <input
                 name="name"
                 required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="ej: Lotte — Habitaciones"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cliente</label>
-              <input
-                name="clientName"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="ej: Lotte Hotel"
               />
             </div>
             <div className="col-span-2">
@@ -202,10 +302,11 @@ function NewBudgetModal({
                 </p>
               )}
             </div>
-            <div className="col-span-2">
+            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Empresa</label>
               <select
-                name="companyId"
+                value={selectedCompanyId ?? ""}
+                onChange={(e) => setSelectedCompanyId(e.target.value || null)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Sin empresa asignada</option>
@@ -213,6 +314,14 @@ function NewBudgetModal({
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Cliente</label>
+              <ContactCombobox
+                companyId={selectedCompanyId}
+                selected={selectedContact}
+                onSelect={setSelectedContact}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
