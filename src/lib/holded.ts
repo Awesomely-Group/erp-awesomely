@@ -629,20 +629,25 @@ export class HoldedClient {
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
     if (IS_V2) {
       // v2: /proformas — response is {"items": [...]} with snake_case fields
-      const PAGE_SIZE = 500;
+      // Holded v2 uses page (1-based) + limit, not offset
+      const PAGE_SIZE = 100;
       const all: HoldedInvoice[] = [];
-      let offset = 0;
+      const seenIds = new Set<string>();
+      let page = 1;
       while (true) {
         const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>("/proformas", {
           limit: String(PAGE_SIZE),
-          offset: String(offset),
+          page: String(page),
         });
         const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
         const batch = rawBatch.map(normalizeV2Invoice);
         if (batch.length === 0) break;
+        // Detect infinite loop: if first id already seen, pagination is broken
+        if (batch[0] && seenIds.has(batch[0].id)) break;
+        batch.forEach((i) => seenIds.add(i.id));
         all.push(...batch);
         if (batch.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
+        page++;
       }
       return all;
     }
@@ -687,21 +692,26 @@ export class HoldedClient {
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     if (IS_V2) {
       // v2: response is {"items": [...]} with snake_case fields
+      // Holded v2 uses page (1-based) + limit, not offset
       const path = type === "invoice" ? "/invoices" : "/purchases";
-      const PAGE_SIZE = 500;
+      const PAGE_SIZE = 100;
       const all: HoldedInvoice[] = [];
-      let offset = 0;
+      const seenIds = new Set<string>();
+      let page = 1;
       while (true) {
         const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>(path, {
           limit: String(PAGE_SIZE),
-          offset: String(offset),
+          page: String(page),
         });
         const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
         const batch = rawBatch.map(normalizeV2Invoice);
         if (batch.length === 0) break;
+        // Detect infinite loop: if first id already seen, pagination is broken
+        if (batch[0] && seenIds.has(batch[0].id)) break;
+        batch.forEach((i) => seenIds.add(i.id));
         all.push(...batch);
         if (batch.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
+        page++;
       }
       return all;
     }

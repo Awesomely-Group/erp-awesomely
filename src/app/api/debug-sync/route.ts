@@ -15,7 +15,7 @@ type HoldedPageResult = {
 async function fetchHoldedPage(apiKey: string, type: string, page: number): Promise<HoldedPageResult> {
   try {
     const docPath = type === "invoice" ? "invoices" : "purchases";
-    const url = `${HOLDED_BASE}/${docPath}?limit=100&offset=${(page - 1) * 100}`;
+    const url = `${HOLDED_BASE}/${docPath}?limit=100&page=${page}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       next: { revalidate: 0 },
