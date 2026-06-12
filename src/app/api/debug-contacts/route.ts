@@ -12,7 +12,7 @@ async function tryFetch(url: string, apiKey: string): Promise<{
 }> {
   try {
     const res = await fetch(url, {
-      headers: { key: apiKey, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       next: { revalidate: 0 },
     });
     const text = await res.text();
@@ -59,8 +59,8 @@ export async function GET(): Promise<NextResponse> {
   // Test individual contact endpoints with a real contactId
   const singleContactResults = contactId
     ? await Promise.all([
-        tryFetch(`https://api.holded.com/api/invoicing/v1/contacts/${contactId}`, key),
-        tryFetch(`https://api.holded.com/api/contacts/v1/contacts/${contactId}`, key),
+        tryFetch(`https://api.holded.com/api/v2/contacts/${contactId}`, key),
+        tryFetch(`https://api.holded.com/api/v2/contacts/${contactId}`, key),
       ])
     : [];
 

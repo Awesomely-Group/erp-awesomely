@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const HOLDED_BASE = "https://api.holded.com/api/invoicing/v1";
+const HOLDED_BASE = "https://api.holded.com/api/v2";
 
 type HoldedPageResult = {
   ok: boolean;
@@ -14,9 +14,10 @@ type HoldedPageResult = {
 
 async function fetchHoldedPage(apiKey: string, type: string, page: number): Promise<HoldedPageResult> {
   try {
-    const url = `${HOLDED_BASE}/documents/${type}?page=${page}`;
+    const docPath = type === "invoice" ? "invoices" : "purchases";
+    const url = `${HOLDED_BASE}/${docPath}?limit=100&offset=${(page - 1) * 100}`;
     const res = await fetch(url, {
-      headers: { key: apiKey, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       next: { revalidate: 0 },
     });
     const text = await res.text();

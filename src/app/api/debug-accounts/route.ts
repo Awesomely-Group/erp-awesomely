@@ -26,8 +26,8 @@ export async function GET(req: Request): Promise<NextResponse> {
   let holdedSamples: unknown = null;
   if (company) {
     const res = await fetch(
-      `https://api.holded.com/api/invoicing/v1/documents/purchase?page=1`,
-      { headers: { key: company.holdedApiKey } }
+      `https://api.holded.com/api/v2/purchases?limit=2`,
+      { headers: { Authorization: `Bearer ${company.holdedApiKey}` } }
     );
     const arr = await res.json() as Record<string, unknown>[];
     holdedSamples = arr.slice(0, 2).map(inv => ({

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 async function tryFetch(url: string, key: string): Promise<{ url: string; status: number | null; raw: unknown; error?: string }> {
   try {
     const res = await fetch(url, {
-      headers: { key, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       next: { revalidate: 0 },
     });
     const text = await res.text();
@@ -31,12 +31,9 @@ export async function GET(req: Request): Promise<NextResponse> {
   const key = company.holdedApiKey;
 
   const [invoicingResult, contactsResult, listSample] = await Promise.all([
-    // Endpoint that getContactWithBankData currently uses (returns "not found")
-    tryFetch(`https://api.holded.com/api/invoicing/v1/contacts/${contactId}`, key),
-    // Alternative contacts API endpoint
-    tryFetch(`https://api.holded.com/api/contacts/v1/contacts/${contactId}`, key),
-    // First page of the contacts list to see what payment_method looks like
-    tryFetch(`https://api.holded.com/api/invoicing/v1/contacts?page=1&limit=10`, key),
+    tryFetch(`https://api.holded.com/api/v2/contacts/${contactId}`, key),
+    tryFetch(`https://api.holded.com/api/v2/contacts/${contactId}`, key),
+    tryFetch(`https://api.holded.com/api/v2/contacts?limit=10&offset=0`, key),
   ]);
 
   // Show full raw objects to reveal nested fields like defaults.payment_method

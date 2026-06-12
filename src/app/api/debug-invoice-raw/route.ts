@@ -29,10 +29,11 @@ export async function GET(req: Request): Promise<NextResponse> {
   let holdedRaw: unknown = null;
   let holdedError: string | null = null;
   try {
+    const v2Path = docType === "invoice" ? "invoices" : "purchases";
     const res = await fetch(
-      `https://api.holded.com/api/invoicing/v1/documents/${docType}/${invoice.holdedId}`,
+      `https://api.holded.com/api/v2/${v2Path}/${invoice.holdedId}`,
       {
-        headers: { key: invoice.company.holdedApiKey },
+        headers: { Authorization: `Bearer ${invoice.company.holdedApiKey}` },
       }
     );
     if (res.ok) {
