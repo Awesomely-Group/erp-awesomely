@@ -14,12 +14,16 @@ const DRY_RUN = process.env.DRY_RUN !== "false";
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-const HOLDED_BASE = "https://api.holded.com/api/invoicing/v1";
+const HOLDED_BASE = "https://api.holded.com/api/v2";
+
+function holdedAuthHeaders(apiKey: string): Record<string, string> {
+  return { Authorization: `Bearer ${apiKey}` };
+}
 
 async function holdedFetch<T>(apiKey: string, path: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${HOLDED_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { key: apiKey } });
+  const res = await fetch(url.toString(), { headers: holdedAuthHeaders(apiKey) });
   if (!res.ok) throw new Error(`Holded GET ${res.status} ${path}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }
@@ -27,7 +31,7 @@ async function holdedFetch<T>(apiKey: string, path: string, params?: Record<stri
 async function holdedPut<T>(apiKey: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(`${HOLDED_BASE}${path}`, {
     method: "PUT",
-    headers: { key: apiKey, "Content-Type": "application/json" },
+    headers: { ...holdedAuthHeaders(apiKey), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Holded PUT ${res.status} ${path}: ${await res.text()}`);
@@ -42,18 +46,17 @@ type HoldedContact = {
 };
 
 async function getAllContacts(apiKey: string): Promise<HoldedContact[]> {
+  const PAGE_SIZE = 500;
   const all = new Map<string, HoldedContact>();
-  let prevFirstId: string | undefined;
-  for (let page = 1; page <= 20; page++) {
+  let offset = 0;
+  while (true) {
     const batch = await holdedFetch<HoldedContact[]>(apiKey, "/contacts", {
-      page: String(page), limit: "500",
+      limit: String(PAGE_SIZE), offset: String(offset),
     });
     if (batch.length === 0) break;
-    const firstId = batch[0]?.id;
-    if (page > 1 && firstId && firstId === prevFirstId) break;
-    prevFirstId = firstId;
     for (const c of batch) if (!all.has(c.id)) all.set(c.id, c);
-    if (batch.length < 500) break;
+    if (batch.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
   return [...all.values()];
 }
@@ -69,7 +72,7 @@ async function main(): Promise<void> {
   console.log(`Empresa: ${company.name}`);
 
   const paymentMethods = await holdedFetch<Array<{ id: string; name: string }>>(
-    company.holdedApiKey, "/paymentmethods"
+    company.holdedApiKey, "/payment-methods"
   );
   const pmNameMap = new Map(paymentMethods.map((p) => [p.id, p.name]));
   const pmIdMap   = new Map(paymentMethods.map((p) => [p.name, p.id]));

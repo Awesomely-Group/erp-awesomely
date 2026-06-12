@@ -15,12 +15,12 @@ const DRY_RUN = process.env.DRY_RUN !== "false";
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-const HOLDED_BASE = "https://api.holded.com/api/invoicing/v1";
+const HOLDED_BASE = "https://api.holded.com/api/v2";
 
 async function holdedFetch<T>(apiKey: string, path: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${HOLDED_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { key: apiKey } });
+  const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!res.ok) throw new Error(`Holded ${res.status} ${path}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }
@@ -32,18 +32,17 @@ type HoldedContact = {
 };
 
 async function getAllContacts(apiKey: string): Promise<HoldedContact[]> {
+  const PAGE_SIZE = 500;
   const all = new Map<string, HoldedContact>();
-  let prevFirstId: string | undefined;
-  for (let page = 1; page <= 20; page++) {
+  let offset = 0;
+  while (true) {
     const batch = await holdedFetch<HoldedContact[]>(apiKey, "/contacts", {
-      page: String(page), limit: "500",
+      limit: String(PAGE_SIZE), offset: String(offset),
     });
     if (batch.length === 0) break;
-    const firstId = batch[0]?.id;
-    if (page > 1 && firstId && firstId === prevFirstId) break;
-    prevFirstId = firstId;
     for (const c of batch) if (!all.has(c.id)) all.set(c.id, c);
-    if (batch.length < 500) break;
+    if (batch.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
   return [...all.values()];
 }
@@ -59,7 +58,7 @@ async function processCompany(company: { id: string; name: string; holdedApiKey:
   console.log(`\n${"═".repeat(60)}\n  ${company.name}\n${"═".repeat(60)}`);
 
   const [paymentMethods, contacts, erpSuppliers] = await Promise.all([
-    holdedFetch<Array<{ id: string; name: string }>>(company.holdedApiKey, "/paymentmethods"),
+    holdedFetch<Array<{ id: string; name: string }>>(company.holdedApiKey, "/payment-methods"),
     getAllContacts(company.holdedApiKey),
     prisma.supplier.findMany({
       where: { companyId: company.id },
