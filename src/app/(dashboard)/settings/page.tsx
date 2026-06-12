@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { CompanyForm } from "./company-form";
+import { CompanyCard, CompanyForm } from "./company-form";
 import { WorkspaceCard, WorkspaceForm } from "./workspace-form";
 import { AuditLog } from "./audit-log";
 import { SsoAllowlistSection } from "./sso-allowlist";
@@ -39,26 +39,13 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         </p>
         <div className="space-y-3">
           {companies.map((c) => (
-            <div
+            <CompanyCard
               key={c.id}
-              className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between gap-4"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900">{c.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  API key: ••••••••{c.holdedApiKey.slice(-4)}
-                </p>
-              </div>
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full h-fit ${
-                  c.active
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-500"
-                }`}
-              >
-                {c.active ? "Activa" : "Inactiva"}
-              </span>
-            </div>
+              id={c.id}
+              name={c.name}
+              holdedApiKey={c.holdedApiKey}
+              active={c.active}
+            />
           ))}
         </div>
         <CompanyForm />

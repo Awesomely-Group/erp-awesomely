@@ -39,6 +39,28 @@ export async function createCompany(data: FormData): Promise<void> {
   revalidatePath("/invoices");
 }
 
+export async function updateCompany(id: string, data: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const holdedApiKey = data.get("holdedApiKey") as string;
+  if (!holdedApiKey) return;
+
+  await prisma.company.update({ where: { id }, data: { holdedApiKey } });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      action: AuditAction.UPDATE,
+      entityType: "Company",
+      entityId: id,
+      newValue: { holdedApiKey: "updated" },
+    },
+  });
+
+  revalidatePath("/settings");
+}
+
 export async function createWorkspace(data: FormData): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
