@@ -314,21 +314,12 @@ export class HoldedClient {
     const merged: HoldedChartAccountRow[] = [];
 
     if (IS_V2) {
-      // v2: /accounting-accounts with standard offset pagination
-      let offset = 0;
-      while (true) {
-        const raw = await this.fetch<unknown>("/accounting-accounts", {
-          limit: String(PAGE_SIZE),
-          offset: String(offset),
-          includeEmpty: "1",
-        });
-        const batch = this.normalizeChartList(raw);
-        if (batch.length === 0) break;
-        merged.push(...batch);
-        if (batch.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-      }
-      return merged;
+      // v2: offset is ignored — fetch all in one shot (chart of accounts always < 1000)
+      const raw = await this.fetch<unknown>("/accounting-accounts", {
+        limit: "1000",
+        includeEmpty: "1",
+      });
+      return this.normalizeChartList(raw);
     }
 
     // v1: /chartofaccounts with page-based pagination and prevFirstId workaround
