@@ -31,7 +31,12 @@ async function fetchHoldedPage(apiKey: string, type: string, page: number): Prom
     const arr: Array<{ id?: string }> = Array.isArray(parsed)
       ? (parsed as Array<{ id?: string }>)
       : ((parsed as { data?: Array<{ id?: string }> }).data ?? []);
-    return { ok: true, count: arr.length, firstId: arr[0]?.id ?? undefined };
+    return {
+      ok: true,
+      count: arr.length,
+      firstId: arr[0]?.id ?? undefined,
+      rawBody: arr.length === 0 ? text.slice(0, 500) : undefined,
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
