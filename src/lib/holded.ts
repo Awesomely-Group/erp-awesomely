@@ -61,7 +61,100 @@ export interface HoldedInvoice {
 }
 
 export interface HoldedListResponse {
-  data: HoldedInvoice[];
+  data?: HoldedInvoice[];
+  items?: HoldedInvoiceV2Raw[];
+}
+
+// ─── Holded API v2 raw types ───────────────────────────────────────────────────
+
+interface HoldedInvoiceLineV2Raw {
+  line_id?: string | null;
+  name: string;
+  type?: string;
+  description?: string;
+  price?: string;     // "3750,00"
+  units?: string;     // "1,00"
+  discount?: string;
+  tax?: string;
+  account?: string;
+}
+
+interface HoldedInvoiceV2Raw {
+  id: string;
+  document_number?: string | null;
+  contact_id?: string;
+  contact_name?: string;
+  date: string;       // "2026-06-01"
+  due_date?: string;
+  subtotal?: string;
+  total?: string;
+  tax?: string;
+  currency?: string;
+  status?: string;    // "pending" | "paid" | "draft" | "overdue" | "void"
+  draft?: boolean;
+  tags?: string[];
+  lines?: HoldedInvoiceLineV2Raw[];
+  currency_change?: number;
+  payments_total?: number;
+  payments_pending?: number;
+  from?: { id: string; doc_type?: string; docType?: string };
+}
+
+function parseCommaNum(s: string | undefined | null): number {
+  if (!s) return 0;
+  return parseFloat(s.replace(",", ".")) || 0;
+}
+
+function v2StatusToNum(status: string | undefined, draft?: boolean): number {
+  if (draft) return 0;
+  switch (status) {
+    case "paid":      return 2;
+    case "overdue":
+    case "late":      return 3;
+    case "void":
+    case "cancelled": return -1;
+    default:          return 1; // "pending" and unknown
+  }
+}
+
+function normalizeV2Invoice(raw: HoldedInvoiceV2Raw): HoldedInvoice {
+  const parseIsoToUnix = (s?: string): number | undefined =>
+    s ? Math.floor(new Date(s).getTime() / 1000) : undefined;
+
+  const statusNum = v2StatusToNum(raw.status, raw.draft);
+  const total = parseCommaNum(raw.total);
+  const isPaid = statusNum === 2;
+
+  return {
+    id: raw.id,
+    docNumber: raw.document_number ?? "",
+    contactName: raw.contact_name ?? "",
+    contactId: raw.contact_id,
+    date: Math.floor(new Date(raw.date).getTime() / 1000),
+    dueDate: parseIsoToUnix(raw.due_date),
+    currency: raw.currency ?? "EUR",
+    currencyChange: raw.currency_change ?? 0,
+    subtotal: parseCommaNum(raw.subtotal),
+    tax: parseCommaNum(raw.tax),
+    total,
+    products: (raw.lines ?? []).map((l) => ({
+      name: l.name,
+      desc: l.description,
+      units: parseCommaNum(l.units) || 1,
+      price: parseCommaNum(l.price),
+      tax: 0,
+      discount: parseCommaNum(l.discount),
+      account: l.account,
+    })),
+    type: "income",
+    status: statusNum,
+    paymentsTotal: raw.payments_total ?? (isPaid ? total : 0),
+    paymentsPending: raw.payments_pending ?? (isPaid ? 0 : total),
+    tags: raw.tags,
+    from: raw.from
+      ? { id: raw.from.id, docType: raw.from.doc_type ?? raw.from.docType ?? "" }
+      : undefined,
+  };
 }
 
 export interface HoldedAccountingAccount {
@@ -535,16 +628,17 @@ export class HoldedClient {
 
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
     if (IS_V2) {
-      // v2: /proformas with standard offset pagination
+      // v2: /proformas — response is {"items": [...]} with snake_case fields
       const PAGE_SIZE = 500;
       const all: HoldedInvoice[] = [];
       let offset = 0;
       while (true) {
-        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>("/proformas", {
+        const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>("/proformas", {
           limit: String(PAGE_SIZE),
           offset: String(offset),
         });
-        const batch: HoldedInvoice[] = Array.isArray(raw) ? raw : (raw.data ?? []);
+        const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
+        const batch = rawBatch.map(normalizeV2Invoice);
         if (batch.length === 0) break;
         all.push(...batch);
         if (batch.length < PAGE_SIZE) break;
@@ -592,17 +686,18 @@ export class HoldedClient {
 
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     if (IS_V2) {
-      // v2: dedicated routes with standard offset pagination
+      // v2: response is {"items": [...]} with snake_case fields
       const path = type === "invoice" ? "/invoices" : "/purchases";
       const PAGE_SIZE = 500;
       const all: HoldedInvoice[] = [];
       let offset = 0;
       while (true) {
-        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(path, {
+        const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>(path, {
           limit: String(PAGE_SIZE),
           offset: String(offset),
         });
-        const batch: HoldedInvoice[] = Array.isArray(raw) ? raw : (raw.data ?? []);
+        const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
+        const batch = rawBatch.map(normalizeV2Invoice);
         if (batch.length === 0) break;
         all.push(...batch);
         if (batch.length < PAGE_SIZE) break;

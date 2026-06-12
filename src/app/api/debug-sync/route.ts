@@ -28,9 +28,12 @@ async function fetchHoldedPage(apiKey: string, type: string, page: number): Prom
     try { parsed = JSON.parse(text); } catch {
       return { ok: false, error: "Invalid JSON", rawBody: text.slice(0, 300) };
     }
-    const arr: Array<{ id?: string }> = Array.isArray(parsed)
-      ? (parsed as Array<{ id?: string }>)
-      : ((parsed as { data?: Array<{ id?: string }> }).data ?? []);
+    type AnyList = Array<{ id?: string }>;
+    const arr: AnyList = Array.isArray(parsed)
+      ? (parsed as AnyList)
+      : ((parsed as { items?: AnyList; data?: AnyList }).items
+          ?? (parsed as { data?: AnyList }).data
+          ?? []);
     return {
       ok: true,
       count: arr.length,
