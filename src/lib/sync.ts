@@ -100,6 +100,8 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   // Process a list of invoices in parallel batches to reduce total sync time
   type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
 
+  const upsertErrors: string[] = [];
+
   async function upsertBatch(
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
     type: InvoiceType,
@@ -113,7 +115,8 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
           upsertInvoice(inv, companyId, type, accountMaps)
             .then(() => { invoicesSynced++; })
             .catch((err: unknown) => {
-              console.error(`[sync] Error upserting ${type} invoice ${inv.id} (${inv.docNumber}):`, err);
+              const msg = `${type} ${inv.id} (${inv.docNumber}): ${err instanceof Error ? err.message : String(err)}`;
+              upsertErrors.push(msg);
             })
         )
       );
@@ -194,13 +197,16 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     errorMessage = err instanceof Error ? err.message : String(err);
   }
 
+  const combinedError = errorMessage
+    ?? (upsertErrors.length > 0 ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0]}` : undefined);
+
   await prisma.syncLog.create({
     data: {
       source: SyncSource.HOLDED,
-      result: errorMessage ? SyncResult.ERROR : SyncResult.SUCCESS,
+      result: combinedError ? SyncResult.ERROR : SyncResult.SUCCESS,
       companyId,
       invoicesSynced,
-      errorMessage,
+      errorMessage: combinedError ?? null,
       triggeredBy: triggeredBy ?? null,
       startedAt,
       finishedAt: new Date(),
