@@ -494,13 +494,14 @@ export class HoldedClient {
     };
 
     if (IS_V2) {
-      // v2: standard offset pagination — /contacts works properly
+      // v2: standard offset pagination — /contacts returns { items: [...] }
       let offset = 0;
       while (true) {
-        const batch = await this.fetch<RawContact[]>("/contacts", {
+        const raw = await this.fetch<RawContact[] | { items?: RawContact[] }>("/contacts", {
           limit: String(PAGE_SIZE),
           offset: String(offset),
         });
+        const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
         if (batch.length === 0) break;
         for (const c of batch) {
           if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
@@ -568,13 +569,14 @@ export class HoldedClient {
     type RawContact = { id: string; name: string; type?: string };
 
     if (IS_V2) {
-      // v2: standard offset pagination
+      // v2: standard offset pagination — /contacts returns { items: [...] }
       let offset = 0;
       while (true) {
-        const batch = await this.fetch<RawContact[]>("/contacts", {
+        const raw = await this.fetch<RawContact[] | { items?: RawContact[] }>("/contacts", {
           limit: String(PAGE_SIZE),
           offset: String(offset),
         });
+        const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
         if (batch.length === 0) break;
         for (const c of batch) {
           if ((c.type === "client" || c.type === "both") && !all.has(c.id)) {
