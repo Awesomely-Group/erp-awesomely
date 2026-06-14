@@ -11,6 +11,7 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 import {
   parseCommaNum,
   normalizeV2Invoice,
+  HoldedClient,
   type HoldedInvoiceV2Raw,
 } from "../src/lib/holded";
 
@@ -186,19 +187,60 @@ async function main(): Promise<void> {
 
   for (const company of companies) {
     console.log(`\n── ${company.name} ──`);
-    const paths: Array<[string, string]> = [
-      ["/invoices", "SALE"],
-      ["/purchases", "PURCHASE"],
-      ["/proformas", "PROFORMA"],
+    const client = new HoldedClient(company.holdedApiKey);
+
+    // getAllInvoicesPaginated returns HoldedInvoice[] (already normalized).
+    // We validate the normalized values directly.
+    const tasks: Array<[string, () => Promise<ReturnType<typeof normalizeV2Invoice>[]>]> = [
+      ["SALE",     () => client.getAllInvoicesPaginated("invoice")],
+      ["PURCHASE", () => client.getAllInvoicesPaginated("purchase")],
+      ["PROFORMA", () => client.getAllProformasPaginated()],
     ];
 
-    for (const [path, label] of paths) {
+    for (const [label, fetchFn] of tasks) {
       try {
-        const batch = await fetchHoldedV2(company.holdedApiKey, path);
-        const { issues } = validateBatch(batch, label);
-        for (const issue of issues) {
-          allIssues.push({ company: company.name, path, ...issue });
+        const invoices = await fetchFn();
+        let issues = 0;
+        for (const inv of invoices) {
+          const numericChecks: Array<[string, number | undefined]> = [
+            ["subtotal", inv.subtotal],
+            ["tax", inv.tax],
+            ["total", inv.total],
+            ["currencyChange", inv.currencyChange],
+            ["paymentsTotal", inv.paymentsTotal],
+            ["paymentsPending", inv.paymentsPending],
+            ["date", inv.date],
+          ];
+          for (const [field, val] of numericChecks) {
+            if (val !== undefined && !Number.isFinite(val)) {
+              allIssues.push({
+                company: company.name,
+                path: label,
+                id: inv.id,
+                docNumber: inv.docNumber ?? "",
+                field,
+                rawValue: `(post-normalization)`,
+                normalizedValue: val,
+              });
+              issues++;
+            }
+          }
+          const { hadNaN } = simulatePayments(inv);
+          if (hadNaN) {
+            allIssues.push({
+              company: company.name,
+              path: label,
+              id: inv.id,
+              docNumber: inv.docNumber ?? "",
+              field: "payments (pre-guard)",
+              rawValue: { paymentsTotal: inv.paymentsTotal, paymentsPending: inv.paymentsPending },
+              normalizedValue: null,
+            });
+            issues++;
+          }
         }
+        const icon = issues === 0 ? "✅" : "❌";
+        console.log(`${icon} ${label}: ${invoices.length} docs, ${issues} issues`);
       } catch (err) {
         console.error(`  ❌ ${label}: ${err instanceof Error ? err.message : String(err)}`);
       }

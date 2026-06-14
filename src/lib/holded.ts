@@ -666,13 +666,41 @@ export class HoldedClient {
 
   async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
     if (IS_V2) {
-      // v2: offset/page/starttmp are all ignored — single request with large limit
-      const path = type === "invoice" ? "/invoices" : "/purchases";
-      const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>(path, {
-        limit: "5000",
-      });
-      const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
-      return rawBatch.map(normalizeV2Invoice);
+      if (type === "invoice") {
+        // /invoices: no hard cap observed — single request is sufficient
+        const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>("/invoices", {
+          limit: "5000",
+        });
+        const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
+        return rawBatch.map(normalizeV2Invoice);
+      }
+
+      // /purchases: Holded v2 hard-caps at 200 per request regardless of `limit`.
+      // offset/page are ignored. Use monthly start_date/end_date windows to fetch all.
+      const seenIds = new Set<string>();
+      const all: HoldedInvoice[] = [];
+      const now = new Date();
+      const endYear = now.getFullYear();
+
+      for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
+        const endMonth = year === endYear ? now.getMonth() + 1 : 12;
+        for (let month = 1; month <= endMonth; month++) {
+          const mm = String(month).padStart(2, "0");
+          const lastDay = new Date(year, month, 0).getDate();
+          const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>(
+            "/purchases",
+            { limit: "500", start_date: `${year}-${mm}-01`, end_date: `${year}-${mm}-${lastDay}` }
+          );
+          const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
+          for (const item of batch) {
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              all.push(normalizeV2Invoice(item));
+            }
+          }
+        }
+      }
+      return all;
     }
 
     // v1: quarterly time windows workaround (page param does not work reliably)
