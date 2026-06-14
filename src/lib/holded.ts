@@ -79,7 +79,7 @@ interface HoldedInvoiceLineV2Raw {
   account?: string;
 }
 
-interface HoldedInvoiceV2Raw {
+export interface HoldedInvoiceV2Raw {
   id: string;
   document_number?: string | null;
   contact_id?: string;
@@ -94,18 +94,18 @@ interface HoldedInvoiceV2Raw {
   draft?: boolean;
   tags?: string[];
   lines?: HoldedInvoiceLineV2Raw[];
-  currency_change?: number;
-  payments_total?: number;
-  payments_pending?: number;
+  currency_change?: number | string;
+  payments_total?: number | string;
+  payments_pending?: number | string;
   from?: { id: string; doc_type?: string; docType?: string };
 }
 
-function parseCommaNum(s: string | undefined | null): number {
+export function parseCommaNum(s: string | undefined | null): number {
   if (!s) return 0;
   return parseFloat(s.replace(",", ".")) || 0;
 }
 
-function v2StatusToNum(status: string | undefined, draft?: boolean): number {
+export function v2StatusToNum(status: string | undefined, draft?: boolean): number {
   if (draft) return 0;
   switch (status) {
     case "paid":      return 2;
@@ -117,7 +117,7 @@ function v2StatusToNum(status: string | undefined, draft?: boolean): number {
   }
 }
 
-function normalizeV2Invoice(raw: HoldedInvoiceV2Raw): HoldedInvoice {
+export function normalizeV2Invoice(raw: HoldedInvoiceV2Raw): HoldedInvoice {
   const parseIsoToUnix = (s?: string): number | undefined =>
     s ? Math.floor(new Date(s).getTime() / 1000) : undefined;
 
@@ -133,7 +133,7 @@ function normalizeV2Invoice(raw: HoldedInvoiceV2Raw): HoldedInvoice {
     date: Math.floor(new Date(raw.date).getTime() / 1000),
     dueDate: parseIsoToUnix(raw.due_date),
     currency: raw.currency ?? "EUR",
-    currencyChange: raw.currency_change ?? 0,
+    currencyChange: raw.currency_change != null ? parseCommaNum(String(raw.currency_change)) : 0,
     subtotal: parseCommaNum(raw.subtotal),
     tax: parseCommaNum(raw.tax),
     total,
@@ -148,8 +148,8 @@ function normalizeV2Invoice(raw: HoldedInvoiceV2Raw): HoldedInvoice {
     })),
     type: "income",
     status: statusNum,
-    paymentsTotal: raw.payments_total ?? (isPaid ? total : 0),
-    paymentsPending: raw.payments_pending ?? (isPaid ? 0 : total),
+    paymentsTotal: raw.payments_total != null ? parseCommaNum(String(raw.payments_total)) : (isPaid ? total : 0),
+    paymentsPending: raw.payments_pending != null ? parseCommaNum(String(raw.payments_pending)) : (isPaid ? 0 : total),
     tags: raw.tags,
     from: raw.from
       ? { id: raw.from.id, docType: raw.from.doc_type ?? raw.from.docType ?? "" }

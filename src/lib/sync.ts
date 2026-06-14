@@ -311,9 +311,19 @@ async function upsertInvoice(
     invTaxForeign = inv.tax ?? 0;
   }
 
+  const rawPayTotal = (inv.paymentsTotal ?? 0) * toForeign;
+  const rawPayPending = (inv.paymentsPending ?? (inv.total ?? 0)) * toForeign;
+  if (!Number.isFinite(rawPayTotal) || !Number.isFinite(rawPayPending)) {
+    console.error(
+      `[sync] NaN payments for ${type} ${inv.id}: paymentsTotal=${inv.paymentsTotal}, paymentsPending=${inv.paymentsPending}, toForeign=${toForeign}, status=${inv.status}, currency=${currency}, currencyChange=${inv.currencyChange}`
+    );
+  }
+  const safePayTotal = Number.isFinite(rawPayTotal) ? rawPayTotal : 0;
+  const safePayPending = Number.isFinite(rawPayPending) ? rawPayPending : (invTotalForeign ?? 0);
+
   // Holded keeps status=1 even after full payment; derive from paymentsPending instead.
   const effectiveHoldedStatus =
-    inv.paymentsPending === 0 && (inv.paymentsTotal ?? 0) > 0 ? 2 : inv.status;
+    safePayPending === 0 && safePayTotal > 0 ? 2 : inv.status;
 
   const invoice = await prisma.invoice.upsert({
     where: { holdedId_companyId: { holdedId: inv.id, companyId } },
@@ -330,8 +340,8 @@ async function upsertInvoice(
       tax: invTaxForeign,
       total: invTotalForeign,
       totalEur: invTotalEur,
-      paymentsTotal: (inv.paymentsTotal ?? 0) * toForeign,
-      paymentsPending: (inv.paymentsPending ?? (inv.total ?? 0)) * toForeign,
+      paymentsTotal: safePayTotal,
+      paymentsPending: safePayPending,
     },
     create: {
       holdedId: inv.id,
@@ -349,8 +359,8 @@ async function upsertInvoice(
       tax: invTaxForeign,
       total: invTotalForeign,
       totalEur: invTotalEur,
-      paymentsTotal: (inv.paymentsTotal ?? 0) * toForeign,
-      paymentsPending: (inv.paymentsPending ?? (inv.total ?? 0)) * toForeign,
+      paymentsTotal: safePayTotal,
+      paymentsPending: safePayPending,
     },
   });
 
