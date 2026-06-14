@@ -106,7 +106,7 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
     type: InvoiceType,
     accountMaps: AccountMaps,
-    batchSize = 10
+    batchSize = 20
   ): Promise<void> {
     for (let i = 0; i < invoices.length; i += batchSize) {
       const chunk = invoices.slice(i, i + batchSize);
