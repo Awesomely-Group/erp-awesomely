@@ -62,6 +62,8 @@ function SortTh({
   );
 }
 
+type HoldedPresence = "active" | "all" | "removed";
+
 type InvoicePageParams = {
   search?: string;
   status?: string;
@@ -75,7 +77,13 @@ type InvoicePageParams = {
   sortBy?: string;
   sortDir?: string;
   invoiceId?: string;
+  holdedPresence?: string;
 };
+
+function parseHoldedPresence(v: string | undefined): HoldedPresence {
+  if (v === "all" || v === "removed") return v;
+  return "active";
+}
 
 
 async function loadInvoicesPageData(params: InvoicePageParams) {
@@ -99,7 +107,14 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
   const activeType: InvoiceType =
     params.type === "PURCHASE" ? InvoiceType.PURCHASE : InvoiceType.SALE;
 
+  const holdedPresence = parseHoldedPresence(params.holdedPresence);
+  const holdedPresenceWhere: Prisma.InvoiceWhereInput =
+    holdedPresence === "active" ? { removedFromHoldedAt: null }
+    : holdedPresence === "removed" ? { removedFromHoldedAt: { not: null } }
+    : {};
+
   const andConditions: Prisma.InvoiceWhereInput[] = [];
+  if (holdedPresence !== "all") andConditions.push(holdedPresenceWhere);
   if (params.search) {
     andConditions.push({ OR: [
       { number: { contains: params.search, mode: "insensitive" } },
@@ -214,6 +229,7 @@ export default async function InvoicesPage({
       sortDir: q.sortDir,
       page: q.page,
       invoiceId: q.invoiceId,
+      holdedPresence: q.holdedPresence,
       ...overrides,
     };
     for (const [k, v] of Object.entries(merged)) {
@@ -272,6 +288,7 @@ export default async function InvoicesPage({
               status: inv.status,
               companyName: inv.company.name,
               brand: inv.marca,
+              removedFromHoldedAt: inv.removedFromHoldedAt?.toISOString() ?? null,
             }))}
           />
         </tbody>

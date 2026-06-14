@@ -19,6 +19,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const where = {
     holdedStatus: { not: -1 },
+    removedFromHoldedAt: null,
     ...(type ? { type } : {}),
     ...(status ? { status } : {}),
     ...(dateFrom || dateTo

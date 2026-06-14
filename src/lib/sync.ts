@@ -188,9 +188,14 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
         console.log(`[sync] Deleted ${safeIds.length} invoice(s) removed from Holded for company ${companyId}`);
       }
 
-      const skipped = orphanedIds.length - safeIds.length;
-      if (skipped > 0) {
-        console.warn(`[sync] ${skipped} invoice(s) no longer in Holded but kept because they have classifications or payments`);
+      const keptIds = orphanedIds.filter((id) => !safeIds.includes(id));
+      if (keptIds.length > 0) {
+        console.warn(`[sync] ${keptIds.length} invoice(s) no longer in Holded but kept because they have classifications or payments`);
+        await prisma.invoice.updateMany({
+          where: { id: { in: keptIds }, removedFromHoldedAt: null },
+          data: { removedFromHoldedAt: new Date() },
+        });
+        console.log(`[sync] Marked ${keptIds.length} invoice(s) as removed from Holded (kept for classifications)`);
       }
     }
   } catch (err) {
@@ -342,6 +347,7 @@ async function upsertInvoice(
       totalEur: invTotalEur,
       paymentsTotal: safePayTotal,
       paymentsPending: safePayPending,
+      removedFromHoldedAt: null,
     },
     create: {
       holdedId: inv.id,
@@ -361,6 +367,7 @@ async function upsertInvoice(
       totalEur: invTotalEur,
       paymentsTotal: safePayTotal,
       paymentsPending: safePayPending,
+      removedFromHoldedAt: null,
     },
   });
 

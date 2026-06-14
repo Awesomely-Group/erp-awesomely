@@ -58,9 +58,17 @@ export default async function InvoiceDetailPage({
   ).then((entries) => new Map(entries));
 
   const classifiedCount = invoice.lines.filter((l) => l.classification).length;
+  const removedDate = invoice.removedFromHoldedAt
+    ? invoice.removedFromHoldedAt.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" })
+    : null;
 
   return (
     <div className="space-y-6 max-w-5xl">
+      {removedDate && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          Esta factura ya no existe en Holded. Se conserva por las clasificaciones registradas en el ERP. Detectada el {removedDate}.
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

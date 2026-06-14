@@ -267,6 +267,9 @@ model Invoice {
   paymentsTotal   Decimal @default(0)
   paymentsPending Decimal @default(0)
 
+  // Null = active in Holded; DateTime = detected as removed on that date (kept for user data)
+  removedFromHoldedAt DateTime?
+
   lines              InvoiceLine[]
   auditLogs          AuditLog[]
   erpPayments        InvoicePayment[]

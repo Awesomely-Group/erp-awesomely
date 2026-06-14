@@ -44,6 +44,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
     const firstInvoice = await prisma.invoice.findFirst({
       where: {
         lines: { some: { classification: { projectId } } },
+        removedFromHoldedAt: null,
       },
       select: { date: true },
       orderBy: { date: "asc" },
@@ -74,6 +75,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       where: {
         lines: { some: { classification: { projectId } } },
         date: { gte: from, lte: to },
+        removedFromHoldedAt: null,
       },
       include: { company: true },
       orderBy: { date: "desc" },

@@ -12,7 +12,7 @@ const nameKey = (companyId: string, name: string): string =>
 export default async function PaymentsPage(): Promise<React.JSX.Element> {
   const [invoices, partnerSuppliers] = await Promise.all([
     prisma.invoice.findMany({
-      where: { type: { in: ["PURCHASE", "SALE"] } },
+      where: { type: { in: ["PURCHASE", "SALE"] }, removedFromHoldedAt: null },
       omit: { status: true },
       include: {
         company: true,

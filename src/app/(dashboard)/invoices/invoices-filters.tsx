@@ -37,16 +37,18 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
   const [selectedProject, setSelectedProject] = useState(sp.get("project") ?? "");
+  const [holdedPresence, setHoldedPresence] = useState(sp.get("holdedPresence") ?? "active");
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
-    status: string; marca: string; project: string;
+    status: string; marca: string; project: string; holdedPresence: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
       type: sp.get("type") ?? "",
       marca: selectedMarca,
       project: selectedProject,
+      holdedPresence,
       ...overrides,
     };
     const params = new URLSearchParams();
@@ -55,6 +57,7 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
     if (m.type) params.set("type", m.type);
     if (m.marca) params.set("marca", m.marca);
     if (m.project) params.set("project", m.project);
+    if (m.holdedPresence && m.holdedPresence !== "active") params.set("holdedPresence", m.holdedPresence);
     if (m.period) {
       params.set("period", m.period);
       if (m.period === "custom") {
@@ -73,6 +76,7 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
     setStatus("");
     setSelectedMarca("");
     setSelectedProject("");
+    setHoldedPresence("active");
     const currentType = sp.get("type") ?? "";
     const params = new URLSearchParams();
     if (currentType) params.set("type", currentType);
@@ -183,6 +187,19 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
           </select>
         </div>
       )}
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-gray-500 font-medium">En Holded</label>
+        <select
+          value={holdedPresence}
+          onChange={(e) => { const v = e.target.value; setHoldedPresence(v); applyWith({ holdedPresence: v }); }}
+          className={selectClass}
+        >
+          <option value="active">Solo activas</option>
+          <option value="all">Todas (incl. eliminadas)</option>
+          <option value="removed">Solo eliminadas</option>
+        </select>
+      </div>
 
       <button
         type="button"

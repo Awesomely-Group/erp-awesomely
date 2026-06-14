@@ -24,7 +24,7 @@ function buildDashboardInvoiceWhere(
     params.dateFrom,
     params.dateTo
   );
-  const where: Prisma.InvoiceWhereInput = {};
+  const where: Prisma.InvoiceWhereInput = { removedFromHoldedAt: null };
   if (dateRange.gte || dateRange.lte) {
     where.date = dateRange;
   }
@@ -48,7 +48,7 @@ async function getDashboardCashflow(
     params.dateFrom,
     params.dateTo
   );
-  const conditions: Prisma.Sql[] = [];
+  const conditions: Prisma.Sql[] = [Prisma.sql`"removedFromHoldedAt" IS NULL`];
 
   if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
   if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
@@ -128,15 +128,15 @@ async function getAlerts() {
     proformasOverdue,
   ] = await Promise.all([
     prisma.invoice.count({
-      where: { status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] } },
+      where: { removedFromHoldedAt: null, status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] } },
     }),
     prisma.invoice.aggregate({
-      where: { type: "SALE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
+      where: { removedFromHoldedAt: null, type: "SALE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
       _count: true,
       _sum: { totalEur: true },
     }),
     prisma.invoice.aggregate({
-      where: { type: "PURCHASE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
+      where: { removedFromHoldedAt: null, type: "PURCHASE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
       _count: true,
       _sum: { totalEur: true },
     }),

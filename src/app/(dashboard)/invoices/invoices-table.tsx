@@ -61,6 +61,7 @@ interface InvoiceRow {
   status: string;
   companyName: string;
   brand: string | null;
+  removedFromHoldedAt: string | null;
 }
 
 interface Props {
@@ -232,6 +233,7 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
       {invoices.map((inv) => {
         const isSelected = inv.id === selectedId;
         const isChecked = selected.has(inv.id);
+        const isRemoved = inv.removedFromHoldedAt !== null;
         return (
           <tr
             key={inv.id}
@@ -246,6 +248,8 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
               router.push(`/invoices?${params.toString()}`);
             }}
             className={`cursor-pointer border-b border-gray-100 last:border-0 transition-colors ${
+              isRemoved ? "opacity-60" : ""
+            } ${
               isSelected ? "bg-indigo-50 hover:bg-indigo-100" : isChecked ? "bg-indigo-50/50" : "hover:bg-gray-50"
             }`}
           >
@@ -262,15 +266,19 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
                 <span className={`font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`}>
                   {inv.number ?? <span className="italic text-gray-400 font-normal">Borrador</span>}
                 </span>
-                <a
-                  href={holdedInvoiceUrl(inv.holdedId, inv.type)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
-                  title="Ver en Holded"
-                >
-                  ↗
-                </a>
+                {isRemoved ? (
+                  <span className="text-xs text-gray-300 cursor-default" title="Ya no existe en Holded">↗</span>
+                ) : (
+                  <a
+                    href={holdedInvoiceUrl(inv.holdedId, inv.type)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                    title="Ver en Holded"
+                  >
+                    ↗
+                  </a>
+                )}
               </div>
             </td>
             <td className="px-4 py-3 text-gray-600">{inv.companyName}</td>
@@ -313,11 +321,16 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
               )}
             </td>
             <td className="px-4 py-3">
-              <span
-                className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] ?? ""}`}
-              >
-                {STATUS_LABELS[inv.status] ?? inv.status}
-              </span>
+              <div className="flex flex-wrap gap-1">
+                {isRemoved && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                    Eliminada en Holded
+                  </span>
+                )}
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] ?? ""}`}>
+                  {STATUS_LABELS[inv.status] ?? inv.status}
+                </span>
+              </div>
             </td>
           </tr>
         );
