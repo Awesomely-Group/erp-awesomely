@@ -366,12 +366,27 @@ async function upsertInvoice(
 
   // Upsert lines
   if (inv.products && inv.products.length > 0) {
-    // Preserve existing classifications keyed by sortOrder before deleting lines
+    // Preserve existing classifications before deleting lines.
+    // Primary key: line name (when unique within the invoice) — survives reordering between API versions.
+    // Fallback: sortOrder (position) — used when the same name appears multiple times.
     const existingLines = await prisma.invoiceLine.findMany({
       where: { invoiceId: invoice.id },
       include: { classification: true },
       orderBy: { sortOrder: "asc" },
     });
+
+    // Count how many times each name appears (to detect ambiguous names)
+    const nameCount = new Map<string, number>();
+    for (const l of existingLines) nameCount.set(l.name, (nameCount.get(l.name) ?? 0) + 1);
+
+    // Name → classification (only for lines with a unique name that has a classification)
+    const classificationByName = new Map(
+      existingLines
+        .filter((l) => l.classification !== null && nameCount.get(l.name) === 1)
+        .map((l) => [l.name, l.classification!])
+    );
+
+    // SortOrder → classification (fallback for duplicate names)
     const classificationBySortOrder = new Map(
       existingLines
         .filter((l) => l.classification !== null)
@@ -437,8 +452,9 @@ async function upsertInvoice(
         },
       });
 
-      // Restore classification if this sortOrder had one
-      const prevClassification = classificationBySortOrder.get(i);
+      // Restore classification: prefer name-match (order-change safe), fall back to position
+      const prevClassification =
+        classificationByName.get(product.name) ?? classificationBySortOrder.get(i);
       if (prevClassification) {
         await prisma.classification.create({
           data: {
