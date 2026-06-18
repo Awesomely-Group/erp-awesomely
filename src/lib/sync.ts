@@ -95,7 +95,6 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   const startedAt = new Date();
   let invoicesSynced = 0;
   let errorMessage: string | undefined;
-  let convertedProformaHoldedIds: string[] = [];
 
   // Process a list of invoices in parallel batches to reduce total sync time
   type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
@@ -137,14 +136,6 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
       upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
     ]);
-
-    // Collect proforma Holded IDs that were converted to an invoice.
-    // Holded sets invoice.from = { id: proformaHoldedId, docType: "proform" } on conversion
-    // but does NOT update the proforma's own status field — so we fix it after syncProformas
-    // runs (otherwise syncProformas would overwrite our status: 3 with the original Holded value).
-    convertedProformaHoldedIds = salesInvoices
-      .filter((inv) => inv.from?.docType === "proform")
-      .map((inv) => inv.from!.id);
 
     // Remove invoices that no longer exist in Holded (source of truth).
     // Only delete if no user work has been done (no classifications, no ERP payments).
@@ -227,17 +218,13 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   });
 
   // Mark converted proformas AFTER syncProformas so we override whatever Holded returned.
-  // Holded never sets holdedStatus=3 on the proforma side when converting to invoice.
-  if (convertedProformaHoldedIds.length > 0) {
-    await prisma.proforma.updateMany({
-      where: {
-        companyId,
-        holdedId: { in: convertedProformaHoldedIds },
-        holdedStatus: { notIn: [3, -1] },
-      },
-      data: { holdedStatus: 3 },
-    });
-  }
+  // Holded v2 does not return a `from` field on invoices (v1 did), so we can't detect
+  // conversion from the API response. Instead we cross-reference by DB:
+  // a proforma is considered converted when a SALE invoice exists for the same company,
+  // contact, currency and exact native-currency total, dated within 45 days after the proforma.
+  await markConvertedProformas(companyId).catch((err: unknown) => {
+    console.error("[sync] Error marking converted proformas:", err);
+  });
 
   if (errorMessage) throw new Error(errorMessage);
 }
@@ -550,6 +537,106 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
   });
 }
 
+// ─── Converted-proforma detection ──────────────────────────────────────────────
+// Holded v2 API does not expose the proforma→invoice link (v1 had invoice.from.docType).
+// We infer conversion by matching: same company + same contact + same currency +
+// exact native-currency total + invoice dated within 45 days AFTER the proforma.
+// Runs after every invoice+proforma sync so the notification never shows billed proformas.
+
+async function markConvertedProformas(companyId: string): Promise<void> {
+  // Window: invoices issued up to 15 days BEFORE the proforma (handles cases where the
+  // invoice is dated slightly earlier than the proforma) or up to 45 days AFTER.
+  const WINDOW_BEFORE_DAYS = 15;
+  const WINDOW_AFTER_DAYS  = 45;
+
+  // Fetch all pending proformas and all sale invoices in two queries, then match in memory.
+  const [pendingProformas, saleInvoices] = await Promise.all([
+    prisma.proforma.findMany({
+      where: {
+        companyId,
+        holdedStatus: { notIn: [3, -1] },
+        holdedContactId: { not: null },
+      },
+      select: { holdedId: true, holdedContactId: true, currency: true, total: true, totalEur: true, date: true },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        companyId,
+        type: InvoiceType.SALE,
+        holdedStatus: { not: -1 },
+        holdedContactId: { not: null },
+      },
+      select: { holdedContactId: true, currency: true, total: true, totalEur: true, date: true },
+    }),
+  ]);
+
+  if (pendingProformas.length === 0) return;
+
+  const toNum = (d: unknown): number =>
+    typeof d === "object" && d !== null && "toNumber" in (d as object)
+      ? (d as { toNumber(): number }).toNumber()
+      : Number(d);
+
+  const toFixed2 = (d: unknown): string => toNum(d).toFixed(2);
+
+  // Primary lookup: exact match on contactId + currency + native total
+  const exactLookup = new Map<string, Date[]>();
+  // Fallback lookup: contactId → list of { totalEur, date } for cross-currency matching
+  const eurLookup = new Map<string, { totalEur: number; date: Date }[]>();
+
+  for (const inv of saleInvoices) {
+    const exactKey = `${inv.holdedContactId}|${inv.currency}|${toFixed2(inv.total)}`;
+    const exactDates = exactLookup.get(exactKey) ?? [];
+    exactDates.push(inv.date);
+    exactLookup.set(exactKey, exactDates);
+
+    const eurList = eurLookup.get(inv.holdedContactId!) ?? [];
+    eurList.push({ totalEur: toNum(inv.totalEur), date: inv.date });
+    eurLookup.set(inv.holdedContactId!, eurList);
+  }
+
+  const toMarkConverted: string[] = [];
+  for (const pf of pendingProformas) {
+    const windowStart = new Date(pf.date);
+    windowStart.setDate(windowStart.getDate() - WINDOW_BEFORE_DAYS);
+    const windowEnd = new Date(pf.date);
+    windowEnd.setDate(windowEnd.getDate() + WINDOW_AFTER_DAYS);
+
+    // 1️⃣ Primary: exact currency + amount match
+    const exactKey = `${pf.holdedContactId}|${pf.currency}|${toFixed2(pf.total)}`;
+    const exactDates = exactLookup.get(exactKey);
+    if (exactDates?.some(d => d >= windowStart && d <= windowEnd)) {
+      toMarkConverted.push(pf.holdedId);
+      continue;
+    }
+
+    // 2️⃣ Fallback: match on EUR equivalent ±5% (handles cross-currency billing)
+    const pfTotalEur = toNum(pf.totalEur);
+    if (pfTotalEur > 0) {
+      const eurEntries = eurLookup.get(pf.holdedContactId!) ?? [];
+      const hasFallbackMatch = eurEntries.some(({ totalEur, date }) => {
+        if (date < windowStart || date > windowEnd) return false;
+        const diff = Math.abs(totalEur - pfTotalEur) / pfTotalEur;
+        return diff <= 0.05;
+      });
+      if (hasFallbackMatch) toMarkConverted.push(pf.holdedId);
+    }
+  }
+
+  if (toMarkConverted.length === 0) return;
+
+  await prisma.proforma.updateMany({
+    where: {
+      companyId,
+      holdedId: { in: toMarkConverted },
+      holdedStatus: { notIn: [3, -1] },
+    },
+    data: { holdedStatus: 3 },
+  });
+
+  console.log(`[sync] Marked ${toMarkConverted.length} proforma(s) as converted (contact+amount+date match)`);
+}
+
 // ─── Proforma Sync ─────────────────────────────────────────────────────────────
 
 export async function syncProformas(companyId: string): Promise<void> {
@@ -596,17 +683,22 @@ export async function syncProformas(companyId: string): Promise<void> {
     const tags = pf.tags ?? [];
     const description = pf.products?.[0]?.name ?? null;
 
-    // Preserve existing classification; auto-map marca from Holded tags on create
+    // Preserve existing classification and holdedStatus=3 (converted).
+    // Holded v2 never updates proforma status on conversion — we set 3 ourselves via
+    // markConvertedProformas. We must not let the API reset it back to 1 on every sync.
     const existing = await prisma.proforma.findUnique({
       where: { holdedId_companyId: { holdedId: pf.id, companyId } },
-      select: { marca: true, projectId: true, notes: true },
+      select: { marca: true, projectId: true, notes: true, holdedStatus: true },
     });
     const marcaFromTags = tagToBrand(tags);
+
+    // Only allow Holded's status if we haven't already marked it as converted (3)
+    const effectiveHoldedStatus = existing?.holdedStatus === 3 ? 3 : pf.status;
 
     await prisma.proforma.upsert({
       where: { holdedId_companyId: { holdedId: pf.id, companyId } },
       update: {
-        holdedStatus: pf.status,
+        holdedStatus: effectiveHoldedStatus,
         number: pf.docNumber || null,
         counterparty: pf.contactName || null,
         holdedContactId: pf.contactId ?? null,
