@@ -206,6 +206,32 @@ export interface HoldedCreateDocumentPayload {
   }>;
 }
 
+/** Transforms a v1-style payload to snake_case for the Holded v2 API. */
+function toV2DocumentPayload(payload: HoldedCreateDocumentPayload): Record<string, unknown> {
+  const isoDate = new Date(payload.date * 1000).toISOString().split("T")[0];
+
+  const base: Record<string, unknown> = {
+    date: isoDate,
+    currency: payload.currency,
+    notes: payload.notes,
+    lines: payload.products.map((p) => ({
+      name: p.name,
+      units: p.units,
+      price: p.price,
+      ...(p.tax !== undefined ? { tax: p.tax } : {}),
+      ...(p.discount !== undefined ? { discount: p.discount } : {}),
+    })),
+  };
+
+  if (payload.contactId) {
+    base.contact_id = payload.contactId;
+  } else if (payload.contactName) {
+    base.contact_name = payload.contactName;
+  }
+
+  return base;
+}
+
 export class HoldedClient {
   private readonly apiKey: string;
 
@@ -251,7 +277,7 @@ export class HoldedClient {
     payload: HoldedCreateDocumentPayload
   ): Promise<{ id: string; docNumber?: string }> {
     if (IS_V2) {
-      return this.post(`/${this.v2DocPath(docType)}`, payload);
+      return this.post(`/${this.v2DocPath(docType)}`, toV2DocumentPayload(payload));
     }
     return this.post(`/documents/${docType}`, payload);
   }
@@ -262,7 +288,7 @@ export class HoldedClient {
     payload: HoldedCreateDocumentPayload
   ): Promise<{ id: string }> {
     if (IS_V2) {
-      return this.put(`/${this.v2DocPath(docType)}/${docId}`, payload);
+      return this.put(`/${this.v2DocPath(docType)}/${docId}`, toV2DocumentPayload(payload));
     }
     return this.put(`/documents/${docType}/${docId}`, payload);
   }
