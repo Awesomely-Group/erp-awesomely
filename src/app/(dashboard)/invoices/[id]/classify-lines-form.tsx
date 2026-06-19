@@ -307,92 +307,81 @@ function LineRow({
       {/* ── Expanded: classification form ── */}
       {isExpanded && (
         <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-4">
-          {line.classification?.status === "IGNORED" ? (
-            <>
-              <div className="flex items-center gap-2 text-sm text-gray-500">
+          <>
+            {line.classification?.status === "IGNORED" && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 pb-1">
                 <MinusCircle className="h-4 w-4 text-gray-300 shrink-0" />
-                <span>Esta línea está marcada como ignorada y no se incluye en la clasificación.</span>
+                <span>
+                  Esta línea está marcada como ignorada
+                  {line.classification.notes ? `: "${line.classification.notes}"` : "."}
+                </span>
               </div>
-              {line.classification.notes && (
-                <p className="text-xs text-gray-400 italic">Motivo: {line.classification.notes}</p>
-              )}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
-                  disabled={isPending || !selectedMarca || !projectChosen}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Clasificar igualmente
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <UnifiedClassifier
-                line={line}
-                projects={projects}
-                selectedProject={selectedProject}
-                onProjectChange={handleProjectChange}
-                selectedMarca={selectedMarca}
-                onMarcaChange={handleMarcaChange}
-                isPending={isPending}
-              />
+            )}
 
-              {notesOpen ? (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      onBlur={(e) => {
-                        if (!line.classification) onSaveDraftNote(e.target.value);
-                      }}
-                      placeholder="Añade una nota..."
-                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                      disabled={isPending}
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { setNotes(""); setNotesOpen(false); }}
-                      className="text-xs text-gray-400 hover:text-gray-600 px-2"
-                    >
-                      Ocultar
-                    </button>
-                  </div>
+            <UnifiedClassifier
+              line={line}
+              projects={projects}
+              selectedProject={selectedProject}
+              onProjectChange={handleProjectChange}
+              selectedMarca={selectedMarca}
+              onMarcaChange={handleMarcaChange}
+              isPending={isPending}
+            />
+
+            {notesOpen ? (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    onBlur={(e) => {
+                      if (!line.classification) onSaveDraftNote(e.target.value);
+                    }}
+                    placeholder="Añade una nota..."
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    disabled={isPending}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setNotes(""); setNotesOpen(false); }}
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                  >
+                    Ocultar
+                  </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setNotesOpen(true)}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {notes ? `Nota: "${notes.slice(0, 40)}${notes.length > 40 ? "…" : ""}"` : "Añadir nota"}
-                </button>
-              )}
-
-              <div className="flex items-center gap-3 flex-wrap">
-                <button
-                  onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
-                  disabled={isPending || !selectedMarca || (!line.classification && !projectChosen)}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {line.classification ? "Actualizar clasificación" : "Clasificar línea"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onIgnore(notes)}
-                  disabled={isPending}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Ignorar línea
-                </button>
               </div>
-            </>
-          )}
+            ) : (
+              <button
+                type="button"
+                onClick={() => setNotesOpen(true)}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                {notes ? `Nota: "${notes.slice(0, 40)}${notes.length > 40 ? "…" : ""}"` : "Añadir nota"}
+              </button>
+            )}
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
+                disabled={isPending || !selectedMarca || (!line.classification && !projectChosen)}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {line.classification?.status === "CLASSIFIED" ? "Actualizar clasificación" : "Clasificar línea"}
+              </button>
+              <button
+                type="button"
+                onClick={() => onIgnore(notes)}
+                disabled={isPending}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {line.classification?.status === "IGNORED" ? "Actualizar motivo" : "Ignorar línea"}
+              </button>
+            </div>
+          </>
         </div>
       )}
     </div>
