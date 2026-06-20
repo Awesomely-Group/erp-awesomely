@@ -7,7 +7,7 @@ export function registerKpiTools(server: McpServer): void {
     "get_kpis",
     {
       description:
-        "Devuelve KPIs financieros del ERP: P&L (cuenta de resultados), cashflow mensual, métricas derivadas y proyecciones. Acepta filtros por año, rango de fechas y marca.",
+        "Devuelve KPIs financieros del ERP: P&L (cuenta de resultados), cashflow mensual, métricas derivadas y proyecciones. Acepta filtros por año, rango de fechas, marca y empresa.",
       inputSchema: {
         year: z
           .number()
