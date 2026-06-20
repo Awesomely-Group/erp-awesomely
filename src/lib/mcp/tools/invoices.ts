@@ -8,7 +8,7 @@ export function registerInvoiceTools(server: McpServer): void {
     "list_invoices",
     {
       description:
-        "Lista facturas con filtros opcionales. Devuelve un máximo de 50 resultados ordenados por fecha descendente.",
+        "Lista facturas con filtros opcionales. Devuelve un máximo de 500 resultados ordenados por fecha descendente.",
       inputSchema: {
         marca: z
           .string()
@@ -36,30 +36,43 @@ export function registerInvoiceTools(server: McpServer): void {
           .number()
           .int()
           .min(1)
-          .max(50)
+          .max(500)
           .optional()
-          .default(20)
-          .describe("Número máximo de resultados (1-50, por defecto 20)"),
+          .default(50)
+          .describe("Número máximo de resultados (1-500, por defecto 50)"),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .default(0)
+          .describe("Número de resultados a saltar para paginación"),
+        companyId: z.string().optional().describe("Filtrar por ID de empresa"),
       },
     },
     async (args) => {
       const marcaFilter = invoiceWhereMarca(args.marca);
 
+      const where = {
+        holdedStatus: { not: -1 },
+        ...(args.type ? { type: args.type } : {}),
+        ...(args.status ? { status: args.status } : {}),
+        ...(args.dateFrom || args.dateTo
+          ? {
+              date: {
+                ...(args.dateFrom ? { gte: new Date(args.dateFrom) } : {}),
+                ...(args.dateTo ? { lte: new Date(args.dateTo) } : {}),
+              },
+            }
+          : {}),
+        ...(args.companyId ? { companyId: args.companyId } : {}),
+        ...marcaFilter,
+      };
+
+      const total = await prisma.invoice.count({ where });
+
       const invoices = await prisma.invoice.findMany({
-        where: {
-          holdedStatus: { not: -1 },
-          ...(args.type ? { type: args.type } : {}),
-          ...(args.status ? { status: args.status } : {}),
-          ...(args.dateFrom || args.dateTo
-            ? {
-                date: {
-                  ...(args.dateFrom ? { gte: new Date(args.dateFrom) } : {}),
-                  ...(args.dateTo ? { lte: new Date(args.dateTo) } : {}),
-                },
-              }
-            : {}),
-          ...marcaFilter,
-        },
+        where,
         select: {
           id: true,
           holdedId: true,
@@ -75,13 +88,47 @@ export function registerInvoiceTools(server: McpServer): void {
           paymentsTotal: true,
           paymentsPending: true,
           _count: { select: { lines: true } },
+          lines: {
+            select: {
+              classification: {
+                select: {
+                  projectId: true,
+                  project: { select: { id: true, name: true } },
+                  status: true,
+                },
+              },
+            },
+          },
         },
         orderBy: { date: "desc" },
-        take: args.limit ?? 20,
+        skip: args.offset ?? 0,
+        take: args.limit ?? 50,
       });
 
+      const result = {
+        invoices: invoices.map((invoice) => ({
+          ...invoice,
+          projectIds: invoice.lines
+            .map((l) => l.classification?.projectId)
+            .filter((id): id is string => id != null),
+          hasProjectLines: invoice.lines.some(
+            (l) => l.classification?.projectId != null
+          ),
+          isStructureCost:
+            invoice.type === "PURCHASE" &&
+            invoice.lines.every((l) => l.classification?.projectId == null),
+        })),
+        pagination: {
+          total,
+          limit: args.limit ?? 50,
+          offset: args.offset ?? 0,
+          hasMore:
+            (args.offset ?? 0) + invoices.length < total,
+        },
+      };
+
       return {
-        content: [{ type: "text", text: JSON.stringify(invoices, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     }
   );
@@ -102,8 +149,15 @@ export function registerInvoiceTools(server: McpServer): void {
           lines: {
             include: {
               classification: {
-                include: {
-                  project: { select: { name: true, jiraKey: true } },
+                select: {
+                  id: true,
+                  projectId: true,
+                  project: { select: { id: true, name: true } },
+                  budgetId: true,
+                  budget: { select: { id: true, name: true } },
+                  status: true,
+                  marca: true,
+                  classifiedAt: true,
                 },
               },
             },
@@ -144,6 +198,7 @@ export function registerInvoiceTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Filtrar adicionalmente por marca"),
+        companyId: z.string().optional().describe("Filtrar por ID de empresa"),
         limit: z
           .number()
           .int()
@@ -165,6 +220,7 @@ export function registerInvoiceTools(server: McpServer): void {
             { counterparty: { contains: q, mode: "insensitive" } },
             { number: { contains: q, mode: "insensitive" } },
           ],
+          ...(args.companyId ? { companyId: args.companyId } : {}),
           ...marcaFilter,
         },
         select: {

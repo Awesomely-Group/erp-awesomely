@@ -27,6 +27,7 @@ export type ProjectionParams = {
   basePeriod?: string;
   margin?: string;
   marca?: string;
+  companyId?: string;
 };
 
 export async function getProjectionData(params: ProjectionParams): Promise<{
@@ -36,7 +37,10 @@ export async function getProjectionData(params: ProjectionParams): Promise<{
   avgOutflows: number;
   windowMonths: number;
 }> {
-  const { monthly } = await getCashflowData({ marca: params.marca }, false);
+  const { monthly } = await getCashflowData({
+    marca: params.marca,
+    company: params.companyId !== "consolidated" ? params.companyId : undefined,
+  }, false);
 
   const rawN = parseInt(params.basePeriod ?? "6", 10);
   const n = Math.min(isNaN(rawN) ? 6 : rawN, monthly.length) || 6;

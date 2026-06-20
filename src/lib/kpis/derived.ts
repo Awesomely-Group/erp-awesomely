@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPLKPIs } from "./pl";
 import type { KPIFilters, DerivedKPIs } from "./types";
@@ -17,6 +18,11 @@ export async function getDerivedKPIs(filters: KPIFilters): Promise<DerivedKPIs> 
   const startOfYear = new Date(year, 0, 1);
   const endOfYear = new Date(year + 1, 0, 1);
 
+  const companyFilter =
+    filters.companyId && filters.companyId !== "consolidated"
+      ? Prisma.sql`AND "companyId" = ${filters.companyId}`
+      : Prisma.empty;
+
   const [plResults, counts] = await Promise.all([
     getPLKPIs({ ...filters, year }),
     prisma.$transaction([
@@ -30,6 +36,7 @@ export async function getDerivedKPIs(filters: KPIFilters): Promise<DerivedKPIs> 
         )
         AND (i."holdedStatus" IS NULL OR i."holdedStatus" != -1)
         AND i.date >= ${startOfYear} AND i.date < ${endOfYear}
+        ${companyFilter}
       `,
       // Pending collection
       prisma.$queryRaw<[{ count: bigint; total: unknown }]>`
@@ -39,6 +46,7 @@ export async function getDerivedKPIs(filters: KPIFilters): Promise<DerivedKPIs> 
           AND status::text = 'PENDING'
           AND (("holdedStatus" IS NULL OR "holdedStatus" != -1))
           AND date >= ${startOfYear} AND date < ${endOfYear}
+          ${companyFilter}
       `,
       // Pending payment
       prisma.$queryRaw<[{ count: bigint; total: unknown }]>`
@@ -48,6 +56,7 @@ export async function getDerivedKPIs(filters: KPIFilters): Promise<DerivedKPIs> 
           AND status::text = 'PENDING'
           AND (("holdedStatus" IS NULL OR "holdedStatus" != -1))
           AND date >= ${startOfYear} AND date < ${endOfYear}
+          ${companyFilter}
       `,
     ]),
   ]);

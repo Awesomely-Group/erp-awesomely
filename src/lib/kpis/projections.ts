@@ -4,6 +4,7 @@ import type { KPIFilters, ProjectionKPIs } from "./types";
 export async function getProjections(filters: KPIFilters): Promise<ProjectionKPIs> {
   const { horizons, avgInflows, avgOutflows, windowMonths } = await getProjectionData({
     marca: filters.marca,
+    companyId: filters.companyId,
   });
 
   return {
