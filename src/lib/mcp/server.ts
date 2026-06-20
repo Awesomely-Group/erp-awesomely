@@ -4,6 +4,7 @@ import { registerInvoiceTools } from "./tools/invoices";
 import { registerKpiTools } from "./tools/kpis";
 import { registerSupplierTools } from "./tools/suppliers";
 import { registerBudgetTools } from "./tools/budgets";
+import { registerCashBalanceTools } from "./tools/cash-balance";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -16,6 +17,7 @@ export function createMcpServer(): McpServer {
   registerKpiTools(server);
   registerSupplierTools(server);
   registerBudgetTools(server);
+  registerCashBalanceTools(server);
 
   return server;
 }

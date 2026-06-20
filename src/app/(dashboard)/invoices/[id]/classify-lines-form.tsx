@@ -102,7 +102,17 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
         setExpandedLine(nextUnclassified?.id ?? null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al clasificar la línea");
+        const digest = (err as Record<string, unknown>)?.digest;
+        const isGenericServerError =
+          err instanceof Error &&
+          err.message.includes("The specific message is omitted in production builds");
+        setError(
+          isGenericServerError
+            ? `Error al clasificar la línea (servidor). Contacta al administrador.${digest ? ` [Ref: ${digest}]` : ""}`
+            : err instanceof Error
+              ? err.message
+              : "Error al clasificar la línea"
+        );
       }
     });
   }
@@ -133,7 +143,17 @@ export function ClassifyLinesForm({ invoiceId, invoiceMarca, lines, projects }: 
         setExpandedLine(nextUnclassified?.id ?? null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al ignorar la línea");
+        const digest = (err as Record<string, unknown>)?.digest;
+        const isGenericServerError =
+          err instanceof Error &&
+          err.message.includes("The specific message is omitted in production builds");
+        setError(
+          isGenericServerError
+            ? `Error al ignorar la línea (servidor). Contacta al administrador.${digest ? ` [Ref: ${digest}]` : ""}`
+            : err instanceof Error
+              ? err.message
+              : "Error al ignorar la línea"
+        );
       }
     });
   }

@@ -11,7 +11,7 @@ const HOLDED_ACCOUNTING_BASE_URL = IS_V2
   ? "https://api.holded.com/api/v2"
   : "https://api.holded.com/api/accounting/v1";
 
-const HOLDED_SYNC_FROM_YEAR = process.env.HOLDED_SYNC_FROM_YEAR
+export const HOLDED_SYNC_FROM_YEAR = process.env.HOLDED_SYNC_FROM_YEAR
   ? parseInt(process.env.HOLDED_SYNC_FROM_YEAR, 10)
   : 2020;
 

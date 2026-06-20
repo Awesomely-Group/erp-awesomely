@@ -75,11 +75,12 @@ model Company {
   currency     String   @default("EUR")
   active       Boolean  @default(true)
 
-  invoices     Invoice[]
-  suppliers    Supplier[]
-  syncLogs     SyncLog[]
-  proformas    Proforma[]
-  budgets      Budget[]
+  invoices          Invoice[]
+  suppliers         Supplier[]
+  syncLogs          SyncLog[]
+  proformas         Proforma[]
+  budgets           Budget[]
+  journalEntryLines JournalEntryLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -234,6 +235,13 @@ enum InvoiceStatus {
   SIN_MARCA
 }
 
+enum InvoiceRecurrence {
+  PUNTUAL
+  MENSUAL
+  ANUAL
+  EXTRAORDINARIO
+}
+
 model Invoice {
   id           String        @id @default(cuid())
   holdedId     String
@@ -259,6 +267,9 @@ model Invoice {
 
   // Brand from Holded tags (mapped to readable name)
   marca           String?
+
+  // Recurrence classification (inferred for PURCHASE, manual for SALE)
+  recurrence      InvoiceRecurrence?
 
   // Mes contable al que pertenece la factura (primer día del mes; por defecto el mes de date)
   accountingMonth DateTime?
@@ -871,4 +882,40 @@ model AccountMapping {
   updatedAt DateTime @updatedAt
 
   @@map("account_mappings")
+}
+
+// ─── Journal Entry Lines (asientos contables Holded, excluidas facturas) ───────
+//
+// Almacena exclusivamente los apuntes contables que NO proceden de facturas de
+// venta o compra (ya sincronizadas en Invoice). Esto incluye nóminas, amortizaciones,
+// asientos manuales y entradas de banco sin factura asociada.
+//
+// amountEur = crédito − débito (signo convencional del P&L):
+//   cuentas de gasto (6xx): debit > credit → amountEur < 0 (reduce resultado)
+//   cuentas de ingreso (7xx): credit > debit → amountEur > 0 (suma a resultado)
+
+model JournalEntryLine {
+  id          String  @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  // Claves de Holded para identificar el apunte de forma única
+  holdedEntryId  String  // ID del asiento padre en Holded
+  holdedLineIdx  Int     // posición (0-based) dentro de las líneas del asiento
+
+  date            DateTime
+  accountingMonth DateTime? // override manual del mes contable (futuro)
+  description     String?
+  account         String    // código PGC numérico (e.g. "640" o "64000000")
+  amountEur       Decimal   // crédito − débito, en EUR
+
+  originType      String?   // "payroll", "manual", "bank", "depreciation", null…
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, holdedEntryId, holdedLineIdx])
+  @@index([companyId, date])
+  @@index([companyId, accountingMonth])
+  @@map("journal_entry_lines")
 }
