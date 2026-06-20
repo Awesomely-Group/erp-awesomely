@@ -126,17 +126,31 @@ function nameToDataKey(name: string | null): PlDataKey {
 /**
  * Resolves the P&L data key for a PURCHASE invoice line:
  * 1. Uses PGC prefix from accountingAccount when it is a numeric code.
- * 2. Falls back to name-based heuristic when account is a Holded ObjectId
- *    or the prefix is not in any known PGC range.
+ *    → Returns null for balance-sheet accounts (1xx–5xx, 8xx–9xx) so they
+ *      are excluded from the P&L entirely (e.g. capital expenditures on 21x).
+ * 2. Falls back to name-based heuristic ONLY when account is a Holded ObjectId
+ *    (24-char hex) — in that case we cannot determine the PGC group from the
+ *    code alone, so we rely on the human-readable name.
+ * 3. Returns null when account is null and accountName provides no useful hint
+ *    (nameToDataKey defaults to otros_gastos_explotacion in that case, which is
+ *    acceptable for lines whose account is truly unknown).
  */
-function resolveExpenseKey(account: string | null, accountName: string | null): PlDataKey {
+function resolveExpenseKey(account: string | null, accountName: string | null): PlDataKey | null {
   if (account) {
-    const prefix = accountPrefix(account);
+    const trimmed = account.trim();
+    // Holded ObjectId (24-char hex): cannot determine PGC group — use name heuristic
+    if (HOLDED_OBJECT_ID_RE.test(trimmed)) {
+      return nameToDataKey(accountName);
+    }
+    // Numeric PGC code: use prefix classification
+    const prefix = accountPrefix(trimmed);
     if (prefix !== 0) {
       const key = prefixToDataKey(prefix);
-      if (key !== null) return key;
+      // null = balance-sheet account (1xx–5xx, 8xx–9xx) → exclude from P&L
+      return key;
     }
   }
+  // No account code at all — fall back to name heuristic
   return nameToDataKey(accountName);
 }
 
@@ -288,13 +302,17 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       FROM invoices i
       JOIN companies c ON c.id = i."companyId"
       WHERE i.type::text = 'SALE'
-        AND (i."holdedStatus" IS NULL OR i."holdedStatus" != -1)
+        AND (i."holdedStatus" IS NULL OR i."holdedStatus" NOT IN (-1, 0))
         AND i."removedFromHoldedAt" IS NULL
         AND COALESCE(i."accountingMonth", i.date) >= ${startDate}
         AND COALESCE(i."accountingMonth", i.date) <  ${endDate}
       GROUP BY c.id, c.name, DATE_TRUNC('month', COALESCE(i."accountingMonth", i.date))
     `,
     // ── Líneas de facturas de compra ─────────────────────────────────────────
+    // Holded solo contabiliza facturas de compra en estado >= 2 (aprobadas/pagadas).
+    // Estado 0 = borrador, estado 1 = recibida pendiente de aprobación
+    // (sin asiento contable en Holded → excluir del P&L).
+    // Para ventas el estado 1 sí está contabilizado; para compras no.
     prisma.$queryRaw<ExpenseLineRow[]>`
       SELECT
         c.id                       AS company_id,
@@ -307,7 +325,8 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       JOIN companies c ON c.id = i."companyId"
       JOIN invoice_lines il ON il."invoiceId" = i.id
       WHERE i.type::text = 'PURCHASE'
-        AND (i."holdedStatus" IS NULL OR i."holdedStatus" != -1)
+        AND (i."holdedStatus" IS NULL OR i."holdedStatus" >= 2)
+        AND i."holdedStatus" != -1
         AND i."removedFromHoldedAt" IS NULL
         AND COALESCE(i."accountingMonth", i.date) >= ${startDate}
         AND COALESCE(i."accountingMonth", i.date) <  ${endDate}
@@ -357,6 +376,9 @@ export async function getPlData(params: PlParams): Promise<PlData> {
 
     const rawAmount = Number(row.amount);
     const lineKey   = resolveExpenseKey(row.account, row.account_name);
+
+    // null → cuenta de balance (1xx–5xx, 8xx–9xx): excluir del P&L
+    if (!lineKey) continue;
 
     // Los importes de facturas de compra son positivos en la query;
     // los negamos para el P&L salvo cuentas de ingreso (abonos, etc.)
@@ -438,7 +460,7 @@ export async function getPlYears(): Promise<number[]> {
   const rows = await prisma.$queryRaw<{ year: number }[]>`
     SELECT DISTINCT DATE_PART('year', COALESCE("accountingMonth", date))::int AS year
     FROM invoices
-    WHERE "holdedStatus" IS NULL OR "holdedStatus" != -1
+    WHERE "holdedStatus" IS NULL OR "holdedStatus" NOT IN (-1, 0)
     ORDER BY year DESC
   `;
   return rows.map((r) => Number(r.year));
