@@ -194,6 +194,27 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     errorMessage = err instanceof Error ? err.message : String(err);
   }
 
+  // Backfill sweep: classify any PURCHASE invoices still without recurrence
+  // (covers initial backfill and any that slipped through)
+  try {
+    const unclassified = await prisma.invoice.findMany({
+      where: { companyId, type: InvoiceType.PURCHASE, recurrence: null, removedFromHoldedAt: null },
+      select: {
+        id: true, type: true, companyId: true, holdedContactId: true,
+        counterparty: true, date: true, totalEur: true,
+        lines: { select: { name: true }, orderBy: { sortOrder: "asc" }, take: 1 },
+      },
+    });
+    for (const inv of unclassified) {
+      const inferred = await inferInvoiceRecurrence(prisma, inv);
+      if (inferred !== null) {
+        await prisma.invoice.update({ where: { id: inv.id }, data: { recurrence: inferred } });
+      }
+    }
+  } catch (err) {
+    console.error("[sync] Error in recurrence backfill sweep:", err);
+  }
+
   const combinedError = errorMessage
     ?? (upsertErrors.length > 0 ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0]}` : undefined);
 
