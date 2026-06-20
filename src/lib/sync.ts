@@ -893,7 +893,16 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
 
 // ─── Full sync ─────────────────────────────────────────────────────────────────
 
-export async function syncAll(triggeredBy?: string): Promise<{
+export type SyncProgressEvent =
+  | { type: "init"; items: Array<{ source: "HOLDED" | "JIRA"; entityId: string; entityName: string }> }
+  | { type: "update"; source: "HOLDED" | "JIRA"; entityId: string; status: "done" | "error"; error?: string }
+  | { type: "complete"; companies: number; workspaces: number; errors: string[] }
+  | { type: "fatal"; error: string };
+
+export async function syncAll(
+  triggeredBy?: string,
+  onProgress?: (event: SyncProgressEvent) => void
+): Promise<{
   companies: number;
   workspaces: number;
   errors: string[];
@@ -903,18 +912,39 @@ export async function syncAll(triggeredBy?: string): Promise<{
     prisma.jiraWorkspace.findMany({ where: { active: true } }),
   ]);
 
+  // Announce all sources upfront so the UI can show spinners for everything
+  onProgress?.({
+    type: "init",
+    items: [
+      ...companies.map((c) => ({ source: "HOLDED" as const, entityId: c.id, entityName: c.name })),
+      ...workspaces.map((w) => ({ source: "JIRA" as const, entityId: w.id, entityName: w.name })),
+    ],
+  });
+
   const errors: string[] = [];
 
   await Promise.allSettled([
     ...companies.map((c) =>
-      syncHoldedCompany(c.id, triggeredBy).catch((e: unknown) => {
-        errors.push(`Holded ${c.name}: ${e instanceof Error ? e.message : String(e)}`);
-      })
+      syncHoldedCompany(c.id, triggeredBy)
+        .then(() => {
+          onProgress?.({ type: "update", source: "HOLDED", entityId: c.id, status: "done" });
+        })
+        .catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          errors.push(`Holded ${c.name}: ${msg}`);
+          onProgress?.({ type: "update", source: "HOLDED", entityId: c.id, status: "error", error: msg });
+        })
     ),
     ...workspaces.map((w) =>
-      syncJiraWorkspace(w.id, triggeredBy).catch((e: unknown) => {
-        errors.push(`Jira ${w.name}: ${e instanceof Error ? e.message : String(e)}`);
-      })
+      syncJiraWorkspace(w.id, triggeredBy)
+        .then(() => {
+          onProgress?.({ type: "update", source: "JIRA", entityId: w.id, status: "done" });
+        })
+        .catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          errors.push(`Jira ${w.name}: ${msg}`);
+          onProgress?.({ type: "update", source: "JIRA", entityId: w.id, status: "error", error: msg });
+        })
     ),
   ]);
 
