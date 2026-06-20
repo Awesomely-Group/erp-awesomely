@@ -280,6 +280,7 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
   return (
     <>
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-100">
           <thead className="bg-gray-50">
             <tr className="text-xs uppercase tracking-wider">
@@ -302,6 +303,7 @@ export function SuppliersTable({ suppliers, roleTemplates = [], workspaceId = nu
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <SupplierDrawer

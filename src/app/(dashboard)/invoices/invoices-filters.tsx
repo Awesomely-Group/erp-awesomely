@@ -132,7 +132,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
   const selectClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white";
 
   return (
-    <div className="flex flex-wrap gap-3 items-end min-w-max">
+    <div className="flex flex-wrap gap-3 items-end">
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Buscar</label>
         <input

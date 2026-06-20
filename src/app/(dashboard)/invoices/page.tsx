@@ -262,6 +262,7 @@ export default async function InvoicesPage({
 
   const tableSection = (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
@@ -332,6 +333,7 @@ export default async function InvoicesPage({
           />
         </tbody>
       </table>
+      </div>
     </div>
   );
 
@@ -345,7 +347,7 @@ export default async function InvoicesPage({
             {totalPages > 1 && ` · página ${page} de ${totalPages}`}
           </p>
         </div>
-        <div className="overflow-x-auto pb-1">
+        <div>
           <InvoicesFilters
             projects={activeProjects}
             visibleCols={[...visibleCols] as ColumnKey[]}
