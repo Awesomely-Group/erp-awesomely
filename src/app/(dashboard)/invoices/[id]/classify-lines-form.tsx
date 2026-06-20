@@ -205,7 +205,6 @@ function LineRow({
   onSaveDraftNote: (notes: string) => void;
 }): React.JSX.Element {
   const [selectedProject, setSelectedProject] = useState(line.classification?.projectId ?? "");
-  const [projectChosen, setProjectChosen] = useState(!!line.classification);
   const initialNotes = line.classification?.notes ?? line.notes ?? "";
   const [notes, setNotes] = useState(initialNotes);
   const [notesOpen, setNotesOpen] = useState(!!initialNotes);
@@ -221,7 +220,6 @@ function LineRow({
   );
 
   function handleProjectChange(id: string): void {
-    setProjectChosen(true);
     setSelectedProject(id);
     if (id) {
       const project = projects.find((p) => p.id === id);
@@ -391,7 +389,7 @@ function LineRow({
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={() => onClassify(selectedProject || null, selectedMarca || null, notes)}
-                disabled={isPending || !selectedMarca || (!line.classification && !projectChosen)}
+                disabled={isPending || !selectedMarca}
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {line.classification?.status === "CLASSIFIED" ? "Actualizar clasificación" : "Clasificar línea"}
