@@ -45,6 +45,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
   const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
   const [selectedProject, setSelectedProject] = useState(sp.get("project") ?? "");
   const [holdedPresence, setHoldedPresence] = useState(sp.get("holdedPresence") ?? "active");
+  const [selectedRecurrence, setSelectedRecurrence] = useState(sp.get("recurrence") ?? "");
   const [showColMenu, setShowColMenu] = useState(false);
 
   const colMenuRef = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
     status: string; marca: string; project: string; holdedPresence: string;
-    cols: string;
+    recurrence: string; cols: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
@@ -71,6 +72,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
       marca: selectedMarca,
       project: selectedProject,
       holdedPresence,
+      recurrence: selectedRecurrence,
       cols: sp.get("cols") ?? "",
       ...overrides,
     };
@@ -81,6 +83,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
     if (m.marca) params.set("marca", m.marca);
     if (m.project) params.set("project", m.project);
     if (m.holdedPresence && m.holdedPresence !== "active") params.set("holdedPresence", m.holdedPresence);
+    if (m.recurrence) params.set("recurrence", m.recurrence);
     // Preserve column preferences across filter changes (only omit if all cols are visible)
     if (m.cols) params.set("cols", m.cols);
     if (m.period) {
@@ -102,6 +105,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
     setSelectedMarca("");
     setSelectedProject("");
     setHoldedPresence("active");
+    setSelectedRecurrence("");
     const currentType = sp.get("type") ?? "";
     const currentCols = sp.get("cols") ?? "";
     const params = new URLSearchParams();
@@ -197,6 +201,22 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
           <option value="SIN_MARCA">Sin Marca</option>
           <option value="PARTIAL">Parcial</option>
           <option value="CLASSIFIED">Clasificado</option>
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-gray-500 font-medium">Recurrencia</label>
+        <select
+          value={selectedRecurrence}
+          onChange={(e) => { const v = e.target.value; setSelectedRecurrence(v); applyWith({ recurrence: v }); }}
+          className={selectClass}
+        >
+          <option value="">Todas</option>
+          <option value="PUNTUAL">Puntual</option>
+          <option value="MENSUAL">Mensual</option>
+          <option value="ANUAL">Anual</option>
+          <option value="EXTRAORDINARIO">Extraordinario</option>
+          <option value="none">Sin clasificar</option>
         </select>
       </div>
 

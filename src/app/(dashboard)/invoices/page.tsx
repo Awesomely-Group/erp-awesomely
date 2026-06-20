@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/date-range";
 import { invoiceWhereMarca, STATUS_FILTER_UNASSIGNED } from "@/lib/org";
 import Link from "next/link";
-import { InvoiceStatus, InvoiceType, Prisma } from "@prisma/client";
+import { InvoiceRecurrence, InvoiceStatus, InvoiceType, Prisma } from "@prisma/client";
 import { InvoicesFilters } from "./invoices-filters";
 import { InvoicesTable } from "./invoices-table";
 import { InvoiceLinePanel } from "./invoice-line-panel";
@@ -79,6 +79,7 @@ type InvoicePageParams = {
   sortDir?: string;
   invoiceId?: string;
   holdedPresence?: string;
+  recurrence?: string;
   cols?: string;
 };
 
@@ -125,6 +126,11 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
   }
   if (Object.keys(statusWhere).length > 0) andConditions.push(statusWhere);
   if (marcaFilter) andConditions.push(marcaFilter);
+  if (params.recurrence === "none") {
+    andConditions.push({ recurrence: null });
+  } else if (params.recurrence) {
+    andConditions.push({ recurrence: params.recurrence as InvoiceRecurrence });
+  }
   if (params.project) andConditions.push({ lines: { some: { classification: { projectId: params.project } } } });
   if (dateRange.gte || dateRange.lte) andConditions.push({ date: dateRange });
 
@@ -234,6 +240,7 @@ export default async function InvoicesPage({
       page: q.page,
       invoiceId: q.invoiceId,
       holdedPresence: q.holdedPresence,
+      recurrence: q.recurrence,
       cols: q.cols,
       ...overrides,
     };
