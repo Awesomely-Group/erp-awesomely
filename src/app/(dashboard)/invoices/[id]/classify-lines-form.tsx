@@ -190,10 +190,14 @@ function LineRow({
   const [notes, setNotes] = useState(initialNotes);
   const [notesOpen, setNotesOpen] = useState(!!initialNotes);
 
+  const firstValidInvoiceMarca = invoiceMarca
+    ? (invoiceMarca.split(",").find((m) => MARCAS.includes(m.trim() as (typeof MARCAS)[number]))?.trim() ?? "")
+    : "";
+
   const [selectedMarca, setSelectedMarca] = useState<string>(
     line.classification?.marca ??
     line.classification?.workspaceName ??
-    (invoiceMarca && MARCAS.includes(invoiceMarca as (typeof MARCAS)[number]) ? invoiceMarca : "")
+    firstValidInvoiceMarca
   );
 
   function handleProjectChange(id: string): void {
