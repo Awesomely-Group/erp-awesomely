@@ -778,4 +778,124 @@ export class HoldedClient {
 
     return all;
   }
+
+  // ─── Journal Entries ──────────────────────────────────────────────────────────
+  //
+  // Devuelve los asientos contables de Holded para el año indicado.
+  // Solo disponible en API v2. Devuelve [] en v1 (no-op seguro).
+  //
+  // Se usa ventana mensual (igual que /purchases) porque Holded puede limitar
+  // el número de resultados por petición.
+
+  async getJournalEntries(year: number): Promise<HoldedJournalEntry[]> {
+    if (!IS_V2) return [];
+
+    const now      = new Date();
+    const endMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+
+    const windows = Array.from({ length: endMonth }, (_, i) => {
+      const month   = i + 1;
+      const mm      = String(month).padStart(2, "0");
+      const lastDay = new Date(year, month, 0).getDate();
+      return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` };
+    });
+
+    type RawResp = { items?: HoldedJournalEntryRaw[] } | HoldedJournalEntryRaw[];
+
+    const batches = await Promise.all(
+      windows.map(({ start, end }) =>
+        this.fetchFromBase<RawResp>(
+          HOLDED_ACCOUNTING_BASE_URL,
+          "/accounting/journal-entries",
+          { start_date: start, end_date: end, limit: "1000" }
+        )
+          .then((raw): HoldedJournalEntryRaw[] =>
+            Array.isArray(raw) ? raw : (raw.items ?? [])
+          )
+          .catch((): HoldedJournalEntryRaw[] => []) // fallo puntual no-fatal
+      )
+    );
+
+    const seen = new Set<string>();
+    const all:  HoldedJournalEntry[] = [];
+    for (const batch of batches) {
+      for (const raw of batch) {
+        if (!seen.has(raw.id)) {
+          seen.add(raw.id);
+          all.push(normalizeJournalEntry(raw));
+        }
+      }
+    }
+    return all;
+  }
+}
+
+// ─── Journal Entry types ──────────────────────────────────────────────────────
+
+interface HoldedJournalEntryLineRaw {
+  id?:          string;
+  account?:     string | { num?: string; id?: string; name?: string };
+  debit?:       number | string | null;
+  credit?:      number | string | null;
+  description?: string;
+}
+
+interface HoldedJournalEntryRaw {
+  id:              string;
+  date?:           string;          // "YYYY-MM-DD"
+  description?:    string;
+  document_type?:  string | null;   // "payroll" | "invoice" | "manual" | null
+  document_id?:    string | null;
+  status?:         string;
+  lines?:          HoldedJournalEntryLineRaw[];
+  entries?:        HoldedJournalEntryLineRaw[]; // alias alternativo de Holded
+}
+
+export interface HoldedJournalEntryLine {
+  account:     string;  // código PGC, solo dígitos (e.g. "640")
+  debit:       number;
+  credit:      number;
+  description?: string;
+}
+
+export interface HoldedJournalEntry {
+  id:           string;
+  date:         string;   // ISO "YYYY-MM-DD"
+  description?: string;
+  documentType?: string;
+  documentId?:  string;
+  lines:        HoldedJournalEntryLine[];
+}
+
+function normalizeJournalEntry(raw: HoldedJournalEntryRaw): HoldedJournalEntry {
+  const rawLines = raw.lines ?? raw.entries ?? [];
+
+  const lines: HoldedJournalEntryLine[] = rawLines
+    .map((l): HoldedJournalEntryLine | null => {
+      let account = "";
+      if (typeof l.account === "string") {
+        account = l.account;
+      } else if (l.account && typeof l.account === "object") {
+        account = l.account.num ?? "";
+      }
+      const normalized = account.replace(/\D/g, "");
+      if (!normalized) return null;
+
+      return {
+        account:     normalized,
+        debit:       parseCommaNum(String(l.debit  ?? 0)),
+        credit:      parseCommaNum(String(l.credit ?? 0)),
+        description: l.description,
+      };
+    })
+    .filter((l): l is HoldedJournalEntryLine => l !== null);
+
+  return {
+    id:           raw.id,
+    date:         raw.date ?? new Date().toISOString().split("T")[0],
+    description:  raw.description,
+    documentType: raw.document_type  ?? undefined,
+    documentId:   raw.document_id   ?? undefined,
+    lines,
+  };
 }

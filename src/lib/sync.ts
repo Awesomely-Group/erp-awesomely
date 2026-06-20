@@ -1,9 +1,10 @@
 import { prisma } from "./prisma";
-import { HoldedClient } from "./holded";
+import { HoldedClient, HOLDED_SYNC_FROM_YEAR, type HoldedJournalEntry } from "./holded";
 import { JiraClient } from "./jira";
 import { convertToEur } from "./exchange-rates";
 import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
+import { inferInvoiceRecurrence } from "./invoice-recurrence";
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
 
@@ -224,6 +225,10 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   // contact, currency and exact native-currency total, dated within 45 days after the proforma.
   await markConvertedProformas(companyId).catch((err: unknown) => {
     console.error("[sync] Error marking converted proformas:", err);
+  });
+
+  await syncJournalEntries(companyId).catch((err: unknown) => {
+    console.error("[sync] Error syncing journal entries:", err);
   });
 
   if (errorMessage) throw new Error(errorMessage);
@@ -748,6 +753,123 @@ export async function syncProformas(companyId: string): Promise<void> {
   if (orphanedIds.length > 0) {
     await prisma.proforma.deleteMany({ where: { id: { in: orphanedIds } } });
   }
+}
+
+// ─── Journal Entry Sync ────────────────────────────────────────────────────────
+//
+// Sincroniza los asientos contables de Holded que NO proceden de facturas de
+// venta o compra (éstas ya están en la tabla invoices).
+// Los asientos que sí proceden de facturas se omiten para evitar doble conteo.
+//
+// Convención de signo en amountEur = crédito − débito:
+//   cuentas de gasto (6xx): debit > credit → amountEur < 0
+//   cuentas de ingreso (7xx): credit > debit → amountEur > 0
+
+// Tipos de documento Holded que ya están cubiertos por el sync de facturas.
+// Cualquier otro tipo (payroll, manual, bank, depreciation, null…) se importa.
+const HOLDED_INVOICE_DOC_TYPES = new Set([
+  "invoice", "invoicing", "sale", "sales", "sale_invoice", "sales_invoice",
+  "purchase", "purchase_invoice", "bill", "expense", "income",
+]);
+
+// Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos).
+// Las cuentas de balance (1xx-5xx, 8xx-9xx) se descartan.
+function isPlAccount(account: string): boolean {
+  const first = account.replace(/\D/g, "")[0];
+  return first === "6" || first === "7";
+}
+
+export async function syncJournalEntries(companyId: string): Promise<number> {
+  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const client  = new HoldedClient(company.holdedApiKey);
+
+  const currentYear         = new Date().getFullYear();
+  let   totalSynced         = 0;
+  const allReturnedEntryIds = new Set<string>();
+
+  for (let year = HOLDED_SYNC_FROM_YEAR; year <= currentYear; year++) {
+    let entries: HoldedJournalEntry[];
+    try {
+      entries = await client.getJournalEntries(year);
+    } catch (err) {
+      console.error(`[sync] Journal entries year=${year} company=${companyId}:`, err);
+      continue;
+    }
+
+    for (const entry of entries) {
+      // Omitir asientos auto-generados por facturas (ya en invoice sync)
+      const docType = (entry.documentType ?? "").toLowerCase();
+      if (docType && HOLDED_INVOICE_DOC_TYPES.has(docType)) continue;
+
+      allReturnedEntryIds.add(entry.id);
+      const date = new Date(entry.date);
+
+      // Solo líneas de cuentas P&L (6xx / 7xx)
+      const plLines = entry.lines.filter((l) => isPlAccount(l.account));
+
+      for (let idx = 0; idx < plLines.length; idx++) {
+        const line      = plLines[idx];
+        const amountEur = line.credit - line.debit;
+
+        if (amountEur === 0) continue;
+
+        try {
+          await prisma.journalEntryLine.upsert({
+            where: {
+              companyId_holdedEntryId_holdedLineIdx: {
+                companyId,
+                holdedEntryId: entry.id,
+                holdedLineIdx: idx,
+              },
+            },
+            update: {
+              date,
+              description: entry.description ?? line.description ?? null,
+              account:     line.account,
+              amountEur,
+              originType:  entry.documentType ?? null,
+            },
+            create: {
+              companyId,
+              holdedEntryId: entry.id,
+              holdedLineIdx: idx,
+              date,
+              description: entry.description ?? line.description ?? null,
+              account:     line.account,
+              amountEur,
+              originType:  entry.documentType ?? null,
+            },
+          });
+          totalSynced++;
+        } catch (err) {
+          console.error(
+            `[sync] JournalEntryLine upsert error entry=${entry.id} idx=${idx}:`, err
+          );
+        }
+      }
+    }
+  }
+
+  // Eliminar líneas de asientos que Holded ya no devuelve
+  // (los journal entries no tienen datos de usuario, se pueden borrar sin riesgo)
+  if (allReturnedEntryIds.size > 0) {
+    const dbLines = await prisma.journalEntryLine.findMany({
+      where:  { companyId },
+      select: { id: true, holdedEntryId: true },
+    });
+    const orphanIds = dbLines
+      .filter((l) => !allReturnedEntryIds.has(l.holdedEntryId))
+      .map((l) => l.id);
+    if (orphanIds.length > 0) {
+      await prisma.journalEntryLine.deleteMany({ where: { id: { in: orphanIds } } });
+      console.log(
+        `[sync] Eliminados ${orphanIds.length} journal entry lines huérfanos (company=${companyId})`
+      );
+    }
+  }
+
+  console.log(`[sync] Journal entries company=${companyId}: ${totalSynced} líneas P&L sincronizadas`);
+  return totalSynced;
 }
 
 // ─── Full sync ─────────────────────────────────────────────────────────────────

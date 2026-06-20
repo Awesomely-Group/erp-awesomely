@@ -65,25 +65,112 @@ export const PL_LINE_DEFS: PlLineDef[] = [
 
 // ─── Account prefix → P&L line (PGC ranges) ──────────────────────────────────
 
+/** Holded ObjectId: exactly 24 hex chars — must NOT be parsed as a PGC code. */
+const HOLDED_OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
+
+/**
+ * Returns the 3-digit PGC prefix for a numeric account code.
+ * Returns 0 for Holded internal ObjectIds (24-char hex) so they are not
+ * misclassified (e.g. "6846bc77…" would otherwise yield prefix 684 → Amortización).
+ */
 function accountPrefix(account: string): number {
+  if (HOLDED_OBJECT_ID_RE.test(account.trim())) return 0;
   return parseInt(account.replace(/\D/g, "").substring(0, 3), 10) || 0;
 }
 
-function prefixToDataKey(prefix: number): PlDataKey {
+// Mapea el prefijo de cuenta PGC (3 dígitos) a la línea del P&L.
+// Usado para líneas de facturas de compra (PURCHASE invoices).
+// Devuelve null cuando el prefijo no corresponde a ninguna cuenta de P&L conocida.
+function prefixToDataKey(prefix: number): PlDataKey | null {
+  // ── Costes (6xx) ──────────────────────────────────────────────────────────
   if (prefix >= 600 && prefix <= 609) return "aprovisionamientos";
   if (prefix >= 610 && prefix <= 619) return "variacion_existencias";
-  if (prefix >= 630 && prefix <= 639) return "impuesto_beneficios";
   if (prefix >= 620 && prefix <= 629) return "otros_gastos_explotacion";
+  if (prefix >= 630 && prefix <= 639) return "impuesto_beneficios";
   if (prefix >= 640 && prefix <= 649) return "gastos_personal";
+  if (prefix >= 650 && prefix <= 659) return "otros_resultados";
   if (prefix >= 660 && prefix <= 669) return "gastos_financieros";
   if (prefix >= 670 && prefix <= 679) return "otros_resultados";
   if (prefix >= 680 && prefix <= 699) return "amortizacion";
+  // ── Ingresos (7xx) — aparecen en facturas de compra como abonos/rectificativas ──
+  if (prefix >= 700 && prefix <= 709) return "ventas";
   if (prefix === 731)                  return "trabajos_activo";
   if (prefix >= 740 && prefix <= 759) return "otros_ingresos_explotacion";
   if (prefix >= 760 && prefix <= 769) return "ingresos_financieros";
   if (prefix >= 770 && prefix <= 779) return "otros_resultados_financieros";
-  // Default: unclassified PURCHASE lines → aprovisionamientos
-  return "aprovisionamientos";
+  // Prefijo desconocido — no se puede clasificar
+  return null;
+}
+
+/**
+ * Fallback classifier when accountingAccount is a Holded ObjectId and
+ * we can only rely on the human-readable accountingAccountName.
+ */
+function nameToDataKey(name: string | null): PlDataKey {
+  if (!name) return "otros_gastos_explotacion";
+  const n = name.toLowerCase();
+  if (/compra|aprovision|mercader[ií]a|suministro/.test(n)) return "aprovisionamientos";
+  if (/personal|sueldo|n[oó]mina|salario|seguridad social/.test(n)) return "gastos_personal";
+  if (/alquiler|arrendamiento/.test(n)) return "otros_gastos_explotacion";
+  if (/amortizaci[oó]n|depreciaci[oó]n/.test(n)) return "amortizacion";
+  if (/servicios profesionales|asesor[ií]a|consultor[ií]a/.test(n)) return "otros_gastos_explotacion";
+  if (/intereses|comisi[oó]n bancaria/.test(n)) return "gastos_financieros";
+  if (/variaci[oó]n de existencias/.test(n)) return "variacion_existencias";
+  if (/trabajo.*activo/.test(n)) return "trabajos_activo";
+  if (/ingresos financieros/.test(n)) return "ingresos_financieros";
+  if (/otros resultados financieros/.test(n)) return "otros_resultados_financieros";
+  if (/impuesto/.test(n)) return "impuesto_beneficios";
+  return "otros_gastos_explotacion";
+}
+
+/**
+ * Resolves the P&L data key for a PURCHASE invoice line:
+ * 1. Uses PGC prefix from accountingAccount when it is a numeric code.
+ * 2. Falls back to name-based heuristic when account is a Holded ObjectId
+ *    or the prefix is not in any known PGC range.
+ */
+function resolveExpenseKey(account: string | null, accountName: string | null): PlDataKey {
+  if (account) {
+    const prefix = accountPrefix(account);
+    if (prefix !== 0) {
+      const key = prefixToDataKey(prefix);
+      if (key !== null) return key;
+    }
+  }
+  return nameToDataKey(accountName);
+}
+
+// Mapea el prefijo de cuenta PGC a la línea del P&L para asientos contables.
+// A diferencia de prefixToDataKey, cubre también cuentas de ingreso (7xx)
+// en su rango completo y devuelve null para cuentas de balance (no P&L).
+// Los importes de asientos ya vienen con signo (crédito − débito): no hay que negarlos.
+function journalAccountToPlKey(account: string): PlDataKey | null {
+  const digits = account.replace(/\D/g, "");
+  if (!digits) return null;
+  const prefix = parseInt(digits.substring(0, 3), 10) || 0;
+
+  // ── Ingresos (7xx) ────────────────────────────────────────────────────────
+  if (prefix >= 700 && prefix <= 709) return "ventas";
+  if (prefix >= 710 && prefix <= 719) return "variacion_existencias";
+  if (prefix >= 720 && prefix <= 729) return "trabajos_activo";
+  if (prefix === 731)                  return "trabajos_activo";
+  if (prefix >= 740 && prefix <= 759) return "otros_ingresos_explotacion";
+  if (prefix >= 760 && prefix <= 769) return "ingresos_financieros";
+  if (prefix >= 770 && prefix <= 779) return "otros_resultados_financieros";
+
+  // ── Costes (6xx) ──────────────────────────────────────────────────────────
+  if (prefix >= 600 && prefix <= 609) return "aprovisionamientos";
+  if (prefix >= 610 && prefix <= 619) return "variacion_existencias";
+  if (prefix >= 620 && prefix <= 629) return "otros_gastos_explotacion";
+  if (prefix >= 630 && prefix <= 639) return "impuesto_beneficios";
+  if (prefix >= 640 && prefix <= 649) return "gastos_personal";
+  if (prefix >= 650 && prefix <= 659) return "otros_resultados";
+  if (prefix >= 660 && prefix <= 669) return "gastos_financieros";
+  if (prefix >= 670 && prefix <= 679) return "otros_resultados";
+  if (prefix >= 680 && prefix <= 699) return "amortizacion";
+
+  // Cuenta de balance (1xx-5xx, 8xx-9xx) → no pertenece al P&L
+  return null;
 }
 
 // ─── Subtotal computation ─────────────────────────────────────────────────────
@@ -171,7 +258,16 @@ interface ExpenseLineRow {
   company_name: string;
   month: Date;
   account: string | null;
+  account_name: string | null;
   amount: unknown;
+}
+
+interface JournalRow {
+  company_id: string;
+  company_name: string;
+  month: Date;
+  account: string;
+  amount: unknown; // ya con signo: crédito − débito
 }
 
 // ─── Main data function ───────────────────────────────────────────────────────
@@ -181,7 +277,8 @@ export async function getPlData(params: PlParams): Promise<PlData> {
   const startDate  = new Date(year, 0, 1);
   const endDate    = new Date(year + 1, 0, 1);
 
-  const [revenueRows, expenseRows] = await Promise.all([
+  const [revenueRows, expenseRows, journalRows] = await Promise.all([
+    // ── Facturas de venta ────────────────────────────────────────────────────
     prisma.$queryRaw<RevenueRow[]>`
       SELECT
         c.id   AS company_id,
@@ -192,25 +289,47 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       JOIN companies c ON c.id = i."companyId"
       WHERE i.type::text = 'SALE'
         AND (i."holdedStatus" IS NULL OR i."holdedStatus" != -1)
+        AND i."removedFromHoldedAt" IS NULL
         AND COALESCE(i."accountingMonth", i.date) >= ${startDate}
         AND COALESCE(i."accountingMonth", i.date) <  ${endDate}
       GROUP BY c.id, c.name, DATE_TRUNC('month', COALESCE(i."accountingMonth", i.date))
     `,
+    // ── Líneas de facturas de compra ─────────────────────────────────────────
     prisma.$queryRaw<ExpenseLineRow[]>`
       SELECT
-        c.id                   AS company_id,
-        c.name                 AS company_name,
+        c.id                       AS company_id,
+        c.name                     AS company_name,
         DATE_TRUNC('month', COALESCE(i."accountingMonth", i.date)) AS month,
-        il."accountingAccount" AS account,
+        il."accountingAccount"     AS account,
+        il."accountingAccountName" AS account_name,
         SUM(il.subtotal * i."fxRateToEur") AS amount
       FROM invoices i
       JOIN companies c ON c.id = i."companyId"
       JOIN invoice_lines il ON il."invoiceId" = i.id
       WHERE i.type::text = 'PURCHASE'
         AND (i."holdedStatus" IS NULL OR i."holdedStatus" != -1)
+        AND i."removedFromHoldedAt" IS NULL
         AND COALESCE(i."accountingMonth", i.date) >= ${startDate}
         AND COALESCE(i."accountingMonth", i.date) <  ${endDate}
-      GROUP BY c.id, c.name, DATE_TRUNC('month', COALESCE(i."accountingMonth", i.date)), il."accountingAccount"
+      GROUP BY c.id, c.name, DATE_TRUNC('month', COALESCE(i."accountingMonth", i.date)),
+               il."accountingAccount", il."accountingAccountName"
+    `,
+    // ── Asientos contables (nóminas, amortizaciones, asientos manuales…) ────
+    // amountEur ya viene con signo correcto (crédito − débito).
+    prisma.$queryRaw<JournalRow[]>`
+      SELECT
+        c.id   AS company_id,
+        c.name AS company_name,
+        DATE_TRUNC('month', COALESCE(jel."accountingMonth", jel.date)) AS month,
+        jel.account,
+        SUM(jel."amountEur") AS amount
+      FROM journal_entry_lines jel
+      JOIN companies c ON c.id = jel."companyId"
+      WHERE COALESCE(jel."accountingMonth", jel.date) >= ${startDate}
+        AND COALESCE(jel."accountingMonth", jel.date) <  ${endDate}
+      GROUP BY c.id, c.name,
+               DATE_TRUNC('month', COALESCE(jel."accountingMonth", jel.date)),
+               jel.account
     `,
   ]);
 
@@ -237,13 +356,28 @@ export async function getPlData(params: PlParams): Promise<PlData> {
     if (!point) continue;
 
     const rawAmount = Number(row.amount);
-    const lineKey   = row.account ? prefixToDataKey(accountPrefix(row.account)) : "aprovisionamientos";
+    const lineKey   = resolveExpenseKey(row.account, row.account_name);
 
-    // PURCHASE amounts are costs → store as negative in P&L
-    // Exception: income-type accounts on PURCHASE side stay positive
-    const incomeAccounts: PlDataKey[] = ["ingresos_financieros", "otros_ingresos_explotacion", "otros_resultados_financieros", "trabajos_activo"];
+    // Los importes de facturas de compra son positivos en la query;
+    // los negamos para el P&L salvo cuentas de ingreso (abonos, etc.)
+    const incomeAccounts: PlDataKey[] = ["ingresos_financieros", "otros_ingresos_explotacion", "otros_resultados_financieros", "trabajos_activo", "ventas"];
     const signed = incomeAccounts.includes(lineKey) ? rawAmount : -rawAmount;
     point.data[lineKey] += signed;
+  }
+
+  // ── Asientos contables (nóminas, amortizaciones, asientos manuales…) ────────
+  // amountEur ya viene con signo convencional del P&L (crédito − débito):
+  //   negativo → gasto, positivo → ingreso. No hay que negar.
+  for (const row of journalRows) {
+    const entity   = ensureEntity(row.company_id, row.company_name);
+    const monthKey = toMonthKey(new Date(row.month));
+    const point    = entity.months.get(monthKey);
+    if (!point) continue;
+
+    const lineKey = journalAccountToPlKey(row.account);
+    if (!lineKey) continue; // cuenta de balance → ignorar
+
+    point.data[lineKey] += Number(row.amount);
   }
 
   // ── Build consolidated accumulator ─────────────────────────────────────────
