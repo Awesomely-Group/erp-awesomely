@@ -1,12 +1,14 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Columns3 } from "lucide-react";
 import {
   MARCA_FILTER_UNASSIGNED,
   MARCA_OPTIONS,
   STATUS_FILTER_UNASSIGNED,
 } from "@/lib/org";
+import { OPTIONAL_COLUMNS, type ColumnKey } from "./columns";
 
 const PERIODS = [
   { value: "", label: "Todos los periodos" },
@@ -26,7 +28,12 @@ const MARCA_ALL_OPTIONS = [
 
 interface Project { id: string; jiraKey: string; name: string }
 
-export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): React.JSX.Element {
+interface Props {
+  projects?: Project[];
+  visibleCols: ColumnKey[];
+}
+
+export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -38,10 +45,25 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
   const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
   const [selectedProject, setSelectedProject] = useState(sp.get("project") ?? "");
   const [holdedPresence, setHoldedPresence] = useState(sp.get("holdedPresence") ?? "active");
+  const [showColMenu, setShowColMenu] = useState(false);
+
+  const colMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close column menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent): void {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) {
+        setShowColMenu(false);
+      }
+    }
+    if (showColMenu) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showColMenu]);
 
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
     status: string; marca: string; project: string; holdedPresence: string;
+    cols: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
@@ -49,6 +71,7 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
       marca: selectedMarca,
       project: selectedProject,
       holdedPresence,
+      cols: sp.get("cols") ?? "",
       ...overrides,
     };
     const params = new URLSearchParams();
@@ -58,6 +81,8 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
     if (m.marca) params.set("marca", m.marca);
     if (m.project) params.set("project", m.project);
     if (m.holdedPresence && m.holdedPresence !== "active") params.set("holdedPresence", m.holdedPresence);
+    // Preserve column preferences across filter changes (only omit if all cols are visible)
+    if (m.cols) params.set("cols", m.cols);
     if (m.period) {
       params.set("period", m.period);
       if (m.period === "custom") {
@@ -78,9 +103,26 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
     setSelectedProject("");
     setHoldedPresence("active");
     const currentType = sp.get("type") ?? "";
+    const currentCols = sp.get("cols") ?? "";
     const params = new URLSearchParams();
     if (currentType) params.set("type", currentType);
+    // Preserve column preferences on reset
+    if (currentCols) params.set("cols", currentCols);
     router.push(`/invoices?${params.toString()}`);
+  }
+
+  function toggleColumn(key: ColumnKey): void {
+    const currentSet = new Set(visibleCols);
+    if (currentSet.has(key)) {
+      currentSet.delete(key);
+    } else {
+      currentSet.add(key);
+    }
+    // Maintain the canonical order
+    const ordered = OPTIONAL_COLUMNS
+      .filter((c) => currentSet.has(c.key))
+      .map((c) => c.key);
+    applyWith({ cols: ordered.join(",") });
   }
 
   const selectClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white";
@@ -208,6 +250,50 @@ export function InvoicesFilters({ projects = [] }: { projects?: Project[] }): Re
       >
         Limpiar
       </button>
+
+      {/* Column selector */}
+      <div className="relative" ref={colMenuRef}>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium invisible">Columnas</label>
+          <button
+            type="button"
+            onClick={() => setShowColMenu((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              showColMenu
+                ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                : "border-gray-300 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Columns3 className="h-4 w-4" />
+            Columnas
+          </button>
+        </div>
+
+        {showColMenu && (
+          <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-lg p-3 flex flex-col gap-1.5">
+            <p className="text-xs font-semibold text-gray-500 mb-1">
+              Columnas visibles
+            </p>
+            <p className="text-[10px] text-gray-400 -mt-1 mb-1">
+              Número y Contraparte siempre visibles
+            </p>
+            {OPTIONAL_COLUMNS.map((col) => (
+              <label
+                key={col.key}
+                className="flex items-center gap-2 cursor-pointer rounded-md px-1 py-0.5 hover:bg-gray-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={visibleCols.includes(col.key)}
+                  onChange={() => toggleColumn(col.key)}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-700">{col.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

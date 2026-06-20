@@ -9,6 +9,7 @@ import { InvoiceLinePanel } from "./invoice-line-panel";
 import { InvoiceDrawer } from "./invoice-drawer";
 import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { parseVisibleCols, type ColumnKey } from "./columns";
 
 
 const VALID_SORT_KEYS = ["date", "totalEur", "status", "counterparty", "number", "companyName", "accountingMonth", "holdedStatus"] as const;
@@ -78,6 +79,7 @@ type InvoicePageParams = {
   sortDir?: string;
   invoiceId?: string;
   holdedPresence?: string;
+  cols?: string;
 };
 
 function parseHoldedPresence(v: string | undefined): HoldedPresence {
@@ -214,6 +216,8 @@ export default async function InvoicesPage({
     purchaseCount,
   } = data;
 
+  const visibleCols = parseVisibleCols(params.cols);
+
   function buildUrl(overrides: Record<string, string | undefined>): string {
     const sp = new URLSearchParams();
     const merged = {
@@ -230,6 +234,7 @@ export default async function InvoicesPage({
       page: q.page,
       invoiceId: q.invoiceId,
       holdedPresence: q.holdedPresence,
+      cols: q.cols,
       ...overrides,
     };
     for (const [k, v] of Object.entries(merged)) {
@@ -253,24 +258,50 @@ export default async function InvoicesPage({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
+            {/* Always visible */}
             <th className="w-8 px-4 py-3" />
             <SortTh col="number" label="Número" sortBy={sortBy} sortDir={sortDir} href={sortUrl("number")} />
-            <SortTh col="companyName" label="Entidad Legal" sortBy={sortBy} sortDir={sortDir} href={sortUrl("companyName")} />
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
+            {/* Optional */}
+            {visibleCols.has("companyName") && (
+              <SortTh col="companyName" label="Entidad Legal" sortBy={sortBy} sortDir={sortDir} href={sortUrl("companyName")} />
+            )}
+            {visibleCols.has("brand") && (
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Marca</th>
+            )}
+            {/* Always visible */}
             <SortTh col="counterparty" label="Contraparte" sortBy={sortBy} sortDir={sortDir} href={sortUrl("counterparty")} />
-            <SortTh col="accountingMonth" label="Mes Referencia" sortBy={sortBy} sortDir={sortDir} href={sortUrl("accountingMonth")} />
-            <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Base imp.</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Total</th>
-            <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
-            <SortTh col="holdedStatus" label="Estado Holded" sortBy={sortBy} sortDir={sortDir} href={sortUrl("holdedStatus")} />
-            <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
+            {/* Optional */}
+            {visibleCols.has("accountingMonth") && (
+              <SortTh col="accountingMonth" label="Mes Referencia" sortBy={sortBy} sortDir={sortDir} href={sortUrl("accountingMonth")} />
+            )}
+            {visibleCols.has("date") && (
+              <SortTh col="date" label="Fecha" sortBy={sortBy} sortDir={sortDir} href={sortUrl("date")} />
+            )}
+            {visibleCols.has("subtotal") && (
+              <th className="px-4 py-3 text-right font-medium text-gray-600">Base imp.</th>
+            )}
+            {visibleCols.has("total") && (
+              <th className="px-4 py-3 text-right font-medium text-gray-600">Total</th>
+            )}
+            {visibleCols.has("totalEur") && (
+              <SortTh col="totalEur" label="Total (EUR)" align="right" sortBy={sortBy} sortDir={sortDir} href={sortUrl("totalEur")} />
+            )}
+            {visibleCols.has("holdedStatus") && (
+              <SortTh col="holdedStatus" label="Estado Holded" sortBy={sortBy} sortDir={sortDir} href={sortUrl("holdedStatus")} />
+            )}
+            {visibleCols.has("status") && (
+              <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
+            )}
+            {visibleCols.has("recurrence") && (
+              <th className="px-4 py-3 text-left font-medium text-gray-600">Recurrencia</th>
+            )}
           </tr>
         </thead>
         <tbody>
           <InvoicesTable
             selectedId={params.invoiceId}
             projects={activeProjects.map((p) => ({ id: p.id, name: p.name, workspaceName: p.workspace.name }))}
+            visibleCols={visibleCols}
             invoices={invoices.map((inv) => ({
               id: inv.id,
               holdedId: inv.holdedId,
@@ -288,6 +319,7 @@ export default async function InvoicesPage({
               status: inv.status,
               companyName: inv.company.name,
               brand: inv.marca,
+              recurrence: inv.recurrence ?? null,
               removedFromHoldedAt: inv.removedFromHoldedAt?.toISOString() ?? null,
             }))}
           />
@@ -307,7 +339,10 @@ export default async function InvoicesPage({
           </p>
         </div>
         <div className="overflow-x-auto pb-1">
-          <InvoicesFilters projects={activeProjects} />
+          <InvoicesFilters
+            projects={activeProjects}
+            visibleCols={[...visibleCols] as ColumnKey[]}
+          />
         </div>
       </div>
 

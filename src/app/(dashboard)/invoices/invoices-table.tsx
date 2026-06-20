@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { MARCA_OPTIONS } from "@/lib/org";
 import { bulkUpdateInvoiceMarca, bulkUpdateInvoiceProject, bulkIgnoreInvoiceProject } from "./[id]/actions";
+import { OPTIONAL_COLUMNS, type ColumnKey } from "./columns";
 
 function formatMonth(isoDate: string): string {
   return new Date(isoDate).toLocaleDateString("es-ES", {
@@ -44,6 +45,20 @@ const HOLDED_STATUS_COLORS: Record<number, string> = {
   3: "bg-red-100 text-red-700",
 };
 
+const RECURRENCE_LABELS: Record<string, string> = {
+  PUNTUAL:        "Puntual",
+  MENSUAL:        "Mensual",
+  ANUAL:          "Anual",
+  EXTRAORDINARIO: "Extraordinario",
+};
+
+const RECURRENCE_COLORS: Record<string, string> = {
+  PUNTUAL:        "bg-blue-100 text-blue-700",
+  MENSUAL:        "bg-green-100 text-green-700",
+  ANUAL:          "bg-purple-100 text-purple-700",
+  EXTRAORDINARIO: "bg-amber-100 text-amber-700",
+};
+
 interface InvoiceRow {
   id: string;
   holdedId: string;
@@ -61,6 +76,7 @@ interface InvoiceRow {
   status: string;
   companyName: string;
   brand: string | null;
+  recurrence: string | null;
   removedFromHoldedAt: string | null;
 }
 
@@ -68,9 +84,10 @@ interface Props {
   invoices: InvoiceRow[];
   selectedId?: string;
   projects: { id: string; name: string; workspaceName: string }[];
+  visibleCols: Set<ColumnKey>;
 }
 
-export function InvoicesTable({ invoices, selectedId, projects }: Props): React.JSX.Element {
+export function InvoicesTable({ invoices, selectedId, projects, visibleCols }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -80,6 +97,10 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
 
   const allSelected = invoices.length > 0 && selected.size === invoices.length;
   const someSelected = selected.size > 0 && !allSelected;
+
+  // Total columns: checkbox(1) + Número(1) + Contraparte(1) + visible optional cols
+  const visibleOptionalCount = OPTIONAL_COLUMNS.filter((c) => visibleCols.has(c.key)).length;
+  const totalCols = 3 + visibleOptionalCount;
 
   function toggleAll(): void {
     if (allSelected) {
@@ -134,7 +155,7 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
   if (invoices.length === 0) {
     return (
       <tr>
-        <td colSpan={12} className="px-4 py-12 text-center text-gray-400">
+        <td colSpan={totalCols} className="px-4 py-12 text-center text-gray-400">
           No hay facturas con estos filtros
         </td>
       </tr>
@@ -145,7 +166,7 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
     <>
       {selected.size > 0 && (
         <tr className="bg-indigo-50 border-b border-indigo-100">
-          <td colSpan={12} className="px-4 py-2">
+          <td colSpan={totalCols} className="px-4 py-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-sm font-medium text-indigo-700">
                 {selected.size} {selected.size === 1 ? "seleccionada" : "seleccionadas"}
@@ -228,7 +249,7 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
             className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
           />
         </td>
-        <td colSpan={11} />
+        <td colSpan={totalCols - 1} />
       </tr>
       {invoices.map((inv) => {
         const isSelected = inv.id === selectedId;
@@ -253,6 +274,7 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
               isSelected ? "bg-indigo-50 hover:bg-indigo-100" : isChecked ? "bg-indigo-50/50" : "hover:bg-gray-50"
             }`}
           >
+            {/* Checkbox — always visible */}
             <td className="w-8 px-4 py-3" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
@@ -261,6 +283,8 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
             </td>
+
+            {/* Número — always visible */}
             <td className="px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className={`font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`}>
@@ -281,57 +305,108 @@ export function InvoicesTable({ invoices, selectedId, projects }: Props): React.
                 )}
               </div>
             </td>
-            <td className="px-4 py-3 text-gray-600">{inv.companyName}</td>
-            <td className="px-4 py-3">
-              {inv.brand ? (
-                <div className="flex flex-wrap gap-1">
-                  {inv.brand.split(",").map((m) => (
-                    <span key={m} className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 whitespace-nowrap">{m}</span>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-gray-300">—</span>
-              )}
-            </td>
+
+            {/* Entidad Legal — optional */}
+            {visibleCols.has("companyName") && (
+              <td className="px-4 py-3 text-gray-600">{inv.companyName}</td>
+            )}
+
+            {/* Marca — optional */}
+            {visibleCols.has("brand") && (
+              <td className="px-4 py-3">
+                {inv.brand ? (
+                  <div className="flex flex-wrap gap-1">
+                    {inv.brand.split(",").map((m) => (
+                      <span key={m} className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 whitespace-nowrap">{m}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-gray-300">—</span>
+                )}
+              </td>
+            )}
+
+            {/* Contraparte — always visible */}
             <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">
               {inv.counterparty ?? "—"}
             </td>
-            <td className="px-4 py-3 text-gray-600 capitalize">{formatMonth(inv.accountingMonth)}</td>
-            <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
-            <td className="px-4 py-3 text-right text-gray-600">
-              <div>{formatCurrency(inv.subtotal, inv.currency)}</div>
-              {inv.currency !== "EUR" && (
-                <div className="text-xs text-gray-400">{formatCurrency(inv.subtotalEur)}</div>
-              )}
-            </td>
-            <td className="px-4 py-3 text-right text-gray-600">
-              <div>{formatCurrency(inv.total, inv.currency)}</div>
-              {inv.currency !== "EUR" && (
-                <div className="text-xs text-gray-400">{formatCurrency(inv.totalEur)}</div>
-              )}
-            </td>
-            <td className="px-4 py-3 text-right font-medium">
-              {formatCurrency(inv.totalEur)}
-            </td>
-            <td className="px-4 py-3">
-              {inv.holdedStatus != null && (
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${HOLDED_STATUS_COLORS[inv.holdedStatus] ?? ""}`}>
-                  {HOLDED_STATUS_LABELS[inv.holdedStatus] ?? String(inv.holdedStatus)}
-                </span>
-              )}
-            </td>
-            <td className="px-4 py-3">
-              <div className="flex flex-wrap gap-1">
-                {isRemoved && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                    Eliminada en Holded
+
+            {/* Mes Referencia — optional */}
+            {visibleCols.has("accountingMonth") && (
+              <td className="px-4 py-3 text-gray-600 capitalize">{formatMonth(inv.accountingMonth)}</td>
+            )}
+
+            {/* Fecha — optional */}
+            {visibleCols.has("date") && (
+              <td className="px-4 py-3 text-gray-600">{formatDate(inv.date)}</td>
+            )}
+
+            {/* Base imp. — optional */}
+            {visibleCols.has("subtotal") && (
+              <td className="px-4 py-3 text-right text-gray-600">
+                <div>{formatCurrency(inv.subtotal, inv.currency)}</div>
+                {inv.currency !== "EUR" && (
+                  <div className="text-xs text-gray-400">{formatCurrency(inv.subtotalEur)}</div>
+                )}
+              </td>
+            )}
+
+            {/* Total — optional */}
+            {visibleCols.has("total") && (
+              <td className="px-4 py-3 text-right text-gray-600">
+                <div>{formatCurrency(inv.total, inv.currency)}</div>
+                {inv.currency !== "EUR" && (
+                  <div className="text-xs text-gray-400">{formatCurrency(inv.totalEur)}</div>
+                )}
+              </td>
+            )}
+
+            {/* Total (EUR) — optional */}
+            {visibleCols.has("totalEur") && (
+              <td className="px-4 py-3 text-right font-medium">
+                {formatCurrency(inv.totalEur)}
+              </td>
+            )}
+
+            {/* Estado Holded — optional */}
+            {visibleCols.has("holdedStatus") && (
+              <td className="px-4 py-3">
+                {inv.holdedStatus != null && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${HOLDED_STATUS_COLORS[inv.holdedStatus] ?? ""}`}>
+                    {HOLDED_STATUS_LABELS[inv.holdedStatus] ?? String(inv.holdedStatus)}
                   </span>
                 )}
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] ?? ""}`}>
-                  {STATUS_LABELS[inv.status] ?? inv.status}
-                </span>
-              </div>
-            </td>
+              </td>
+            )}
+
+            {/* Estado — optional */}
+            {visibleCols.has("status") && (
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-1">
+                  {isRemoved && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                      Eliminada en Holded
+                    </span>
+                  )}
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] ?? ""}`}>
+                    {STATUS_LABELS[inv.status] ?? inv.status}
+                  </span>
+                </div>
+              </td>
+            )}
+
+            {/* Recurrencia — optional */}
+            {visibleCols.has("recurrence") && (
+              <td className="px-4 py-3">
+                {inv.recurrence ? (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RECURRENCE_COLORS[inv.recurrence] ?? ""}`}>
+                    {RECURRENCE_LABELS[inv.recurrence] ?? inv.recurrence}
+                  </span>
+                ) : (
+                  <span className="text-gray-300">—</span>
+                )}
+              </td>
+            )}
           </tr>
         );
       })}

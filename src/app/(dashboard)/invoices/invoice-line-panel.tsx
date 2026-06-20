@@ -4,6 +4,8 @@ import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { getSuggestionsForLine } from "@/lib/suggestions";
 import { ClassifyLinesForm } from "./[id]/classify-lines-form";
 import { AccountingMonthEditor } from "./[id]/accounting-month-editor";
+import { RecurrenceEditor } from "./[id]/recurrence-editor";
+import { InferAllRecurrencesButton } from "./infer-all-recurrences-button";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Sin clasificar",
@@ -120,8 +122,22 @@ export async function InvoiceLinePanel({
               invoiceDate={invoice.date}
             />
           </p>
+          <p className="flex items-center gap-1">
+            <span className="text-gray-400">Recurrencia:</span>
+            <RecurrenceEditor
+              invoiceId={invoice.id}
+              recurrence={invoice.recurrence ?? null}
+            />
+          </p>
         </div>
       </div>
+
+      {/* Backfill button (only for PURCHASE invoices without recurrence) */}
+      {invoice.type === "PURCHASE" && !invoice.recurrence && (
+        <div className="mx-4 mt-2">
+          <InferAllRecurrencesButton />
+        </div>
+      )}
 
       {/* Classification form */}
       <div className="pt-3">

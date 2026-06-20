@@ -398,6 +398,56 @@ export async function bulkUpdateInvoiceProject({
   revalidatePath("/invoices");
 }
 
+export async function updateInvoiceRecurrence({
+  invoiceId,
+  recurrence,
+}: {
+  invoiceId: string;
+  recurrence: string | null;
+}): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { recurrence: (recurrence as InvoiceRecurrence | null) ?? null },
+  });
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+}
+
+export async function inferAllRecurrences(): Promise<{ updated: number }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const invoices = await prisma.invoice.findMany({
+    where: { type: "PURCHASE", recurrence: null, removedFromHoldedAt: null },
+    select: {
+      id: true,
+      type: true,
+      companyId: true,
+      holdedContactId: true,
+      counterparty: true,
+      date: true,
+      totalEur: true,
+      lines: { select: { name: true }, orderBy: { sortOrder: "asc" }, take: 1 },
+    },
+  });
+
+  let updated = 0;
+  for (const inv of invoices) {
+    const recurrence = await inferInvoiceRecurrence(prisma, inv);
+    if (recurrence !== null) {
+      await prisma.invoice.update({ where: { id: inv.id }, data: { recurrence } });
+      updated++;
+    }
+  }
+
+  revalidatePath("/invoices");
+  return { updated };
+}
+
 export async function bulkIgnoreInvoiceProject({
   invoiceIds,
 }: {

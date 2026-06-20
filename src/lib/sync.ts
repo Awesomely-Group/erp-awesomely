@@ -477,6 +477,25 @@ async function upsertInvoice(
   // Update invoice status and derived marca from existing classifications
   await updateInvoiceStatus(invoice.id);
   await deriveMarcaFromLines(invoice.id);
+
+  // Auto-infer recurrence for new/updated PURCHASE invoices that don't have one yet
+  if (invoice.type === InvoiceType.PURCHASE && invoice.recurrence === null) {
+    const firstLine = await prisma.invoiceLine.findFirst({
+      where: { invoiceId: invoice.id },
+      orderBy: { sortOrder: "asc" },
+      select: { name: true },
+    });
+    const inferred = await inferInvoiceRecurrence(prisma, {
+      ...invoice,
+      lines: firstLine ? [{ name: firstLine.name }] : [],
+    });
+    if (inferred !== null) {
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { recurrence: inferred },
+      });
+    }
+  }
 }
 
 export async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
