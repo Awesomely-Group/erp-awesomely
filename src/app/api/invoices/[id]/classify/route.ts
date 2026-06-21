@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AuditAction, ClassificationStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { deriveMarcaFromClassifications } from "@/lib/invoice-marca";
+import { updateInvoiceStatus } from "@/lib/sync";
 
 export async function POST(
   req: Request,
@@ -77,6 +78,9 @@ export async function POST(
   });
   const derivedMarca = deriveMarcaFromClassifications(classifications);
   await prisma.invoice.update({ where: { id: invoiceId }, data: { marca: derivedMarca } });
+
+  // Recalculate invoice.status now that marca is persisted
+  await updateInvoiceStatus(invoiceId);
 
   await prisma.auditLog.create({
     data: {
