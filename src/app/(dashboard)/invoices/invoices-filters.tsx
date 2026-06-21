@@ -31,9 +31,11 @@ interface Project { id: string; jiraKey: string; name: string }
 interface Props {
   projects?: Project[];
   visibleCols: ColumnKey[];
+  invoiceType: "SALE" | "PURCHASE";
+  holdedStatus?: string;
 }
 
-export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JSX.Element {
+export function InvoicesFilters({ projects = [], visibleCols, invoiceType }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -46,6 +48,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
   const [selectedProject, setSelectedProject] = useState(sp.get("project") ?? "");
   const [holdedPresence, setHoldedPresence] = useState(sp.get("holdedPresence") ?? "active");
   const [selectedRecurrence, setSelectedRecurrence] = useState(sp.get("recurrence") ?? "");
+  const [selectedHoldedStatus, setSelectedHoldedStatus] = useState(sp.get("holdedStatus") ?? "");
   const [showColMenu, setShowColMenu] = useState(false);
 
   const colMenuRef = useRef<HTMLDivElement>(null);
@@ -64,7 +67,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
     status: string; marca: string; project: string; holdedPresence: string;
-    recurrence: string; cols: string;
+    recurrence: string; cols: string; holdedStatus: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
@@ -73,6 +76,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
       project: selectedProject,
       holdedPresence,
       recurrence: selectedRecurrence,
+      holdedStatus: selectedHoldedStatus,
       cols: sp.get("cols") ?? "",
       ...overrides,
     };
@@ -84,6 +88,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
     if (m.project) params.set("project", m.project);
     if (m.holdedPresence && m.holdedPresence !== "active") params.set("holdedPresence", m.holdedPresence);
     if (m.recurrence) params.set("recurrence", m.recurrence);
+    if (m.holdedStatus) params.set("holdedStatus", m.holdedStatus);
     // Preserve column preferences across filter changes (only omit if all cols are visible)
     if (m.cols) params.set("cols", m.cols);
     if (m.period) {
@@ -106,6 +111,7 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
     setSelectedProject("");
     setHoldedPresence("active");
     setSelectedRecurrence("");
+    setSelectedHoldedStatus("");
     const currentType = sp.get("type") ?? "";
     const currentCols = sp.get("cols") ?? "";
     const params = new URLSearchParams();
@@ -204,21 +210,23 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
         </select>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Recurrencia</label>
-        <select
-          value={selectedRecurrence}
-          onChange={(e) => { const v = e.target.value; setSelectedRecurrence(v); applyWith({ recurrence: v }); }}
-          className={selectClass}
-        >
-          <option value="">Todas</option>
-          <option value="PUNTUAL">Puntual</option>
-          <option value="MENSUAL">Mensual</option>
-          <option value="ANUAL">Anual</option>
-          <option value="EXTRAORDINARIO">Extraordinario</option>
-          <option value="none">Sin clasificar</option>
-        </select>
-      </div>
+      {invoiceType === "PURCHASE" && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Recurrencia</label>
+          <select
+            value={selectedRecurrence}
+            onChange={(e) => { const v = e.target.value; setSelectedRecurrence(v); applyWith({ recurrence: v }); }}
+            className={selectClass}
+          >
+            <option value="">Todas</option>
+            <option value="PUNTUAL">Puntual</option>
+            <option value="MENSUAL">Mensual</option>
+            <option value="ANUAL">Anual</option>
+            <option value="EXTRAORDINARIO">Extraordinario</option>
+            <option value="none">Sin clasificar</option>
+          </select>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Marca</label>
@@ -249,6 +257,23 @@ export function InvoicesFilters({ projects = [], visibleCols }: Props): React.JS
           </select>
         </div>
       )}
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-gray-500 font-medium">
+          {invoiceType === "SALE" ? "Cobro" : "Pago"}
+        </label>
+        <select
+          value={selectedHoldedStatus}
+          onChange={(e) => { const v = e.target.value; setSelectedHoldedStatus(v); applyWith({ holdedStatus: v }); }}
+          className={selectClass}
+        >
+          <option value="">Todos</option>
+          <option value="1">Pendiente</option>
+          <option value="2">{invoiceType === "SALE" ? "Cobrada" : "Pagada"}</option>
+          <option value="3">Vencida</option>
+          <option value="-1">Cancelada</option>
+        </select>
+      </div>
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">En Holded</label>

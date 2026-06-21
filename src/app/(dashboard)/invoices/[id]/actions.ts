@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { deriveMarcaFromClassifications } from "@/lib/invoice-marca";
 import { prisma } from "@/lib/prisma";
 import { updateInvoiceStatus } from "@/lib/sync";
-import { AuditAction, ClassificationStatus, InvoiceRecurrence } from "@prisma/client";
+import { AuditAction, ClassificationStatus, InvoiceRecurrence, InvoiceType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
@@ -406,6 +406,14 @@ export async function updateInvoiceRecurrence({
 }): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
+
+  const inv = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { type: true },
+  });
+  if (inv?.type === InvoiceType.SALE) {
+    throw new Error("No se puede editar la recurrencia de una factura de venta");
+  }
 
   await prisma.invoice.update({
     where: { id: invoiceId },

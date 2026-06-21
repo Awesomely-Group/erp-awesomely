@@ -85,9 +85,10 @@ interface Props {
   selectedId?: string;
   projects: { id: string; name: string; workspaceName: string }[];
   visibleCols: Set<ColumnKey>;
+  invoiceType: "SALE" | "PURCHASE";
 }
 
-export function InvoicesTable({ invoices, selectedId, projects, visibleCols }: Props): React.JSX.Element {
+export function InvoicesTable({ invoices, selectedId, projects, visibleCols, invoiceType }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -395,8 +396,8 @@ export function InvoicesTable({ invoices, selectedId, projects, visibleCols }: P
               </td>
             )}
 
-            {/* Recurrencia — optional */}
-            {visibleCols.has("recurrence") && (
+            {/* Recurrencia — solo compras */}
+            {invoiceType === "PURCHASE" && visibleCols.has("recurrence") && (
               <td className="px-4 py-3">
                 {inv.recurrence ? (
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RECURRENCE_COLORS[inv.recurrence] ?? ""}`}>

@@ -81,6 +81,7 @@ type InvoicePageParams = {
   holdedPresence?: string;
   recurrence?: string;
   cols?: string;
+  holdedStatus?: string;
 };
 
 function parseHoldedPresence(v: string | undefined): HoldedPresence {
@@ -130,6 +131,9 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     andConditions.push({ recurrence: null });
   } else if (params.recurrence) {
     andConditions.push({ recurrence: params.recurrence as InvoiceRecurrence });
+  }
+  if (params.holdedStatus) {
+    andConditions.push({ holdedStatus: parseInt(params.holdedStatus, 10) });
   }
   if (params.project) andConditions.push({ lines: { some: { classification: { projectId: params.project } } } });
   if (dateRange.gte || dateRange.lte) andConditions.push({ date: dateRange });
@@ -242,6 +246,7 @@ export default async function InvoicesPage({
       holdedPresence: q.holdedPresence,
       recurrence: q.recurrence,
       cols: q.cols,
+      holdedStatus: q.holdedStatus,
       ...overrides,
     };
     for (const [k, v] of Object.entries(merged)) {
@@ -300,7 +305,7 @@ export default async function InvoicesPage({
             {visibleCols.has("status") && (
               <SortTh col="status" label="Estado" sortBy={sortBy} sortDir={sortDir} href={sortUrl("status")} />
             )}
-            {visibleCols.has("recurrence") && (
+            {activeType === "PURCHASE" && visibleCols.has("recurrence") && (
               <th className="px-4 py-3 text-left font-medium text-gray-600">Recurrencia</th>
             )}
           </tr>
@@ -330,6 +335,7 @@ export default async function InvoicesPage({
               recurrence: inv.recurrence ?? null,
               removedFromHoldedAt: inv.removedFromHoldedAt?.toISOString() ?? null,
             }))}
+            invoiceType={activeType}
           />
         </tbody>
       </table>
@@ -351,6 +357,7 @@ export default async function InvoicesPage({
           <InvoicesFilters
             projects={activeProjects}
             visibleCols={[...visibleCols] as ColumnKey[]}
+            invoiceType={activeType}
           />
         </div>
       </div>

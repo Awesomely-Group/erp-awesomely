@@ -121,13 +121,15 @@ export async function InvoiceLinePanel({
               invoiceDate={invoice.date}
             />
           </p>
-          <p className="flex items-center gap-1">
-            <span className="text-gray-400">Recurrencia:</span>
-            <RecurrenceEditor
-              invoiceId={invoice.id}
-              recurrence={invoice.recurrence ?? null}
-            />
-          </p>
+          {invoice.type === "PURCHASE" && (
+            <p className="flex items-center gap-1">
+              <span className="text-gray-400">Recurrencia:</span>
+              <RecurrenceEditor
+                invoiceId={invoice.id}
+                recurrence={invoice.recurrence ?? null}
+              />
+            </p>
+          )}
         </div>
       </div>
 
