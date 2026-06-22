@@ -779,6 +779,32 @@ export class HoldedClient {
     return all;
   }
 
+  /**
+   * Fetch a single invoice or purchase by its Holded ID.
+   * Useful for importing draft documents that are excluded from paginated list endpoints.
+   * Returns null when Holded returns 404 or any non-OK status.
+   */
+  async getDocumentById(
+    type: "invoice" | "purchase",
+    holdedId: string
+  ): Promise<HoldedInvoice | null> {
+    const path = IS_V2
+      ? `/${type === "invoice" ? "invoices" : "purchases"}/${holdedId}`
+      : `/documents/${type}/${holdedId}`;
+
+    try {
+      if (IS_V2) {
+        const raw = await this.fetch<HoldedInvoiceV2Raw>(path);
+        return normalizeV2Invoice(raw);
+      } else {
+        return await this.fetch<HoldedInvoice>(path);
+      }
+    } catch {
+      // 404 or other errors — document not found
+      return null;
+    }
+  }
+
   // ─── Journal Entries ──────────────────────────────────────────────────────────
   //
   // Devuelve los asientos contables de Holded para el año indicado.
@@ -793,6 +819,7 @@ export class HoldedClient {
     const now      = new Date();
     const endMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
 
+    // Ventanas mensuales — /ledger-entries requiere start_date y end_date (YYYY-MM-DD)
     const windows = Array.from({ length: endMonth }, (_, i) => {
       const month   = i + 1;
       const mm      = String(month).padStart(2, "0");
@@ -800,102 +827,93 @@ export class HoldedClient {
       return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` };
     });
 
-    type RawResp = { items?: HoldedJournalEntryRaw[] } | HoldedJournalEntryRaw[];
-
+    // Descarga en paralelo — fallo de un mes no es fatal
     const batches = await Promise.all(
       windows.map(({ start, end }) =>
-        this.fetchFromBase<RawResp>(
-          HOLDED_ACCOUNTING_BASE_URL,
-          "/accounting/journal-entries",
-          { start_date: start, end_date: end, limit: "1000" }
+        this.fetchFromBase<{ items?: HoldedLedgerLineRaw[] }>(
+          HOLDED_BASE_URL,         // "https://api.holded.com/api/v2"
+          "/ledger-entries",
+          { start_date: start, end_date: end, limit: "5000" }
         )
-          .then((raw): HoldedJournalEntryRaw[] =>
-            Array.isArray(raw) ? raw : (raw.items ?? [])
-          )
-          .catch((): HoldedJournalEntryRaw[] => []) // fallo puntual no-fatal
+          .then((raw) => raw.items ?? [])
+          .catch((): HoldedLedgerLineRaw[] => [])
       )
     );
 
-    const seen = new Set<string>();
-    const all:  HoldedJournalEntry[] = [];
+    // Deduplica por (entry_number, line) y agrupa por entry_number
+    const seenKeys = new Set<string>();
+    const entryMap = new Map<number, HoldedLedgerLineRaw[]>();
     for (const batch of batches) {
-      for (const raw of batch) {
-        if (!seen.has(raw.id)) {
-          seen.add(raw.id);
-          all.push(normalizeJournalEntry(raw));
+      for (const l of batch) {
+        const key = `${l.entry_number}:${l.line}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          if (!entryMap.has(l.entry_number)) entryMap.set(l.entry_number, []);
+          entryMap.get(l.entry_number)!.push(l);
         }
       }
     }
-    return all;
+
+    // Convierte a HoldedJournalEntry[]
+    const entries: HoldedJournalEntry[] = [];
+    for (const [entryNum, lines] of entryMap) {
+      const first    = lines[0];
+      // Fecha: "DD/MM/YYYY" → "YYYY-MM-DD"
+      const [dd, mm, yyyy] = first.date.split("/");
+      const dateISO  = `${yyyy}-${mm}-${dd}`;
+
+      entries.push({
+        id:           String(entryNum),
+        date:         dateISO,
+        description:  first.description || undefined,
+        documentType: first.type        || undefined,
+        lines:        lines
+          .map((l): HoldedJournalEntryLine => ({
+            account:     String(l.account),
+            debit:       parseCommaNum(String(l.debit  ?? 0)),
+            credit:      parseCommaNum(String(l.credit ?? 0)),
+            description: l.description || undefined,
+          }))
+          .filter((l) => l.account && l.account !== "0"),
+      });
+    }
+
+    return entries;
   }
 }
 
 // ─── Journal Entry types ──────────────────────────────────────────────────────
+// Holded API v2 expone el libro mayor a través de /api/v2/ledger-entries.
+// La respuesta es una lista plana de líneas: cada línea tiene entry_number (ID del
+// asiento), line (posición dentro del asiento), type (payroll/purchase/invoice/…),
+// account (código PGC numérico), debit y credit como strings.
 
-interface HoldedJournalEntryLineRaw {
-  id?:          string;
-  account?:     string | { num?: string; id?: string; name?: string };
-  debit?:       number | string | null;
-  credit?:      number | string | null;
-  description?: string;
-}
-
-interface HoldedJournalEntryRaw {
-  id:              string;
-  date?:           string;          // "YYYY-MM-DD"
-  description?:    string;
-  document_type?:  string | null;   // "payroll" | "invoice" | "manual" | null
-  document_id?:    string | null;
-  status?:         string;
-  lines?:          HoldedJournalEntryLineRaw[];
-  entries?:        HoldedJournalEntryLineRaw[]; // alias alternativo de Holded
+/** Línea plana devuelta por /api/v2/ledger-entries */
+interface HoldedLedgerLineRaw {
+  entry_number:    number;
+  line:            number;
+  date:            string;   // "DD/MM/YYYY"
+  type:            string;   // "payroll" | "purchase" | "invoice" | "entry" | …
+  description:     string;
+  doc_description: string;
+  account:         number;   // código PGC numérico, e.g. 62300000
+  debit:           string;   // "188.91"
+  credit:          string;   // "0.00"
+  tags:            string[];
+  checked:         boolean;
 }
 
 export interface HoldedJournalEntryLine {
-  account:     string;  // código PGC, solo dígitos (e.g. "640")
-  debit:       number;
-  credit:      number;
+  account:      string;  // código PGC como string, solo dígitos (e.g. "62300000")
+  debit:        number;
+  credit:       number;
   description?: string;
 }
 
 export interface HoldedJournalEntry {
-  id:           string;
-  date:         string;   // ISO "YYYY-MM-DD"
-  description?: string;
-  documentType?: string;
-  documentId?:  string;
-  lines:        HoldedJournalEntryLine[];
-}
-
-function normalizeJournalEntry(raw: HoldedJournalEntryRaw): HoldedJournalEntry {
-  const rawLines = raw.lines ?? raw.entries ?? [];
-
-  const lines: HoldedJournalEntryLine[] = rawLines
-    .map((l): HoldedJournalEntryLine | null => {
-      let account = "";
-      if (typeof l.account === "string") {
-        account = l.account;
-      } else if (l.account && typeof l.account === "object") {
-        account = l.account.num ?? "";
-      }
-      const normalized = account.replace(/\D/g, "");
-      if (!normalized) return null;
-
-      return {
-        account:     normalized,
-        debit:       parseCommaNum(String(l.debit  ?? 0)),
-        credit:      parseCommaNum(String(l.credit ?? 0)),
-        description: l.description,
-      };
-    })
-    .filter((l): l is HoldedJournalEntryLine => l !== null);
-
-  return {
-    id:           raw.id,
-    date:         raw.date ?? new Date().toISOString().split("T")[0],
-    description:  raw.description,
-    documentType: raw.document_type  ?? undefined,
-    documentId:   raw.document_id   ?? undefined,
-    lines,
-  };
+  id:            string;  // string del entry_number, e.g. "10"
+  date:          string;  // ISO "YYYY-MM-DD"
+  description?:  string;
+  documentType?: string;  // type del primer apunte: "payroll" | "entry" | …
+  lines:         HoldedJournalEntryLine[];
 }

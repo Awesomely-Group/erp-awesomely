@@ -807,9 +807,15 @@ export async function syncProformas(companyId: string): Promise<void> {
 
 // Tipos de documento Holded que ya están cubiertos por el sync de facturas.
 // Cualquier otro tipo (payroll, manual, bank, depreciation, null…) se importa.
+// Tipos de asiento de /api/v2/ledger-entries que ya están cubiertos por el sync
+// de facturas (revenueRows + expenseRows) y NO deben sincronizarse como asientos
+// para evitar doble contabilización.
+// Tipos incluidos (no en esta lista): payroll, entry, expense, payment, creditnote.
 const HOLDED_INVOICE_DOC_TYPES = new Set([
-  "invoice", "invoicing", "sale", "sales", "sale_invoice", "sales_invoice",
-  "purchase", "purchase_invoice", "bill", "expense", "income",
+  "invoice",        // facturas de venta → revenueRows
+  "purchase",       // facturas de compra → expenseRows
+  "purchaserefund", // abonos de compra  → expenseRows (importe negativo)
+  "collect",        // cobros de clientes → solo cuentas de balance (430/57x)
 ]);
 
 // Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos).
@@ -910,6 +916,37 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
 
   console.log(`[sync] Journal entries company=${companyId}: ${totalSynced} líneas P&L sincronizadas`);
   return totalSynced;
+}
+
+// ─── Single-document import ────────────────────────────────────────────────────
+//
+// Holded's paginated list endpoints (/purchases, /invoices) exclude draft documents
+// (draft: true / no docNumber). Use this function to force-import a document by its
+// Holded ID — useful when a document is confirmed to exist in Holded but is absent
+// from the ERP because it never appeared in a sync run.
+
+export async function syncDocumentById(
+  companyId: string,
+  holdedId: string,
+  type: "invoice" | "purchase"
+): Promise<{ found: boolean; invoiceId: string | null }> {
+  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const client = new HoldedClient(company.holdedApiKey);
+
+  const doc = await client.getDocumentById(type, holdedId);
+  if (!doc) return { found: false, invoiceId: null };
+
+  const accountMaps = await client.getAccountMaps();
+  const invType = type === "invoice" ? InvoiceType.SALE : InvoiceType.PURCHASE;
+
+  await upsertInvoice(doc, companyId, invType, accountMaps);
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { holdedId_companyId: { holdedId: doc.id, companyId } },
+    select: { id: true },
+  });
+
+  return { found: true, invoiceId: invoice?.id ?? null };
 }
 
 // ─── Full sync ─────────────────────────────────────────────────────────────────
