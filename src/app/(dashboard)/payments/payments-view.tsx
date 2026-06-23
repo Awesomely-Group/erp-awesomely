@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import {
+  closestCorners,
   DndContext,
+  DragOverlay,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -129,33 +134,126 @@ function groupByDueMonth<T extends { dueDate: string | null; effectivePending: n
   return groups;
 }
 
-// ─── Drag & drop order helpers ────────────────────────────────────────────────
+// ─── Drag & drop: batch items state ──────────────────────────────────────────
 
-type OrderMap = Record<string, string[]>;
-const STORAGE_KEY = "payments-order-v1";
+type BatchItemIds = Record<string, string[]>; // batchKey → ordered invoice IDs
+const STORAGE_KEY = "payments-order-v2";
 
-function applyOrder<T extends { id: string }>(items: T[], batchKey: string, orderMap: OrderMap): T[] {
-  const order = orderMap[batchKey];
-  if (!order || order.length === 0) return items;
-  const byId = new Map(items.map((i) => [i.id, i]));
-  const ordered = order.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
-  const rest = items.filter((i) => !new Set(order).has(i.id));
-  return [...ordered, ...rest];
+/** Compute initial (natural) batch assignment from pending payments. SSR-safe. */
+function naturalBatchIds(payments: PaymentInvoice[]): BatchItemIds {
+  const groups = groupByDueMonth(payments, CURRENT_MONTH);
+  const result: BatchItemIds = {};
+  for (const g of groups) {
+    if (g.key === "sin-fecha") continue;
+    result[`${g.key}-first`] = g.firstHalf.map((i) => i.id);
+    result[`${g.key}-second`] = g.secondHalf.map((i) => i.id);
+  }
+  return result;
+}
+
+/**
+ * Merge stored (possibly from localStorage) batch IDs with the natural grouping.
+ * - Removes stale IDs (paid invoices no longer in `validIds`)
+ * - Adds new unassigned invoices to their natural batch
+ * - Preserves all existing manual positions
+ */
+function mergeWithNatural(
+  stored: BatchItemIds,
+  payments: PaymentInvoice[],
+  validIds: Set<string>,
+): BatchItemIds {
+  const groups = groupByDueMonth(payments, CURRENT_MONTH);
+
+  // Clean stale IDs from stored
+  const result: BatchItemIds = {};
+  for (const [key, ids] of Object.entries(stored)) {
+    result[key] = ids.filter((id) => validIds.has(id));
+  }
+
+  // Ensure all natural batch keys exist
+  for (const g of groups) {
+    if (g.key === "sin-fecha") continue;
+    const fk = `${g.key}-first`;
+    const sk = `${g.key}-second`;
+    if (!(fk in result)) result[fk] = [];
+    if (!(sk in result)) result[sk] = [];
+  }
+
+  // Place unassigned invoices into their natural batch
+  const assigned = new Set(Object.values(result).flat());
+  for (const g of groups) {
+    if (g.key === "sin-fecha") continue;
+    for (const item of g.firstHalf) {
+      if (!assigned.has(item.id)) {
+        result[`${g.key}-first`].push(item.id);
+        assigned.add(item.id);
+      }
+    }
+    for (const item of g.secondHalf) {
+      if (!assigned.has(item.id)) {
+        result[`${g.key}-second`].push(item.id);
+        assigned.add(item.id);
+      }
+    }
+  }
+
+  return result;
+}
+
+function findBatchForItem(id: string, batches: BatchItemIds): string | undefined {
+  for (const [key, ids] of Object.entries(batches)) {
+    if (ids.includes(id)) return key;
+  }
+  return undefined;
+}
+
+function saveBatches(batches: BatchItemIds): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(batches));
+  } catch {
+    // ignore
+  }
+}
+
+// ─── Droppable batch section ──────────────────────────────────────────────────
+
+function DroppableBatchSection({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`transition-colors duration-100 ${isOver ? "bg-indigo-50/50 ring-1 ring-inset ring-indigo-200" : ""}`}
+    >
+      {children}
+    </div>
+  );
 }
 
 // ─── Sortable payment row ─────────────────────────────────────────────────────
 
 function SortablePaymentRow({ invoice }: { invoice: PaymentInvoice }): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: invoice.id,
-  });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: invoice.id });
+
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
-    position: "relative",
-    zIndex: isDragging ? 1 : undefined,
   };
+
+  // When dragging this item, render an invisible placeholder to preserve layout height
+  if (isDragging) {
+    return (
+      <div ref={setNodeRef} style={style} className="opacity-0 pointer-events-none">
+        <PaymentRow invoice={invoice} />
+      </div>
+    );
+  }
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -177,7 +275,9 @@ interface MonthSectionHeaderProps {
   onToggle: () => void;
 }
 
-function MonthSectionHeader({ label, count, subtotal, isPast, isCurrent, monthKey, isExpanded, onToggle }: MonthSectionHeaderProps): React.JSX.Element {
+function MonthSectionHeader({
+  label, count, subtotal, isPast, isCurrent, monthKey, isExpanded, onToggle,
+}: MonthSectionHeaderProps): React.JSX.Element {
   let borderColor = "border-l-gray-300";
   let bg = "bg-gray-50";
   let textColor = "text-gray-700";
@@ -197,12 +297,18 @@ function MonthSectionHeader({ label, count, subtotal, isPast, isCurrent, monthKe
         <ChevronIcon className="h-4 w-4 shrink-0 opacity-50 group-hover:opacity-80 transition-opacity" />
         <span className="text-sm font-semibold">{label}</span>
         {isPast && (
-          <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium shrink-0">Vencido</span>
+          <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium shrink-0">
+            Vencido
+          </span>
         )}
         {isCurrent && (
-          <span className="rounded-full bg-indigo-100 text-indigo-700 px-2 py-0.5 text-xs font-medium shrink-0">Este mes</span>
+          <span className="rounded-full bg-indigo-100 text-indigo-700 px-2 py-0.5 text-xs font-medium shrink-0">
+            Este mes
+          </span>
         )}
-        {relTime && <span className="text-xs opacity-60 font-normal shrink-0">{relTime}</span>}
+        {relTime && (
+          <span className="text-xs opacity-60 font-normal shrink-0">{relTime}</span>
+        )}
         <span className="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium shrink-0">
           {count} {count === 1 ? "factura" : "facturas"}
         </span>
@@ -250,7 +356,9 @@ interface CollapsibleMonthGroupProps {
   children: React.ReactNode;
 }
 
-function CollapsibleMonthGroup({ groupKey, label, count, subtotal, isPast, isCurrent, children }: CollapsibleMonthGroupProps): React.JSX.Element {
+function CollapsibleMonthGroup({
+  groupKey, label, count, subtotal, isPast, isCurrent, children,
+}: CollapsibleMonthGroupProps): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(true);
   return (
     <div>
@@ -308,10 +416,12 @@ function CollectionRow({ row }: { row: PendingInvoice }): React.JSX.Element {
   );
 }
 
-// ─── Main view ────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CURRENT_MONTH = toMonthKey(new Date());
 const CURRENT_BATCH: "first" | "second" = new Date().getDate() <= 15 ? "first" : "second";
+
+// ─── Main view ────────────────────────────────────────────────────────────────
 
 export function PaymentsView({
   pendingPayments,
@@ -321,54 +431,42 @@ export function PaymentsView({
   const [tab, setTab] = useState<"pagos" | "cobros">("pagos");
   const [company, setCompany] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
-  const [orderByBatch, setOrderByBatch] = useState<OrderMap>({});
 
-  // Load saved order from localStorage (client-only)
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setOrderByBatch(JSON.parse(saved) as OrderMap);
-    } catch {
-      // ignore parse errors
-    }
-  }, []);
+  // ── DnD state ──
+  const [batchItemIds, setBatchItemIds] = useState<BatchItemIds>(() =>
+    naturalBatchIds(pendingPayments),
+  );
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Track the container from which the current drag started (to detect cross-container drops)
+  const dragStartContainerRef = useRef<string | undefined>(undefined);
+  // Snapshot of batchItemIds at drag start (used to revert on cancelled drags)
+  const batchSnapshotRef = useRef<BatchItemIds>({});
+  // Whether localStorage has been merged in yet
+  const storageLoadedRef = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  function handleBatchDragEnd(
-    batchKey: string,
-    halfItems: PaymentInvoice[],
-    event: DragEndEvent,
-  ): void {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const ordered = applyOrder(halfItems, batchKey, orderByBatch);
-    const oldIndex = ordered.findIndex((i) => i.id === String(active.id));
-    const newIndex = ordered.findIndex((i) => i.id === String(over.id));
-    if (oldIndex === -1 || newIndex === -1) return;
-    const newOrder = arrayMove(ordered, oldIndex, newIndex).map((i) => i.id);
-    setOrderByBatch((prev) => {
-      const next = { ...prev, [batchKey]: newOrder };
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
+  // ── Load localStorage + keep in sync with pendingPayments ──
+  useEffect(() => {
+    setBatchItemIds((prev) => {
+      let base = prev;
+      if (!storageLoadedRef.current) {
+        storageLoadedRef.current = true;
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) base = JSON.parse(raw) as BatchItemIds;
+        } catch {
+          // ignore
+        }
+      }
+      return mergeWithNatural(base, pendingPayments, new Set(pendingPayments.map((p) => p.id)));
     });
-  }
+  }, [pendingPayments]);
 
-  const hasFilters = company !== "all" || selectedMonth !== CURRENT_MONTH;
-
-  const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    for (const inv of pendingPayments) {
-      if (inv.dueDate) months.add(inv.dueDate.slice(0, 7));
-    }
-    for (const inv of pendingCollections) {
-      if (inv.dueDate) months.add(inv.dueDate.slice(0, 7));
-    }
-    return Array.from(months).sort();
-  }, [pendingPayments, pendingCollections]);
-
+  // ── Filtered views ──
   const filteredPayments = useMemo(
     () =>
       pendingPayments.filter((row) => {
@@ -389,21 +487,154 @@ export function PaymentsView({
     [pendingCollections, company, selectedMonth],
   );
 
-  const paymentsGroups = useMemo(
-    () => groupByDueMonth(filteredPayments, CURRENT_MONTH),
+  // Quick lookup for filtered payments
+  const allPaymentsById = useMemo(
+    () => new Map(filteredPayments.map((i) => [i.id, i])),
     [filteredPayments],
   );
+
+  // ── Compute visible months from batchItemIds (for pagos tab) ──
+  const visibleMonths = useMemo(() => {
+    const months = new Set<string>();
+    // Always show current month
+    months.add(CURRENT_MONTH);
+    // Show any month that has at least one currently-visible payment
+    for (const [batchKey, ids] of Object.entries(batchItemIds)) {
+      if (batchKey === "sin-fecha") continue;
+      if (ids.some((id) => allPaymentsById.has(id))) {
+        const monthKey = batchKey.replace(/-(?:first|second)$/, "");
+        months.add(monthKey);
+      }
+    }
+    return Array.from(months).sort();
+  }, [batchItemIds, allPaymentsById]);
+
+  // Get display items for a batch section (intersection of batchItemIds + current filter)
+  function getItemsForBatch(batchKey: string): PaymentInvoice[] {
+    return (batchItemIds[batchKey] ?? []).flatMap((id) => {
+      const inv = allPaymentsById.get(id);
+      return inv ? [inv] : [];
+    });
+  }
+
+  // ── DnD handlers ──
+
+  function handleDragStart(event: DragStartEvent): void {
+    const id = String(event.active.id);
+    setActiveId(id);
+    dragStartContainerRef.current = findBatchForItem(id, batchItemIds);
+    batchSnapshotRef.current = batchItemIds;
+  }
+
+  function handleDragOver(event: DragOverEvent): void {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeItemId = String(active.id);
+    const overId = String(over.id);
+
+    setBatchItemIds((prev) => {
+      const activeContainer = findBatchForItem(activeItemId, prev);
+      // `over` can be a container ID (useDroppable) or an item ID inside a container
+      const overContainer =
+        overId in prev ? overId : findBatchForItem(overId, prev);
+
+      // Only act on cross-container moves; same-container reorder is handled in onDragEnd
+      if (!activeContainer || !overContainer || activeContainer === overContainer) {
+        return prev;
+      }
+
+      const sourceItems = prev[activeContainer].filter((id) => id !== activeItemId);
+      const targetItems = [...prev[overContainer]];
+      const overIndex = targetItems.indexOf(overId);
+      const insertAt = overIndex >= 0 ? overIndex : targetItems.length;
+
+      return {
+        ...prev,
+        [activeContainer]: sourceItems,
+        [overContainer]: [
+          ...targetItems.slice(0, insertAt),
+          activeItemId,
+          ...targetItems.slice(insertAt),
+        ],
+      };
+    });
+  }
+
+  function handleDragEnd(event: DragEndEvent): void {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) {
+      // Drag cancelled — revert to snapshot
+      setBatchItemIds(batchSnapshotRef.current);
+      return;
+    }
+
+    const activeItemId = String(active.id);
+    const overId = String(over.id);
+
+    setBatchItemIds((prev) => {
+      const activeContainer = findBatchForItem(activeItemId, prev);
+      if (!activeContainer) return prev;
+
+      // If the item crossed containers (handled in onDragOver), just persist
+      if (activeContainer !== dragStartContainerRef.current) {
+        saveBatches(prev);
+        return prev;
+      }
+
+      // Same container — reorder
+      const overContainer =
+        overId in prev ? overId : findBatchForItem(overId, prev);
+      if (!overContainer || overContainer !== activeContainer) {
+        saveBatches(prev);
+        return prev;
+      }
+
+      const items = prev[activeContainer];
+      const oldIndex = items.indexOf(activeItemId);
+      const newIndex = items.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+        saveBatches(prev);
+        return prev;
+      }
+
+      const next = { ...prev, [activeContainer]: arrayMove(items, oldIndex, newIndex) };
+      saveBatches(next);
+      return next;
+    });
+  }
+
+  // ── Collections (natural grouping, no DnD) ──
   const collectionsGroups = useMemo(
     () => groupByDueMonth(filteredCollections, CURRENT_MONTH),
     [filteredCollections],
   );
 
+  // ── Summary totals ──
   const totalPendingPayments = filteredPayments.reduce((s, r) => s + r.effectivePending, 0);
   const totalPendingCollections = filteredCollections.reduce((s, r) => s + r.effectivePending, 0);
   const balance = totalPendingCollections - totalPendingPayments;
 
+  const hasFilters = company !== "all" || selectedMonth !== CURRENT_MONTH;
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    for (const inv of pendingPayments) {
+      if (inv.dueDate) months.add(inv.dueDate.slice(0, 7));
+    }
+    for (const inv of pendingCollections) {
+      if (inv.dueDate) months.add(inv.dueDate.slice(0, 7));
+    }
+    return Array.from(months).sort();
+  }, [pendingPayments, pendingCollections]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
+      {/* Header + filters */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Pagos y Cobros</h1>
@@ -500,7 +731,7 @@ export function PaymentsView({
         </nav>
       </div>
 
-      {/* Pagos tab */}
+      {/* ── Pagos tab ─────────────────────────────────────────────────────────── */}
       {tab === "pagos" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {filteredPayments.length === 0 ? (
@@ -508,83 +739,99 @@ export function PaymentsView({
               No hay pagos pendientes con los filtros actuales.
             </p>
           ) : (
-            paymentsGroups.map((group) => (
-              <CollapsibleMonthGroup
-                key={group.key}
-                groupKey={group.key}
-                label={group.label}
-                count={group.firstHalf.length + group.secondHalf.length}
-                subtotal={group.subtotal}
-                isPast={group.isPast}
-                isCurrent={group.isCurrent}
-              >
-                {group.key !== "sin-fecha" && (() => {
-                  const firstKey = `${group.key}-first`;
-                  const secondKey = `${group.key}-second`;
-                  const orderedFirst = applyOrder(group.firstHalf, firstKey, orderByBatch);
-                  const orderedSecond = applyOrder(group.secondHalf, secondKey, orderByBatch);
-                  return (
-                    <>
-                      {/* Del 1 al 15 */}
-                      <HalfSectionHeader
-                        label="Del 1 al 15"
-                        count={orderedFirst.length}
-                        subtotal={orderedFirst.reduce((s, i) => s + i.effectivePending, 0)}
-                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
-                      />
-                      {orderedFirst.length > 0 ? (
-                        <DndContext
-                          sensors={sensors}
-                          onDragEnd={(e) => handleBatchDragEnd(firstKey, group.firstHalf, e)}
-                        >
-                          <SortableContext items={orderedFirst.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                            {orderedFirst.map((inv) => (
-                              <SortablePaymentRow key={inv.id} invoice={inv} />
-                            ))}
-                          </SortableContext>
-                        </DndContext>
-                      ) : (
-                        <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período
-                        </p>
-                      )}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              {visibleMonths.map((monthKey) => {
+                const firstKey = `${monthKey}-first`;
+                const secondKey = `${monthKey}-second`;
+                const firstItems = getItemsForBatch(firstKey);
+                const secondItems = getItemsForBatch(secondKey);
+                const totalCount = firstItems.length + secondItems.length;
+                const totalSubtotal =
+                  [...firstItems, ...secondItems].reduce((s, i) => s + i.effectivePending, 0);
+                const isPast = monthKey < CURRENT_MONTH;
+                const isCurrent = monthKey === CURRENT_MONTH;
 
-                      {/* Del 16 al fin de mes */}
-                      <HalfSectionHeader
-                        label="Del 16 al fin de mes"
-                        count={orderedSecond.length}
-                        subtotal={orderedSecond.reduce((s, i) => s + i.effectivePending, 0)}
-                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
-                      />
-                      {orderedSecond.length > 0 ? (
-                        <DndContext
-                          sensors={sensors}
-                          onDragEnd={(e) => handleBatchDragEnd(secondKey, group.secondHalf, e)}
+                return (
+                  <CollapsibleMonthGroup
+                    key={monthKey}
+                    groupKey={monthKey}
+                    label={monthLabel(monthKey)}
+                    count={totalCount}
+                    subtotal={totalSubtotal}
+                    isPast={isPast}
+                    isCurrent={isCurrent}
+                  >
+                    {/* Del 1 al 15 */}
+                    <HalfSectionHeader
+                      label="Del 1 al 15"
+                      count={firstItems.length}
+                      subtotal={firstItems.reduce((s, i) => s + i.effectivePending, 0)}
+                      isCurrentBatch={isCurrent && CURRENT_BATCH === "first"}
+                    />
+                    <DroppableBatchSection id={firstKey}>
+                      {firstItems.length > 0 ? (
+                        <SortableContext
+                          items={firstItems.map((i) => i.id)}
+                          strategy={verticalListSortingStrategy}
                         >
-                          <SortableContext items={orderedSecond.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                            {orderedSecond.map((inv) => (
-                              <SortablePaymentRow key={inv.id} invoice={inv} />
-                            ))}
-                          </SortableContext>
-                        </DndContext>
+                          {firstItems.map((inv) => (
+                            <SortablePaymentRow key={inv.id} invoice={inv} />
+                          ))}
+                        </SortableContext>
                       ) : (
-                        <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período
+                        <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
+                          Sin facturas en este período — arrastra aquí para reasignar
                         </p>
                       )}
-                    </>
-                  );
-                })()}
-                {group.key === "sin-fecha" && group.firstHalf.map((inv) => (
-                  <PaymentRow key={inv.id} invoice={inv} />
-                ))}
-              </CollapsibleMonthGroup>
-            ))
+                    </DroppableBatchSection>
+
+                    {/* Del 16 al fin de mes */}
+                    <HalfSectionHeader
+                      label="Del 16 al fin de mes"
+                      count={secondItems.length}
+                      subtotal={secondItems.reduce((s, i) => s + i.effectivePending, 0)}
+                      isCurrentBatch={isCurrent && CURRENT_BATCH === "second"}
+                    />
+                    <DroppableBatchSection id={secondKey}>
+                      {secondItems.length > 0 ? (
+                        <SortableContext
+                          items={secondItems.map((i) => i.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {secondItems.map((inv) => (
+                            <SortablePaymentRow key={inv.id} invoice={inv} />
+                          ))}
+                        </SortableContext>
+                      ) : (
+                        <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
+                          Sin facturas en este período — arrastra aquí para reasignar
+                        </p>
+                      )}
+                    </DroppableBatchSection>
+                  </CollapsibleMonthGroup>
+                );
+              })}
+
+              {/* Drag overlay — shown at cursor while dragging */}
+              <DragOverlay>
+                {activeId && allPaymentsById.has(activeId) ? (
+                  <div className="shadow-2xl rounded-lg overflow-hidden bg-white border border-indigo-300 opacity-95">
+                    <PaymentRow invoice={allPaymentsById.get(activeId)!} />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           )}
         </div>
       )}
 
-      {/* Cobros tab */}
+      {/* ── Cobros tab (no DnD) ───────────────────────────────────────────────── */}
       {tab === "cobros" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 bg-gray-50 border-b border-gray-200 px-4 py-2 text-xs font-medium text-gray-500">
@@ -611,41 +858,29 @@ export function PaymentsView({
                 isPast={group.isPast}
                 isCurrent={group.isCurrent}
               >
-                {group.key !== "sin-fecha" && (() => {
-                  return (
-                    <>
-                      {/* Del 1 al 15 */}
-                      <HalfSectionHeader
-                        label="Del 1 al 15"
-                        count={group.firstHalf.length}
-                        subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
-                      />
-                      {group.firstHalf.length > 0
-                        ? group.firstHalf.map((row) => <CollectionRow key={row.id} row={row} />)
-                        : (
-                          <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
-                            Sin facturas en este período
-                          </p>
-                        )}
+                {group.key !== "sin-fecha" && (() => (
+                  <>
+                    <HalfSectionHeader
+                      label="Del 1 al 15"
+                      count={group.firstHalf.length}
+                      subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                      isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
+                    />
+                    {group.firstHalf.length > 0
+                      ? group.firstHalf.map((row) => <CollectionRow key={row.id} row={row} />)
+                      : <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">Sin facturas en este período</p>}
 
-                      {/* Del 16 al fin de mes */}
-                      <HalfSectionHeader
-                        label="Del 16 al fin de mes"
-                        count={group.secondHalf.length}
-                        subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
-                      />
-                      {group.secondHalf.length > 0
-                        ? group.secondHalf.map((row) => <CollectionRow key={row.id} row={row} />)
-                        : (
-                          <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
-                            Sin facturas en este período
-                          </p>
-                        )}
-                    </>
-                  );
-                })()}
+                    <HalfSectionHeader
+                      label="Del 16 al fin de mes"
+                      count={group.secondHalf.length}
+                      subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                      isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
+                    />
+                    {group.secondHalf.length > 0
+                      ? group.secondHalf.map((row) => <CollectionRow key={row.id} row={row} />)
+                      : <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">Sin facturas en este período</p>}
+                  </>
+                ))()}
                 {group.key === "sin-fecha" && group.firstHalf.map((row) => (
                   <CollectionRow key={row.id} row={row} />
                 ))}
