@@ -170,10 +170,12 @@ export interface HoldedAccountingAccount {
 /** Row from chart of accounts endpoint. */
 interface HoldedChartAccountRow {
   id?: string;
-  /** Numeric account code */
+  /** Numeric account code (v1 field) */
   num?: string | number;
   /** Some responses use `account` instead of `num` */
   account?: string | number;
+  /** Holded API v2 uses `number` for the PGC account code */
+  number?: string | number;
   name?: string;
   group?: string;
   debit?: number;
@@ -331,7 +333,8 @@ export class HoldedClient {
   }
 
   private chartRowNum(row: HoldedChartAccountRow): string {
-    const n = row.num ?? row.account;
+    // Holded v2 uses `number`, v1 uses `num` or `account`
+    const n = row.number ?? row.num ?? row.account;
     return n != null ? String(n).trim() : "";
   }
 
@@ -643,6 +646,28 @@ export class HoldedClient {
     if (!query) return results;
     const q = query.toLowerCase();
     return results.filter((c) => c.name.toLowerCase().includes(q));
+  }
+
+  /**
+   * Fetches a single invoice or purchase document directly by its Holded ID.
+   * Bypasses the list/pagination endpoints — useful for documents that are
+   * accessible individually but not returned by date-filtered list queries.
+   * Returns null if the document is not found or an error occurs.
+   */
+  async fetchDocumentById(
+    type: "invoice" | "purchase",
+    id: string
+  ): Promise<HoldedInvoice | null> {
+    try {
+      if (IS_V2) {
+        const path = type === "invoice" ? `/invoices/${id}` : `/purchases/${id}`;
+        const raw = await this.fetch<HoldedInvoiceV2Raw>(path);
+        return normalizeV2Invoice(raw);
+      }
+      return await this.fetch<HoldedInvoice>(`/documents/${type}/${id}`);
+    } catch {
+      return null;
+    }
   }
 
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {

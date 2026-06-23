@@ -100,7 +100,8 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   // Process a list of invoices in parallel batches to reduce total sync time
   type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
 
-  const upsertErrors: string[] = [];
+  type UpsertError = { type: string; holdedId: string; docNumber: string; error: string };
+  const upsertErrors: UpsertError[] = [];
 
   async function upsertBatch(
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
@@ -115,8 +116,9 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
           upsertInvoice(inv, companyId, type, accountMaps)
             .then(() => { invoicesSynced++; })
             .catch((err: unknown) => {
-              const msg = `${type} ${inv.id} (${inv.docNumber}): ${err instanceof Error ? err.message : String(err)}`;
-              upsertErrors.push(msg);
+              const errMsg = err instanceof Error ? err.message : String(err);
+              console.error(`[sync] upsertInvoice failed: ${type} ${inv.id} (${inv.docNumber}):`, errMsg);
+              upsertErrors.push({ type: String(type), holdedId: inv.id, docNumber: inv.docNumber, error: errMsg });
             })
         )
       );
@@ -216,7 +218,7 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   }
 
   const combinedError = errorMessage
-    ?? (upsertErrors.length > 0 ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0]}` : undefined);
+    ?? (upsertErrors.length > 0 ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0].error}` : undefined);
 
   await prisma.syncLog.create({
     data: {
@@ -832,6 +834,10 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
   const currentYear         = new Date().getFullYear();
   let   totalSynced         = 0;
   const allReturnedEntryIds = new Set<string>();
+  // Collect holdedIds of all invoice/purchase documents referenced in journal entries.
+  // Used at the end for reconciliation: any document referenced in accounting but
+  // missing from our DB gets fetched individually and upserted.
+  const referencedInvoiceIds = new Set<string>();
 
   for (let year = HOLDED_SYNC_FROM_YEAR; year <= currentYear; year++) {
     let entries: HoldedJournalEntry[];

@@ -89,7 +89,7 @@ function prefixToDataKey(prefix: number): PlDataKey | null {
   if (prefix >= 630 && prefix <= 639) return "impuesto_beneficios";
   if (prefix >= 640 && prefix <= 649) return "gastos_personal";
   if (prefix >= 650 && prefix <= 659) return "otros_resultados";
-  if (prefix >= 660 && prefix <= 669) return "gastos_financieros";
+  if (prefix >= 660 && prefix <= 669) return "otros_resultados_financieros"; // 668 = Dif. negativas de cambio
   if (prefix >= 670 && prefix <= 679) return "otros_resultados";
   if (prefix >= 680 && prefix <= 699) return "amortizacion";
   // ── Ingresos (7xx) — aparecen en facturas de compra como abonos/rectificativas ──
@@ -179,7 +179,7 @@ function journalAccountToPlKey(account: string): PlDataKey | null {
   if (prefix >= 630 && prefix <= 639) return "impuesto_beneficios";
   if (prefix >= 640 && prefix <= 649) return "gastos_personal";
   if (prefix >= 650 && prefix <= 659) return "otros_resultados";
-  if (prefix >= 660 && prefix <= 669) return "gastos_financieros";
+  if (prefix >= 660 && prefix <= 669) return "otros_resultados_financieros"; // Dif. negativas de cambio (668), etc.
   if (prefix >= 670 && prefix <= 679) return "otros_resultados";
   if (prefix >= 680 && prefix <= 699) return "amortizacion";
 
