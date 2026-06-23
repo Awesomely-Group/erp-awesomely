@@ -431,6 +431,7 @@ export function PaymentsView({
   const [tab, setTab] = useState<"pagos" | "cobros">("pagos");
   const [company, setCompany] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
+  const [hidePaid, setHidePaid] = useState(false);
 
   // ── DnD state ──
   const [batchItemIds, setBatchItemIds] = useState<BatchItemIds>(() =>
@@ -472,9 +473,10 @@ export function PaymentsView({
       pendingPayments.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
         if (selectedMonth !== "all" && row.dueDate?.slice(0, 7) !== selectedMonth) return false;
+        if (hidePaid && row.effectivePending <= 0.005) return false;
         return true;
       }),
-    [pendingPayments, company, selectedMonth],
+    [pendingPayments, company, selectedMonth, hidePaid],
   );
 
   const filteredCollections = useMemo(
@@ -666,6 +668,20 @@ export function PaymentsView({
                 <option key={m} value={m}>{monthLabel(m)}</option>
               ))}
             </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Pagadas</label>
+            <button
+              type="button"
+              onClick={() => setHidePaid((v) => !v)}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                hidePaid
+                  ? "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
+                  : "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+              }`}
+            >
+              {hidePaid ? "Ocultas" : "Visibles"}
+            </button>
           </div>
           {hasFilters && (
             <button

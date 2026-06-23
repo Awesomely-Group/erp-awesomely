@@ -99,7 +99,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         ? Math.max(0, holdedPending - erpPaid)
         : Math.max(0, holdedPending);
 
-    if (effectivePending <= 0.005) continue;
+    if (holdedPending <= 0.005) continue;
 
     companyNames.add(inv.company.name);
 
