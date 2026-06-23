@@ -608,6 +608,7 @@ model SyncLog {
   invoicesSynced Int            @default(0)
   projectsSynced Int            @default(0)
   errorMessage   String?
+  details        Json?
   triggeredBy    String?
   startedAt      DateTime
   finishedAt     DateTime?

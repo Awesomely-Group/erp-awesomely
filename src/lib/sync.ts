@@ -102,6 +102,7 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
 
   type UpsertError = { type: string; holdedId: string; docNumber: string; error: string };
   const upsertErrors: UpsertError[] = [];
+  let fetchedIds: string[] = [];
 
   async function upsertBatch(
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
@@ -134,6 +135,11 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       client.getAllInvoicesPaginated("invoice"),
       client.getAllInvoicesPaginated("purchase"),
     ]);
+
+    fetchedIds = [
+      ...salesInvoices.map((i) => i.id),
+      ...purchaseInvoices.map((i) => i.id),
+    ];
 
     await Promise.all([
       upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
@@ -227,6 +233,9 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       companyId,
       invoicesSynced,
       errorMessage: combinedError ?? null,
+      details: fetchedIds.length > 0 || upsertErrors.length > 0
+        ? { fetchedIds, upsertErrors }
+        : undefined,
       triggeredBy: triggeredBy ?? null,
       startedAt,
       finishedAt: new Date(),
@@ -834,10 +843,6 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
   const currentYear         = new Date().getFullYear();
   let   totalSynced         = 0;
   const allReturnedEntryIds = new Set<string>();
-  // Collect holdedIds of all invoice/purchase documents referenced in journal entries.
-  // Used at the end for reconciliation: any document referenced in accounting but
-  // missing from our DB gets fetched individually and upserted.
-  const referencedInvoiceIds = new Set<string>();
 
   for (let year = HOLDED_SYNC_FROM_YEAR; year <= currentYear; year++) {
     let entries: HoldedJournalEntry[];

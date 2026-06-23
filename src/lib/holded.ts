@@ -648,28 +648,6 @@ export class HoldedClient {
     return results.filter((c) => c.name.toLowerCase().includes(q));
   }
 
-  /**
-   * Fetches a single invoice or purchase document directly by its Holded ID.
-   * Bypasses the list/pagination endpoints — useful for documents that are
-   * accessible individually but not returned by date-filtered list queries.
-   * Returns null if the document is not found or an error occurs.
-   */
-  async fetchDocumentById(
-    type: "invoice" | "purchase",
-    id: string
-  ): Promise<HoldedInvoice | null> {
-    try {
-      if (IS_V2) {
-        const path = type === "invoice" ? `/invoices/${id}` : `/purchases/${id}`;
-        const raw = await this.fetch<HoldedInvoiceV2Raw>(path);
-        return normalizeV2Invoice(raw);
-      }
-      return await this.fetch<HoldedInvoice>(`/documents/${type}/${id}`);
-    } catch {
-      return null;
-    }
-  }
-
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
     if (IS_V2) {
       // v2: offset/page/starttmp are all ignored — single request with large limit
