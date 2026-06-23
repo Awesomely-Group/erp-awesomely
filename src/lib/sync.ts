@@ -816,17 +816,25 @@ export async function syncProformas(companyId: string): Promise<void> {
 //   cuentas de gasto (6xx): debit > credit → amountEur < 0
 //   cuentas de ingreso (7xx): credit > debit → amountEur > 0
 
-// Tipos de documento Holded que ya están cubiertos por el sync de facturas.
-// Cualquier otro tipo (payroll, manual, bank, depreciation, null…) se importa.
-// Tipos de asiento de /api/v2/ledger-entries que ya están cubiertos por el sync
-// de facturas (revenueRows + expenseRows) y NO deben sincronizarse como asientos
-// para evitar doble contabilización.
-// Tipos incluidos (no en esta lista): payroll, entry, expense, payment, creditnote.
+// Tipos de asiento de /api/v2/ledger-entries que NO deben sincronizarse como
+// journal_entry_lines para evitar doble contabilización o datos incorrectos:
+//   - invoice / purchase / purchaserefund / collect: ya cubiertos por el sync
+//     de facturas (revenueRows + expenseRows en la tabla invoices).
+//   - opening:          asiento de apertura — saldos iniciales de balance, no P&L.
+//   - reg:              asiento de regularización/cierre anual (carga a P&G) — ya
+//                       queda reflejado en el resultado del ejercicio, no debe
+//                       incluirse en el cálculo de líneas individuales.
+//   - vat_regularization: regularización de IVA — cuenta 47x (balance).
+// Tipos incluidos (no en esta lista): payroll, entry, expense, payment, creditnote,
+//   amortization, y cualquier otro que Holded pueda añadir en el futuro.
 const HOLDED_INVOICE_DOC_TYPES = new Set([
-  "invoice",        // facturas de venta → revenueRows
-  "purchase",       // facturas de compra → expenseRows
-  "purchaserefund", // abonos de compra  → expenseRows (importe negativo)
-  "collect",        // cobros de clientes → solo cuentas de balance (430/57x)
+  "invoice",            // facturas de venta → revenueRows
+  "purchase",           // facturas de compra → expenseRows
+  "purchaserefund",     // abonos de compra  → expenseRows (importe negativo)
+  "collect",            // cobros de clientes → solo cuentas de balance (430/57x)
+  "opening",            // asiento de apertura → balance, no P&L
+  "reg",                // cierre anual → no debe sumarse a las líneas del período
+  "vat_regularization", // regularización IVA → cuenta 47x (balance)
 ]);
 
 // Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos).

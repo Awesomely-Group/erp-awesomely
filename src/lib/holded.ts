@@ -813,35 +813,83 @@ export class HoldedClient {
   // Devuelve los asientos contables de Holded para el año indicado.
   // Solo disponible en API v2. Devuelve [] en v1 (no-op seguro).
   //
-  // Se usa ventana mensual (igual que /purchases) porque Holded puede limitar
-  // el número de resultados por petición.
+  // /ledger-entries tiene un límite de ~200 líneas por petición que Holded aplica
+  // de forma silenciosa (el parámetro `limit` se ignora). Para evitar perder
+  // asientos de meses con mucho movimiento, usamos ventanas SEMANALES en lugar
+  // de mensuales: cada semana raramente supera las 200 líneas.
+  // Las fechas se construyen como strings "YYYY-MM-DD" para evitar problemas de
+  // zona horaria al convertir objetos Date a ISO.
 
   async getJournalEntries(year: number): Promise<HoldedJournalEntry[]> {
     if (!IS_V2) return [];
 
-    const now      = new Date();
-    const endMonth = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+    const now  = new Date();
+    // Último día a incluir: hoy si es el año en curso, 31-dic si es pasado.
+    const endY = now.getFullYear();
+    const endM = now.getMonth() + 1; // 1-based
+    const endD = now.getDate();
 
-    // Ventanas mensuales — /ledger-entries requiere start_date y end_date (YYYY-MM-DD)
-    const windows = Array.from({ length: endMonth }, (_, i) => {
-      const month   = i + 1;
-      const mm      = String(month).padStart(2, "0");
-      const lastDay = new Date(year, month, 0).getDate();
-      return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` };
-    });
+    // Helpers para construir strings YYYY-MM-DD sin conversión UTC
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const isoDate = (y: number, m: number, d: number) =>
+      `${y}-${pad2(m)}-${pad2(d)}`;
+    const lastDayOfMonth = (y: number, m: number) =>
+      new Date(y, m, 0).getDate();
 
-    // Descarga en paralelo — fallo de un mes no es fatal
-    const batches = await Promise.all(
-      windows.map(({ start, end }) =>
-        this.fetchFromBase<{ items?: HoldedLedgerLineRaw[] }>(
-          HOLDED_BASE_URL,         // "https://api.holded.com/api/v2"
-          "/ledger-entries",
-          { start_date: start, end_date: end, limit: "5000" }
-        )
-          .then((raw) => raw.items ?? [])
-          .catch((): HoldedLedgerLineRaw[] => [])
+    // Construir límite superior en formato y/m/d
+    let limY: number, limM: number, limD: number;
+    if (year === endY) {
+      limY = endY; limM = endM; limD = endD;
+    } else {
+      limY = year; limM = 12; limD = 31;
+    }
+
+    // Generar ventanas semanales: cada ventana = 7 días naturales
+    const windows: Array<{ start: string; end: string }> = [];
+    let y = year, m = 1, d = 1;
+
+    while (y < limY || (y === limY && m < limM) || (y === limY && m === limM && d <= limD)) {
+      const startStr = isoDate(y, m, d);
+
+      // Avanzar 6 días para el fin de la ventana (7-day window inclusive)
+      let ey = y, em = m, ed = d + 6;
+      while (ed > lastDayOfMonth(ey, em)) {
+        ed -= lastDayOfMonth(ey, em);
+        em++;
+        if (em > 12) { em = 1; ey++; }
+      }
+      // Truncar al límite si nos pasamos
+      if (ey > limY || (ey === limY && em > limM) || (ey === limY && em === limM && ed > limD)) {
+        ey = limY; em = limM; ed = limD;
+      }
+      const endStr = isoDate(ey, em, ed);
+
+      windows.push({ start: startStr, end: endStr });
+
+      // Avanzar al día siguiente del fin de ventana
+      d = ed + 1;
+      if (d > lastDayOfMonth(y, m)) {
+        // Recalcular m/y basándonos en la fecha de fin de ventana
+        d = ed + 1;
+        m = em; y = ey;
+        if (d > lastDayOfMonth(y, m)) { d = 1; m++; if (m > 12) { m = 1; y++; } }
+      } else {
+        m = em; y = ey;
+      }
+    }
+
+    // Descarga secuencial para no saturar la API (Holded rate-limits en paralelo)
+    const batches: HoldedLedgerLineRaw[][] = [];
+    for (const { start, end } of windows) {
+      const batch = await this.fetchFromBase<{ items?: HoldedLedgerLineRaw[] }>(
+        HOLDED_BASE_URL,
+        "/ledger-entries",
+        { start_date: start, end_date: end, limit: "200" }
       )
-    );
+        .then((raw) => raw.items ?? [])
+        .catch((): HoldedLedgerLineRaw[] => []);
+      batches.push(batch);
+    }
 
     // Deduplica por (entry_number, line) y agrupa por entry_number
     const seenKeys = new Set<string>();
