@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { GripVertical } from "lucide-react";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { registerPayment } from "./actions";
@@ -26,13 +27,14 @@ export interface PaymentInvoice {
 
 interface Props {
   invoice: PaymentInvoice;
+  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function PaymentRow({ invoice }: Props): React.JSX.Element {
+export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Element {
   const [showPayForm, setShowPayForm] = useState(false);
   const [amount, setAmount] = useState(invoice.effectivePending.toFixed(2));
   const [paidAt, setPaidAt] = useState(todayIso());
@@ -61,6 +63,17 @@ export function PaymentRow({ invoice }: Props): React.JSX.Element {
     <div className={cn("border-b border-gray-100 last:border-0", isPaid && "opacity-60")}>
       {/* Main row */}
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
+        {dragHandleProps && (
+          <button
+            type="button"
+            {...dragHandleProps}
+            className="shrink-0 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 touch-none focus:outline-none"
+            tabIndex={-1}
+            aria-label="Arrastrar para reordenar"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-gray-900 truncate">

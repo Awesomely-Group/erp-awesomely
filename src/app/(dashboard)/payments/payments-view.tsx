@@ -1,8 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { PaymentRow, type PaymentInvoice } from "./payment-row";
 
@@ -115,6 +129,41 @@ function groupByDueMonth<T extends { dueDate: string | null; effectivePending: n
   return groups;
 }
 
+// ─── Drag & drop order helpers ────────────────────────────────────────────────
+
+type OrderMap = Record<string, string[]>;
+const STORAGE_KEY = "payments-order-v1";
+
+function applyOrder<T extends { id: string }>(items: T[], batchKey: string, orderMap: OrderMap): T[] {
+  const order = orderMap[batchKey];
+  if (!order || order.length === 0) return items;
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const ordered = order.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+  const rest = items.filter((i) => !new Set(order).has(i.id));
+  return [...ordered, ...rest];
+}
+
+// ─── Sortable payment row ─────────────────────────────────────────────────────
+
+function SortablePaymentRow({ invoice }: { invoice: PaymentInvoice }): React.JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: invoice.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative",
+    zIndex: isDragging ? 1 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <PaymentRow invoice={invoice} dragHandleProps={{ ...attributes, ...listeners }} />
+    </div>
+  );
+}
+
 // ─── Section headers ──────────────────────────────────────────────────────────
 
 interface MonthSectionHeaderProps {
@@ -167,16 +216,22 @@ interface HalfSectionHeaderProps {
   label: string;
   count: number;
   subtotal: number;
+  isCurrentBatch?: boolean;
 }
 
-function HalfSectionHeader({ label, count, subtotal }: HalfSectionHeaderProps): React.JSX.Element {
+function HalfSectionHeader({ label, count, subtotal, isCurrentBatch }: HalfSectionHeaderProps): React.JSX.Element {
   return (
     <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50/50 text-xs text-gray-500">
-      <span className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">
+      <span className="flex items-center gap-2 font-semibold uppercase tracking-wide text-[10px] text-gray-400">
         {label}
-        <span className="ml-2 font-normal normal-case tracking-normal">
+        <span className="font-normal normal-case tracking-normal">
           · {count} {count === 1 ? "factura" : "facturas"}
         </span>
+        {isCurrentBatch && (
+          <span className="rounded-full bg-indigo-100 text-indigo-600 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal">
+            Lote actual
+          </span>
+        )}
       </span>
       <span className="font-medium text-gray-600">{formatCurrency(subtotal)}</span>
     </div>
@@ -256,6 +311,7 @@ function CollectionRow({ row }: { row: PendingInvoice }): React.JSX.Element {
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 const CURRENT_MONTH = toMonthKey(new Date());
+const CURRENT_BATCH: "first" | "second" = new Date().getDate() <= 15 ? "first" : "second";
 
 export function PaymentsView({
   pendingPayments,
@@ -264,9 +320,43 @@ export function PaymentsView({
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<"pagos" | "cobros">("pagos");
   const [company, setCompany] = useState("all");
-  const [selectedMonth, setSelectedMonth] = useState("all");
+  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
+  const [orderByBatch, setOrderByBatch] = useState<OrderMap>({});
 
-  const hasFilters = company !== "all" || selectedMonth !== "all";
+  // Load saved order from localStorage (client-only)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setOrderByBatch(JSON.parse(saved) as OrderMap);
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  function handleBatchDragEnd(
+    batchKey: string,
+    halfItems: PaymentInvoice[],
+    event: DragEndEvent,
+  ): void {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ordered = applyOrder(halfItems, batchKey, orderByBatch);
+    const oldIndex = ordered.findIndex((i) => i.id === String(active.id));
+    const newIndex = ordered.findIndex((i) => i.id === String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(ordered, oldIndex, newIndex).map((i) => i.id);
+    setOrderByBatch((prev) => {
+      const next = { ...prev, [batchKey]: newOrder };
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  const hasFilters = company !== "all" || selectedMonth !== CURRENT_MONTH;
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -428,30 +518,63 @@ export function PaymentsView({
                 isPast={group.isPast}
                 isCurrent={group.isCurrent}
               >
-                {group.key !== "sin-fecha" && group.firstHalf.length > 0 && (
-                  <>
-                    <HalfSectionHeader
-                      label="Del 1 al 15"
-                      count={group.firstHalf.length}
-                      subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                    />
-                    {group.firstHalf.map((inv) => (
-                      <PaymentRow key={inv.id} invoice={inv} />
-                    ))}
-                  </>
-                )}
-                {group.key !== "sin-fecha" && group.secondHalf.length > 0 && (
-                  <>
-                    <HalfSectionHeader
-                      label="Del 16 al fin de mes"
-                      count={group.secondHalf.length}
-                      subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                    />
-                    {group.secondHalf.map((inv) => (
-                      <PaymentRow key={inv.id} invoice={inv} />
-                    ))}
-                  </>
-                )}
+                {group.key !== "sin-fecha" && (() => {
+                  const firstKey = `${group.key}-first`;
+                  const secondKey = `${group.key}-second`;
+                  const orderedFirst = applyOrder(group.firstHalf, firstKey, orderByBatch);
+                  const orderedSecond = applyOrder(group.secondHalf, secondKey, orderByBatch);
+                  return (
+                    <>
+                      {/* Del 1 al 15 */}
+                      <HalfSectionHeader
+                        label="Del 1 al 15"
+                        count={orderedFirst.length}
+                        subtotal={orderedFirst.reduce((s, i) => s + i.effectivePending, 0)}
+                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
+                      />
+                      {orderedFirst.length > 0 ? (
+                        <DndContext
+                          sensors={sensors}
+                          onDragEnd={(e) => handleBatchDragEnd(firstKey, group.firstHalf, e)}
+                        >
+                          <SortableContext items={orderedFirst.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                            {orderedFirst.map((inv) => (
+                              <SortablePaymentRow key={inv.id} invoice={inv} />
+                            ))}
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
+                          Sin facturas en este período
+                        </p>
+                      )}
+
+                      {/* Del 16 al fin de mes */}
+                      <HalfSectionHeader
+                        label="Del 16 al fin de mes"
+                        count={orderedSecond.length}
+                        subtotal={orderedSecond.reduce((s, i) => s + i.effectivePending, 0)}
+                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
+                      />
+                      {orderedSecond.length > 0 ? (
+                        <DndContext
+                          sensors={sensors}
+                          onDragEnd={(e) => handleBatchDragEnd(secondKey, group.secondHalf, e)}
+                        >
+                          <SortableContext items={orderedSecond.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                            {orderedSecond.map((inv) => (
+                              <SortablePaymentRow key={inv.id} invoice={inv} />
+                            ))}
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
+                          Sin facturas en este período
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
                 {group.key === "sin-fecha" && group.firstHalf.map((inv) => (
                   <PaymentRow key={inv.id} invoice={inv} />
                 ))}
@@ -488,26 +611,41 @@ export function PaymentsView({
                 isPast={group.isPast}
                 isCurrent={group.isCurrent}
               >
-                {group.key !== "sin-fecha" && group.firstHalf.length > 0 && (
-                  <>
-                    <HalfSectionHeader
-                      label="Del 1 al 15"
-                      count={group.firstHalf.length}
-                      subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                    />
-                    {group.firstHalf.map((row) => <CollectionRow key={row.id} row={row} />)}
-                  </>
-                )}
-                {group.key !== "sin-fecha" && group.secondHalf.length > 0 && (
-                  <>
-                    <HalfSectionHeader
-                      label="Del 16 al fin de mes"
-                      count={group.secondHalf.length}
-                      subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                    />
-                    {group.secondHalf.map((row) => <CollectionRow key={row.id} row={row} />)}
-                  </>
-                )}
+                {group.key !== "sin-fecha" && (() => {
+                  return (
+                    <>
+                      {/* Del 1 al 15 */}
+                      <HalfSectionHeader
+                        label="Del 1 al 15"
+                        count={group.firstHalf.length}
+                        subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
+                      />
+                      {group.firstHalf.length > 0
+                        ? group.firstHalf.map((row) => <CollectionRow key={row.id} row={row} />)
+                        : (
+                          <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
+                            Sin facturas en este período
+                          </p>
+                        )}
+
+                      {/* Del 16 al fin de mes */}
+                      <HalfSectionHeader
+                        label="Del 16 al fin de mes"
+                        count={group.secondHalf.length}
+                        subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
+                        isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
+                      />
+                      {group.secondHalf.length > 0
+                        ? group.secondHalf.map((row) => <CollectionRow key={row.id} row={row} />)
+                        : (
+                          <p className="px-6 py-3 text-xs text-gray-400 italic border-b border-gray-100">
+                            Sin facturas en este período
+                          </p>
+                        )}
+                    </>
+                  );
+                })()}
                 {group.key === "sin-fecha" && group.firstHalf.map((row) => (
                   <CollectionRow key={row.id} row={row} />
                 ))}
