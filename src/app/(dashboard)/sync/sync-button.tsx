@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ export function SyncButton(): React.JSX.Element {
   const [isSyncing, setIsSyncing] = useState(false);
   const [items, setItems] = useState<SourceItem[]>([]);
   const router = useRouter();
+  const [, startTransition] = useTransition();
 
   async function handleSync(): Promise<void> {
     setIsSyncing(true);
@@ -76,7 +77,7 @@ export function SyncButton(): React.JSX.Element {
                 )
               );
             } else if (data.type === "complete") {
-              router.refresh();
+              startTransition(() => { router.refresh(); });
             } else if (data.type === "fatal") {
               setItems((prev) =>
                 prev.map((item) =>
