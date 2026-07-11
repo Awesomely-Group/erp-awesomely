@@ -18,8 +18,7 @@ const PERIODS = [
 const STATUSES = [
   { value: "", label: "Todos los estados" },
   { value: "0", label: "Borrador" },
-  { value: "1", label: "Enviada" },
-  { value: "2", label: "Aceptada" },
+  { value: "2", label: "Aprobado" },
   { value: "-1", label: "Cancelada" },
   { value: "3", label: "Facturado" },
 ];
@@ -179,7 +178,7 @@ export function ProformasFilters({
       )}
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Estado Holded</label>
+        <label className="text-xs text-gray-500 font-medium">Estado</label>
         <select
           value={status}
           onChange={(e) => { const v = e.target.value; setStatus(v); applyWith({ status: v }); }}

@@ -56,7 +56,13 @@ function buildWhere(params: ProformaPageParams): Prisma.ProformaWhereInput {
   }
 
   if (params.status !== undefined && params.status !== "") {
-    andConditions.push({ holdedStatus: parseInt(params.status, 10) });
+    const s = parseInt(params.status, 10);
+    // "Borrador" (0) agrupa los estados 0 y 1 de Holded (borrador y enviada)
+    if (s === 0) {
+      andConditions.push({ holdedStatus: { in: [0, 1] } });
+    } else {
+      andConditions.push({ holdedStatus: s });
+    }
   } else {
     andConditions.push({ holdedStatus: { not: 3 } });
   }

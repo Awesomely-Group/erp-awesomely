@@ -5,14 +5,14 @@ import { ProformaClassifyForm } from "./proforma-classify-form";
 const STATUS_LABELS: Record<number, string> = {
   [-1]: "Cancelada",
   [0]: "Borrador",
-  [1]: "Enviada",
-  [2]: "Aceptada",
+  [1]: "Borrador",
+  [2]: "Aprobado",
 };
 
 const STATUS_COLORS: Record<number, string> = {
   [-1]: "bg-red-100 text-red-700",
   [0]: "bg-gray-100 text-gray-600",
-  [1]: "bg-yellow-100 text-yellow-700",
+  [1]: "bg-gray-100 text-gray-600",
   [2]: "bg-green-100 text-green-700",
 };
 
