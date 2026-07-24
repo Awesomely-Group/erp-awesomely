@@ -18,6 +18,7 @@ import {
   BarChart3,
   PanelLeftClose,
   BookOpen,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
@@ -31,6 +32,8 @@ const navigation = [
   { name: "Proveedores", href: "/suppliers", icon: Users },
   { name: "Flujo de Caja", href: "/cashflow", icon: TrendingUp },
   { name: "P&L", href: "/pl", icon: BarChart3 },
+  { name: "Tesorería", href: "/tesoreria", icon: Landmark },
+  { name: "Ppto vs Real", href: "/ppto-vs-real", icon: BarChart3 },
   { name: "Previsiones", href: "/forecasts", icon: CalendarDays },
   { name: "Proyecciones", href: "/proyecciones", icon: LineChart },
   { name: "Pagos y Cobros", href: "/payments", icon: CreditCard },
