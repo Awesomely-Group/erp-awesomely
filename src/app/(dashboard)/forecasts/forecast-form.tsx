@@ -4,6 +4,12 @@ import { useTransition, useState } from "react";
 import { ForecastType } from "@prisma/client";
 import { MARCA_OPTIONS } from "@/lib/org";
 import { createForecast, updateForecast } from "./actions";
+import {
+  AccountMappingSelect,
+  SupplierSelect,
+  type AccountMappingOption,
+  type SupplierOption,
+} from "./forecast-classification-fields";
 
 type Project = { id: string; name: string };
 
@@ -13,6 +19,8 @@ type ForecastRow = {
   type: ForecastType;
   marca: string | null;
   projectId: string | null;
+  accountMappingId?: string | null;
+  supplierId?: string | null;
   description: string | null;
   amountOptimistic: unknown;
   amountPessimistic: unknown;
@@ -27,10 +35,14 @@ function toMonthValue(date: Date): string {
 export function ForecastForm({
   forecast,
   projects,
+  accountMappings,
+  suppliers,
   onClose,
 }: {
   forecast?: ForecastRow;
   projects: Project[];
+  accountMappings: AccountMappingOption[];
+  suppliers: SupplierOption[];
   onClose: () => void;
 }): React.JSX.Element {
   const [pending, startTransition] = useTransition();
@@ -46,21 +58,29 @@ export function ForecastForm({
     const type = fd.get("type") as ForecastType;
     const marca = (fd.get("marca") as string) || null;
     const projectId = (fd.get("projectId") as string) || null;
+    const accountMappingId = (fd.get("accountMappingId") as string) || null;
+    const supplierId = (fd.get("supplierId") as string) || null;
     const description = (fd.get("description") as string) || null;
     const amountOptimistic = parseFloat(fd.get("amountOptimistic") as string);
     const amountPessimistic = parseFloat(fd.get("amountPessimistic") as string);
 
-    if (!month || isNaN(amountOptimistic) || isNaN(amountPessimistic)) {
-      setError("Por favor rellena todos los campos obligatorios.");
+    if (!month || !marca || !accountMappingId || isNaN(amountOptimistic) || isNaN(amountPessimistic)) {
+      setError("Por favor rellena todos los campos obligatorios (mes, marca, cuenta contable e importes).");
       return;
     }
 
     setError(null);
     startTransition(async () => {
       if (forecast) {
-        await updateForecast(forecast.id, { month, type, marca, projectId, description, amountOptimistic, amountPessimistic });
+        await updateForecast(forecast.id, {
+          month, type, marca, projectId, accountMappingId, supplierId, description,
+          amountOptimistic, amountPessimistic,
+        });
       } else {
-        await createForecast({ month, type, marca, projectId, description, amountOptimistic, amountPessimistic });
+        await createForecast({
+          month, type, marca, projectId, accountMappingId, supplierId, description,
+          amountOptimistic, amountPessimistic,
+        });
       }
       onClose();
     });
@@ -68,7 +88,7 @@ export function ForecastForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-gray-900">
             {forecast ? "Editar previsión" : "Nueva previsión"}
@@ -110,13 +130,14 @@ export function ForecastForm({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Marca</label>
+              <label className="text-xs font-medium text-gray-600">Marca *</label>
               <select
                 name="marca"
+                required
                 defaultValue={forecast?.marca ?? ""}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
               >
-                <option value="">Sin asignar</option>
+                <option value="">Selecciona…</option>
                 {MARCA_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
@@ -136,6 +157,13 @@ export function ForecastForm({
               </select>
             </div>
           </div>
+
+          <AccountMappingSelect
+            accountMappings={accountMappings}
+            defaultAccountMappingId={forecast?.accountMappingId}
+          />
+
+          <SupplierSelect suppliers={suppliers} defaultSupplierId={forecast?.supplierId} />
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-600">Descripción</label>
