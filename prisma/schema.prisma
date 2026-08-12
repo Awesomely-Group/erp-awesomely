@@ -828,6 +828,19 @@ model Budget {
   holdedDocId    String?
   holdedSyncedAt DateTime?
 
+  // ─── Integración de propuestas (gigsonapps.com / latroupeapps.com) ───────────
+  // El presupuesto/propuesta se crea desde una plataforma externa por marca; estos
+  // campos rastrean su origen, el contenido de la propuesta enviada a firma, y el
+  // estado de la firma en Documenso. Ver docs/proposals-plan-v2.md.
+  sourcePlatform       String?   // "LT_TOOLS" | "GIGSONAPPS"
+  externalRef          String?   // uuid generado por la plataforma llamante (idempotencia)
+  executiveSummary     String?   // resumen ejecutivo de la propuesta
+  paymentConditions    String?   // condiciones de pago en texto libre
+  validUntil           DateTime? // validez comercial de la propuesta
+  sentAt               DateTime? // cuándo se envió a firmar
+  documensoDocumentId  Int?
+  documensoStatus      String?   // "DRAFT" | "SENT" | "VIEWED" | "SIGNED"
+
   lines          BudgetLine[]
   paymentTerms   PaymentTerm[]
   classifications Classification[]
@@ -835,6 +848,7 @@ model Budget {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([sourcePlatform, externalRef])
   @@index([projectId])
   @@index([status])
   @@index([companyId])
@@ -860,6 +874,13 @@ model BudgetLine {
   concept   String?
   quantity  Decimal?
   unitPrice Decimal?
+
+  // Configurador de propuesta (heredado de docs/proposals-plan.md) — opcional,
+  // usado sobre todo por el catálogo de servicios de Gigson Solutions (tarifas
+  // BUILD/DISCOVER); LaTroupe puede dejarlo vacío si su lógica de precios es otra.
+  rateType     String?  // "BUILD" | "DISCOVER"
+  serviceType  String?  // p.ej. "discovery" | "desarrollo" | "integracion" | "consultoria" | "devops" | "qa" | "pm" | "mantenimiento"
+  deliverables String[] @default([])
 
   sortOrder Int @default(0)
 

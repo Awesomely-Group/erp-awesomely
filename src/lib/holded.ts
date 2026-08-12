@@ -192,6 +192,34 @@ export interface AccountEntry {
   balance?: number;
 }
 
+export interface HoldedBillAddress {
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  province?: string;
+  country?: string;
+  countryCode?: string; // ISO 3166-1 alpha-2
+}
+
+export interface HoldedCreateContactPayload {
+  name: string;
+  vatNumber?: string;
+  isPerson?: boolean;
+  tradeName?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  billAddress?: HoldedBillAddress;
+  /** Defaults to "client" — this integration only ever creates client contacts. */
+  type?: "client" | "supplier" | "lead" | "debtor" | "creditor";
+}
+
+export interface HoldedService {
+  id: string;
+  name: string;
+  price?: number;
+}
+
 export interface HoldedCreateDocumentPayload {
   date: number;
   contactId?: string;
@@ -646,6 +674,87 @@ export class HoldedClient {
     if (!query) return results;
     const q = query.toLowerCase();
     return results.filter((c) => c.name.toLowerCase().includes(q));
+  }
+
+  /**
+   * Creates a new client contact in Holded.
+   *
+   * Field names confirmed against the official docs
+   * (https://www.holded.com/es/desarrolladores/referencia-api/contactos/crear-un-contacto):
+   * v2 uses snake_case (`vat_number`, `is_person`, `bill_address` with `postal_code`/
+   * `country_code`); v1 uses camelCase equivalents. `name` is the only field Holded
+   * requires, but this integration always sends `vatNumber` too since it's required to
+   * later issue a proforma/invoice.
+   */
+  async createContact(payload: HoldedCreateContactPayload): Promise<{ id: string; name: string }> {
+    const type = payload.type ?? "client";
+
+    if (IS_V2) {
+      const body: Record<string, unknown> = { name: payload.name, type };
+      if (payload.vatNumber) body.vat_number = payload.vatNumber;
+      if (payload.isPerson !== undefined) body.is_person = payload.isPerson;
+      if (payload.tradeName) body.trade_name = payload.tradeName;
+      if (payload.email) body.email = payload.email;
+      if (payload.phone) body.phone = payload.phone;
+      if (payload.mobile) body.mobile = payload.mobile;
+      if (payload.billAddress) {
+        body.bill_address = {
+          address: payload.billAddress.address,
+          city: payload.billAddress.city,
+          postal_code: payload.billAddress.postalCode,
+          province: payload.billAddress.province,
+          country: payload.billAddress.country,
+          country_code: payload.billAddress.countryCode,
+        };
+      }
+      const result = await this.post<{ id: string }>("/contacts", body);
+      return { id: result.id, name: payload.name };
+    }
+
+    // v1 — best-effort camelCase mapping (v1 contact fields aren't formally documented
+    // in the same reference page; verify against a real v1 account before relying on this).
+    const body: Record<string, unknown> = { name: payload.name, type };
+    if (payload.vatNumber) body.code = payload.vatNumber;
+    if (payload.isPerson !== undefined) body.isperson = payload.isPerson ? 1 : 0;
+    if (payload.tradeName) body.tradeName = payload.tradeName;
+    if (payload.email) body.email = payload.email;
+    if (payload.phone) body.phone = payload.phone;
+    if (payload.mobile) body.mobile = payload.mobile;
+    if (payload.billAddress) {
+      body.billAddress = {
+        address: payload.billAddress.address,
+        city: payload.billAddress.city,
+        postalCode: payload.billAddress.postalCode,
+        province: payload.billAddress.province,
+        country: payload.billAddress.country,
+        countryCode: payload.billAddress.countryCode,
+      };
+    }
+    const result = await this.post<{ id: string }>("/contacts", body);
+    return { id: result.id, name: payload.name };
+  }
+
+  /**
+   * Lists the service/product catalog configured in Holded for this company.
+   * Used as the source of the proposal configurator's service picker (see
+   * docs/proposals-plan-v2.md). Non-fatal: returns [] if the account has no
+   * catalog or the endpoint is unavailable.
+   */
+  async listServices(): Promise<HoldedService[]> {
+    try {
+      type RawService = { id: string; name: string; price?: number | string };
+      const raw = await this.fetch<RawService[] | { items?: RawService[] }>("/services", {
+        limit: "500",
+      });
+      const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
+      return batch.map((s) => ({
+        id: s.id,
+        name: s.name,
+        price: typeof s.price === "string" ? parseCommaNum(s.price) : s.price,
+      }));
+    } catch {
+      return [];
+    }
   }
 
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
