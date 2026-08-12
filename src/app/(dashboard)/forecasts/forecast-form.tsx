@@ -166,7 +166,7 @@ export function ForecastForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-gray-900">
             {isEditing ? "Editar previsión" : "Nueva previsión"}
@@ -204,7 +204,7 @@ export function ForecastForm({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             {mode === "oneshot" ? (
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Mes *</label>
@@ -242,10 +242,24 @@ export function ForecastForm({
                 <option value={ForecastType.EXPENSE}>Gasto</option>
               </select>
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">Marca *</label>
+              <select
+                name="marca"
+                required
+                defaultValue={forecast?.marca ?? ""}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">Selecciona…</option>
+                {MARCA_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {mode === "recurrence" && (
-            <>
+            <div className="grid grid-cols-3 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Fecha de inicio *</label>
                 <input
@@ -257,28 +271,34 @@ export function ForecastForm({
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Fin de la recurrencia *</label>
-                <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm w-fit">
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
                   <button
                     type="button"
                     onClick={() => setEndMode("occurrences")}
-                    className={`px-3 py-1.5 transition-colors ${
+                    className={`flex-1 px-2 py-1.5 transition-colors ${
                       endMode === "occurrences" ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
                     }`}
                   >
-                    Nº de ocurrencias
+                    Ocurrencias
                   </button>
                   <button
                     type="button"
                     onClick={() => setEndMode("date")}
-                    className={`px-3 py-1.5 border-l border-gray-300 transition-colors ${
+                    className={`flex-1 px-2 py-1.5 border-l border-gray-300 transition-colors ${
                       endMode === "date" ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
                     }`}
                   >
-                    Fecha de fin
+                    Fecha fin
                   </button>
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">
+                  {endMode === "occurrences" ? "Nº de ocurrencias *" : "Fecha de fin *"}
+                </label>
                 {endMode === "occurrences" ? (
                   <input
                     type="number"
@@ -297,29 +317,16 @@ export function ForecastForm({
                     className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
                   />
                 )}
-                <p className={`text-xs ${overLimit ? "text-red-600 font-medium" : "text-gray-500"}`}>
-                  Se generarán <strong>{previewCount}</strong> previsión{previewCount !== 1 ? "es" : ""}
-                  {overLimit ? ` — supera el límite de ${max} para esta frecuencia` : ""}.
-                </p>
               </div>
-            </>
+
+              <p className={`text-xs col-span-3 -mt-1 ${overLimit ? "text-red-600 font-medium" : "text-gray-500"}`}>
+                Se generarán <strong>{previewCount}</strong> previsión{previewCount !== 1 ? "es" : ""}
+                {overLimit ? ` — supera el límite de ${max} para esta frecuencia` : ""}.
+              </p>
+            </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Marca *</label>
-              <select
-                name="marca"
-                required
-                defaultValue={forecast?.marca ?? ""}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              >
-                <option value="">Selecciona…</option>
-                {MARCA_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
+          <div className="grid grid-cols-3 gap-4">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-gray-600">Proyecto</label>
               <select
@@ -333,14 +340,14 @@ export function ForecastForm({
                 ))}
               </select>
             </div>
+
+            <AccountMappingSelect
+              accountMappings={accountMappings}
+              defaultAccountMappingId={forecast?.accountMappingId}
+            />
+
+            <SupplierSelect suppliers={suppliers} defaultSupplierId={forecast?.supplierId} />
           </div>
-
-          <AccountMappingSelect
-            accountMappings={accountMappings}
-            defaultAccountMappingId={forecast?.accountMappingId}
-          />
-
-          <SupplierSelect suppliers={suppliers} defaultSupplierId={forecast?.supplierId} />
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-600">Descripción</label>
@@ -381,17 +388,19 @@ export function ForecastForm({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Importe por ocurrencia (EUR) *</label>
-              <input
-                type="number"
-                name="amount"
-                required
-                min="0"
-                step="0.01"
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-              />
-              <p className="text-xs text-gray-400">
+            <div className="grid grid-cols-3 gap-4 items-start">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Importe por ocurrencia (EUR) *</label>
+                <input
+                  type="number"
+                  name="amount"
+                  required
+                  min="0"
+                  step="0.01"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                />
+              </div>
+              <p className="text-xs text-gray-400 col-span-2 self-center">
                 Se usará el mismo importe en cada previsión generada; después puedes editar cada
                 una de forma independiente.
               </p>
