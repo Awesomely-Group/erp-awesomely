@@ -7,7 +7,7 @@ import { getCashflowData, getCashflowCompanies, getCashflowAccounts, getMonthInv
 import type { CashflowParams, CashflowMonthlyPoint } from "@/lib/cashflow-data";
 import { getForecastFormOptions } from "./forecasts-data";
 import { ForecastsChartFilters } from "./forecasts-chart-filters";
-import { NewForecastButton } from "./new-forecast-button";
+import { ForecastCreateButton } from "./forecast-create-button";
 import { CashflowChart } from "../cashflow/cashflow-chart";
 
 type MonthInvoice = {
@@ -104,7 +104,7 @@ export default async function ForecastsPage({
             <ForecastsChartFilters companies={companies} accounts={accounts} />
           </Suspense>
           <div className="flex items-center gap-2">
-            <NewForecastButton
+            <ForecastCreateButton
               projects={formOptions.projects}
               accountMappings={formOptions.accountMappings}
               suppliers={formOptions.suppliers}
