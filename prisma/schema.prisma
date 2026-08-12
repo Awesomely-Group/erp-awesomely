@@ -143,6 +143,7 @@ model JiraProject {
   userRoles                    ProjectUserRole[]
   proformas                    Proforma[]
   forecasts                    Forecast[]
+  forecastRecurrences          ForecastRecurrence[]
   hourBuckets                  HourBucket[]
   regularFeeEntries            RegularFeeEntry[]
   issueHourBucketAssignments   IssueHourBucketAssignment[]
@@ -454,9 +455,11 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  jiraUsers     SupplierJiraUser[]
-  roles         SupplierRole[]
-  verifications SupplierVerification[]
+  jiraUsers           SupplierJiraUser[]
+  roles               SupplierRole[]
+  verifications       SupplierVerification[]
+  forecasts           Forecast[]
+  forecastRecurrences ForecastRecurrence[]
 
   @@unique([holdedContactId, companyId])
   @@index([companyId])
@@ -671,6 +674,50 @@ enum ForecastType {
   @@map("forecast_type")
 }
 
+enum ForecastFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+
+  @@map("forecast_frequency")
+}
+
+/// Plantilla de recurrencia para previsiones manuales. No representa un importe propio
+/// que se sume en cashflow — únicamente describe cómo se generaron los `Forecast` hijos
+/// (creados todos de golpe al crear la recurrencia, ver recurrence-actions.ts).
+model ForecastRecurrence {
+  id          String            @id @default(cuid())
+  frequency   ForecastFrequency
+  startDate   DateTime
+  endDate     DateTime?
+  occurrences Int?
+
+  type             ForecastType
+  marca            String?
+  projectId        String?
+  project          JiraProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  accountMappingId String?
+  accountMapping   AccountMapping? @relation(fields: [accountMappingId], references: [id], onDelete: SetNull)
+  supplierId       String?
+  supplier         Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  description       String?
+  amountOptimistic  Decimal
+  amountPessimistic Decimal
+
+  createdBy String?
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  forecasts Forecast[]
+
+  @@index([marca])
+  @@map("forecast_recurrences")
+}
+
 model Forecast {
   id                String       @id @default(cuid())
   month             DateTime
@@ -679,9 +726,18 @@ model Forecast {
   projectId         String?
   project           JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  accountMappingId String?
+  accountMapping   AccountMapping? @relation(fields: [accountMappingId], references: [id], onDelete: SetNull)
+  supplierId       String?
+  supplier         Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
   description       String?
   amountOptimistic  Decimal
   amountPessimistic Decimal
+
+  recurrenceId String?
+  recurrence   ForecastRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: Cascade)
+  isPaused     Boolean             @default(false)
 
   createdBy         String?
   updatedBy         String?
@@ -691,6 +747,9 @@ model Forecast {
 
   @@index([month])
   @@index([marca])
+  @@index([recurrenceId])
+  @@index([accountMappingId])
+  @@index([supplierId])
   @@map("forecasts")
 }
 
@@ -881,6 +940,9 @@ model AccountMapping {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  forecasts           Forecast[]
+  forecastRecurrences ForecastRecurrence[]
 
   @@map("account_mappings")
 }

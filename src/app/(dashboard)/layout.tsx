@@ -8,7 +8,9 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }): Promise<React.JSX.Element> {
   const session = await auth();
-  if (!session) redirect("/login");
+  // En desarrollo local (NODE_ENV !== "production") se omite el login para agilizar las
+  // pruebas sin pasar por SSO. Nunca afecta a producción (ver también src/proxy.ts).
+  if (!session && process.env.NODE_ENV === "production") redirect("/login");
 
   return <DashboardShell>{children}</DashboardShell>;
 }

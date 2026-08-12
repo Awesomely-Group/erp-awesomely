@@ -27,6 +27,9 @@ export default auth((req) => {
     p.startsWith("/api/webhooks/");
 
   if (isApiAuth || isApiInternal) return NextResponse.next();
+  // En desarrollo local (NODE_ENV !== "production") se omite el login para agilizar las
+  // pruebas sin pasar por SSO. Nunca afecta a producción (ver también layout.tsx).
+  if (process.env.NODE_ENV !== "production") return NextResponse.next();
   if (!isLoggedIn && !isLoginPage) {
     return NextResponse.redirect(new URL("/login", req.url));
   }

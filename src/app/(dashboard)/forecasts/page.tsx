@@ -1,12 +1,13 @@
 import { Suspense } from "react";
-import { prisma } from "@/lib/prisma";
-import { ForecastType, InvoiceType } from "@prisma/client";
+import Link from "next/link";
+import { Table2 } from "lucide-react";
+import { InvoiceType } from "@prisma/client";
 import { formatCurrency, formatDate, holdedInvoiceUrl, holdedProformaUrl } from "@/lib/utils";
 import { getCashflowData, getCashflowCompanies, getCashflowAccounts, getMonthInvoices, getMonthProformas } from "@/lib/cashflow-data";
 import type { CashflowParams, CashflowMonthlyPoint } from "@/lib/cashflow-data";
-import Link from "next/link";
-import { ForecastsClient } from "./forecasts-client";
+import { getForecastFormOptions } from "./forecasts-data";
 import { ForecastsChartFilters } from "./forecasts-chart-filters";
+import { NewForecastButton } from "./new-forecast-button";
 import { CashflowChart } from "../cashflow/cashflow-chart";
 
 type MonthInvoice = {
@@ -42,27 +43,9 @@ export default async function ForecastsPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
 
-  const [forecasts, projects, { monthly, kpis }, companies, accounts, monthInvoicesRaw, monthProformasRaw] =
+  const [formOptions, { monthly, kpis }, companies, accounts, monthInvoicesRaw, monthProformasRaw] =
     await Promise.all([
-      prisma.forecast.findMany({
-        select: {
-          id: true,
-          month: true,
-          type: true,
-          marca: true,
-          projectId: true,
-          project: { select: { id: true, name: true } },
-          description: true,
-          amountOptimistic: true,
-          amountPessimistic: true,
-        },
-        orderBy: [{ month: "asc" }],
-      }),
-      prisma.jiraProject.findMany({
-        where: { active: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
+      getForecastFormOptions(),
       getCashflowData(params, true),
       getCashflowCompanies(),
       getCashflowAccounts(),
@@ -84,16 +67,6 @@ export default async function ForecastsPage({
   const selectedMonthPoint = params.selectedMonth
     ? monthly.find((p: CashflowMonthlyPoint) => p.monthKey === params.selectedMonth)
     : null;
-
-  const incomeForecasts = forecasts.filter((f) => f.type === ForecastType.INCOME);
-  const expenseForecasts = forecasts.filter((f) => f.type === ForecastType.EXPENSE);
-
-  const forecastTotals = {
-    totalIncomePessimistic: incomeForecasts.reduce((s, f) => s + Number(f.amountPessimistic), 0),
-    totalIncomeOptimistic: incomeForecasts.reduce((s, f) => s + Number(f.amountOptimistic), 0),
-    totalExpensePessimistic: expenseForecasts.reduce((s, f) => s + Number(f.amountPessimistic), 0),
-    totalExpenseOptimistic: expenseForecasts.reduce((s, f) => s + Number(f.amountOptimistic), 0),
-  };
 
   const netIsPositive = kpis.netCashflow >= 0;
   const scenarioLabel = params.scenario === "optimistic" ? "optimista" : "pesimista";
@@ -126,9 +99,25 @@ export default async function ForecastsPage({
           <h1 className="text-2xl font-bold text-gray-900">Previsiones</h1>
           <p className="text-sm text-gray-500 mt-1">Estimaciones ERP · en EUR</p>
         </div>
-        <Suspense>
-          <ForecastsChartFilters companies={companies} accounts={accounts} />
-        </Suspense>
+        <div className="flex items-end gap-3 flex-wrap">
+          <Suspense>
+            <ForecastsChartFilters companies={companies} accounts={accounts} />
+          </Suspense>
+          <div className="flex items-center gap-2">
+            <NewForecastButton
+              projects={formOptions.projects}
+              accountMappings={formOptions.accountMappings}
+              suppliers={formOptions.suppliers}
+            />
+            <Link
+              href="/forecasts/manuales"
+              title="Ver todas las previsiones en una tabla"
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2.5 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            >
+              <Table2 className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* KPIs del flujo actual */}
@@ -283,34 +272,6 @@ export default async function ForecastsPage({
           )}
         </div>
       )}
-
-      {/* Separador */}
-      <div className="border-t border-gray-200 pt-2">
-        <h2 className="text-lg font-semibold text-gray-800">Estimaciones manuales</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Gestiona los escenarios pesimista y optimista</p>
-      </div>
-
-      {/* KPIs por escenario */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ingresos pesimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-600">{formatCurrency(forecastTotals.totalIncomePessimistic)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ingresos optimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(forecastTotals.totalIncomeOptimistic)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Gastos pesimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-600">{formatCurrency(forecastTotals.totalExpensePessimistic)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Gastos optimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(forecastTotals.totalExpenseOptimistic)}</p>
-        </div>
-      </div>
-
-      <ForecastsClient forecasts={forecasts} projects={projects} />
     </div>
   );
 }

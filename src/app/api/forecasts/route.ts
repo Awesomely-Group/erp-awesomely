@@ -10,6 +10,8 @@ export async function GET(req: Request): Promise<Response> {
   const marca = url.searchParams.get("marca");
   const type = url.searchParams.get("type") as ForecastType | null;
   const projectId = url.searchParams.get("projectId");
+  const accountMappingId = url.searchParams.get("accountMappingId");
+  const supplierId = url.searchParams.get("supplierId");
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
 
@@ -18,6 +20,8 @@ export async function GET(req: Request): Promise<Response> {
       ...(marca ? { marca } : {}),
       ...(type ? { type } : {}),
       ...(projectId ? { projectId } : {}),
+      ...(accountMappingId ? { accountMappingId } : {}),
+      ...(supplierId ? { supplierId } : {}),
       ...(from || to
         ? {
             month: {
@@ -29,6 +33,8 @@ export async function GET(req: Request): Promise<Response> {
     },
     include: {
       project: { select: { name: true, jiraKey: true } },
+      accountMapping: { select: { id: true, description: true, l1: true } },
+      supplier: { select: { id: true, name: true } },
     },
     orderBy: [{ month: "asc" }, { type: "asc" }],
   });
@@ -51,6 +57,8 @@ export async function POST(req: Request): Promise<Response> {
     type,
     marca = null,
     projectId = null,
+    accountMappingId = null,
+    supplierId = null,
     description = null,
     amountOptimistic,
     amountPessimistic,
@@ -75,6 +83,8 @@ export async function POST(req: Request): Promise<Response> {
       type: type as ForecastType,
       marca: typeof marca === "string" ? marca : null,
       projectId: typeof projectId === "string" ? projectId : null,
+      accountMappingId: typeof accountMappingId === "string" ? accountMappingId : null,
+      supplierId: typeof supplierId === "string" ? supplierId : null,
       description: typeof description === "string" ? description : null,
       amountOptimistic,
       amountPessimistic,

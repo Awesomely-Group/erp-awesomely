@@ -169,6 +169,23 @@ export async function getCashflowData(
   }
 
   const scenario = params.scenario === "optimistic" ? "optimistic" : "pessimistic";
+
+  // Resuelve accountMappingId(s) que coinciden con los filtros l1/account, para aplicar
+  // el mismo filtro de categoría/cuenta a las previsiones manuales (`Forecast`).
+  let forecastAccountMappingIds: string[] | undefined;
+  if (l1List.length > 0 || accounts.length > 0) {
+    const mappings = await prisma.accountMapping.findMany({
+      where: {
+        ...(l1List.length > 0 ? { l1: { in: l1List } } : {}),
+        ...(accounts.length > 0
+          ? { OR: [{ accountNumSL: { in: accounts } }, { accountNumOU: { in: accounts } }] }
+          : {}),
+      },
+      select: { id: true },
+    });
+    forecastAccountMappingIds = mappings.map((m) => m.id);
+  }
+
   const [proformaRows, forecastRows] = withForecast
     ? await Promise.all([
         prisma.$queryRaw<ProformaMonthRow[]>`
@@ -180,22 +197,41 @@ export async function getCashflowData(
           GROUP BY DATE_TRUNC('month', date)
           ORDER BY month ASC
         `,
-        prisma.$queryRaw<ForecastMonthRow[]>`
-          SELECT DATE_TRUNC('month', month) AS month, type,
-            SUM("amountPessimistic") AS pessimistic,
-            SUM("amountOptimistic") AS optimistic
-          FROM forecasts
-          ${dateRange.gte ? Prisma.sql`WHERE month >= ${dateRange.gte}` : Prisma.empty}
-          ${
-            dateRange.lte
-              ? dateRange.gte
-                ? Prisma.sql`AND month <= ${dateRange.lte}`
-                : Prisma.sql`WHERE month <= ${dateRange.lte}`
-              : Prisma.empty
+        (() => {
+          const conditions: Prisma.Sql[] = [Prisma.sql`"isPaused" = false`];
+          if (dateRange.gte) conditions.push(Prisma.sql`month >= ${dateRange.gte}`);
+          if (dateRange.lte) conditions.push(Prisma.sql`month <= ${dateRange.lte}`);
+          {
+            const marcaList = params.marca?.split(",").filter(Boolean) ?? [];
+            const hasUnassigned = marcaList.includes(MARCA_FILTER_UNASSIGNED);
+            const namedMarcas = marcaList.filter((m) => m !== MARCA_FILTER_UNASSIGNED);
+            if (marcaList.length > 0) {
+              const mc: Prisma.Sql[] = [];
+              if (hasUnassigned) mc.push(Prisma.sql`marca IS NULL`);
+              if (namedMarcas.length > 0)
+                mc.push(Prisma.sql`marca IN (${Prisma.join(namedMarcas.map((m) => Prisma.sql`${m}`))})`);
+              if (mc.length === 1) conditions.push(mc[0]);
+              else if (mc.length > 1) conditions.push(Prisma.sql`(${Prisma.join(mc, " OR ")})`);
+            }
           }
-          GROUP BY DATE_TRUNC('month', month), type
-          ORDER BY month ASC
-        `,
+          if (forecastAccountMappingIds) {
+            conditions.push(
+              forecastAccountMappingIds.length > 0
+                ? Prisma.sql`"accountMappingId" IN (${Prisma.join(forecastAccountMappingIds.map((id) => Prisma.sql`${id}`))})`
+                : Prisma.sql`FALSE`
+            );
+          }
+          const where = Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`;
+          return prisma.$queryRaw<ForecastMonthRow[]>`
+            SELECT DATE_TRUNC('month', month) AS month, type,
+              SUM("amountPessimistic") AS pessimistic,
+              SUM("amountOptimistic") AS optimistic
+            FROM forecasts
+            ${where}
+            GROUP BY DATE_TRUNC('month', month), type
+            ORDER BY month ASC
+          `;
+        })(),
       ])
     : [[], []];
 
@@ -407,7 +443,7 @@ export async function getCashflowCompanies(): Promise<{ id: string; name: string
 }
 
 export async function getCashflowAccounts(): Promise<{ num: string; name: string }[]> {
-  const [rows, companies] = await Promise.all([
+  const [rows, companies, mappings] = await Promise.all([
     prisma.invoiceLine.findMany({
       where: { accountingAccount: { not: null } },
       select: { accountingAccount: true, accountingAccountName: true },
@@ -415,6 +451,12 @@ export async function getCashflowAccounts(): Promise<{ num: string; name: string
       orderBy: { accountingAccount: "asc" },
     }),
     prisma.company.findMany({ where: { active: true }, select: { holdedApiKey: true } }),
+    // Cuentas usadas en previsiones manuales (COGS/OPEX/CAPEX) aunque no tengan
+    // todavía ninguna factura histórica — así son filtrables desde el primer día.
+    prisma.accountMapping.findMany({
+      where: { l1: { in: ["COGS", "OPEX", "CAPEX"] } },
+      select: { description: true, accountNumSL: true, accountNameSL: true, accountNumOU: true, accountNameOU: true },
+    }),
   ]);
 
   const holdedById = new Map<string, string>();
@@ -428,11 +470,22 @@ export async function getCashflowAccounts(): Promise<{ num: string; name: string
     })
   );
 
+  const seen = new Set<string>();
   const result: { num: string; name: string }[] = [];
   for (const r of rows) {
     const dbKey = r.accountingAccount!;
     const name = r.accountingAccountName ?? holdedById.get(dbKey) ?? holdedByNum.get(dbKey);
-    if (name) result.push({ num: dbKey, name });
+    if (name && !seen.has(dbKey)) {
+      seen.add(dbKey);
+      result.push({ num: dbKey, name });
+    }
+  }
+  for (const m of mappings) {
+    for (const num of [m.accountNumSL, m.accountNumOU]) {
+      if (!num || seen.has(num)) continue;
+      seen.add(num);
+      result.push({ num, name: m.accountNameSL ?? m.accountNameOU ?? m.description });
+    }
   }
   return result;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ComposedChart,
@@ -28,10 +29,12 @@ function CustomTooltip({
   active,
   payload,
   label,
+  withTax,
 }: {
   active?: boolean;
   payload?: TooltipEntry[];
   label?: string;
+  withTax?: boolean;
 }): React.JSX.Element | null {
   if (!active || !payload?.length) return null;
 
@@ -39,9 +42,9 @@ function CustomTooltip({
     (payload.find((p) => p.dataKey === key)?.value as number) ?? 0;
 
   const inflowsBase = find("inflowsBase");
-  const inflowsTax = find("inflowsTax");
+  const inflowsTax = withTax ? find("inflowsTax") : 0;
   const outflowsBase = find("outflowsBase");
-  const outflowsTax = find("outflowsTax");
+  const outflowsTax = withTax ? find("outflowsTax") : 0;
   const forecastInflows = find("forecastInflows");
   const forecastOutflows = find("forecastOutflows");
   const trendInflows = find("trendInflows");
@@ -61,17 +64,21 @@ function CustomTooltip({
       {inflows > 0 && (
         <div className="mb-1.5">
           <p className="text-green-600 font-medium">Entradas: {formatCurrency(inflows)}</p>
-          <p className="text-xs text-gray-500 ml-2 mt-0.5">
-            Base: {formatCurrency(inflowsBase)} · IVA: {formatCurrency(inflowsTax)}
-          </p>
+          {withTax && (
+            <p className="text-xs text-gray-500 ml-2 mt-0.5">
+              Base: {formatCurrency(inflowsBase)} · IVA: {formatCurrency(inflowsTax)}
+            </p>
+          )}
         </div>
       )}
       {outflows > 0 && (
         <div className="mb-1.5">
           <p className="text-red-500 font-medium">Salidas: {formatCurrency(outflows)}</p>
-          <p className="text-xs text-gray-500 ml-2 mt-0.5">
-            Base: {formatCurrency(outflowsBase)} · IVA: {formatCurrency(outflowsTax)}
-          </p>
+          {withTax && (
+            <p className="text-xs text-gray-500 ml-2 mt-0.5">
+              Base: {formatCurrency(outflowsBase)} · IVA: {formatCurrency(outflowsTax)}
+            </p>
+          )}
         </div>
       )}
       {(forecastInflows > 0 || forecastOutflows > 0) && (
@@ -127,6 +134,7 @@ export function CashflowChart({
   const router = useRouter();
   const sp = useSearchParams();
   const selectedMonth = sp.get("selectedMonth") ?? undefined;
+  const [withTax, setWithTax] = useState(true);
 
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -152,7 +160,30 @@ export function CashflowChart({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <div>
+      <div className="flex justify-end mb-2">
+        <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs">
+          <button
+            type="button"
+            onClick={() => setWithTax(true)}
+            className={`px-2.5 py-1 transition-colors ${
+              withTax ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Con IVA
+          </button>
+          <button
+            type="button"
+            onClick={() => setWithTax(false)}
+            className={`px-2.5 py-1 border-l border-gray-300 transition-colors ${
+              !withTax ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Sin IVA
+          </button>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={height}>
       <ComposedChart
         data={data}
         margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
@@ -172,14 +203,14 @@ export function CashflowChart({
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<CustomTooltip withTax={withTax} />} />
         <Legend
           formatter={(value: string) => LEGEND_LABELS[value] ?? value}
           wrapperStyle={{ fontSize: 12 }}
         />
 
-        {/* Inflows: base bottom, tax top */}
-        <Bar dataKey="inflowsBase" stackId="inflows" maxBarSize={48} fill="#22c55e">
+        {/* Inflows: base bottom, tax top (solo si "Con IVA") */}
+        <Bar dataKey="inflowsBase" stackId="inflows" maxBarSize={48} radius={withTax ? undefined : [4, 4, 0, 0]} fill="#22c55e">
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
@@ -188,18 +219,20 @@ export function CashflowChart({
             />
           ))}
         </Bar>
-        <Bar dataKey="inflowsTax" stackId="inflows" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#86efac">
-          {data.map((entry) => (
-            <Cell
-              key={entry.monthKey}
-              fill={selectedMonth === entry.monthKey ? "#4ade80" : "#86efac"}
-              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
-            />
-          ))}
-        </Bar>
+        {withTax && (
+          <Bar dataKey="inflowsTax" stackId="inflows" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#86efac">
+            {data.map((entry) => (
+              <Cell
+                key={entry.monthKey}
+                fill={selectedMonth === entry.monthKey ? "#4ade80" : "#86efac"}
+                opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
+              />
+            ))}
+          </Bar>
+        )}
 
-        {/* Outflows: base bottom, tax top */}
-        <Bar dataKey="outflowsBase" stackId="outflows" maxBarSize={48} fill="#ef4444">
+        {/* Outflows: base bottom, tax top (solo si "Con IVA") */}
+        <Bar dataKey="outflowsBase" stackId="outflows" maxBarSize={48} radius={withTax ? undefined : [4, 4, 0, 0]} fill="#ef4444">
           {data.map((entry) => (
             <Cell
               key={entry.monthKey}
@@ -208,15 +241,17 @@ export function CashflowChart({
             />
           ))}
         </Bar>
-        <Bar dataKey="outflowsTax" stackId="outflows" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#fca5a5">
-          {data.map((entry) => (
-            <Cell
-              key={entry.monthKey}
-              fill={selectedMonth === entry.monthKey ? "#f87171" : "#fca5a5"}
-              opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
-            />
-          ))}
-        </Bar>
+        {withTax && (
+          <Bar dataKey="outflowsTax" stackId="outflows" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#fca5a5">
+            {data.map((entry) => (
+              <Cell
+                key={entry.monthKey}
+                fill={selectedMonth === entry.monthKey ? "#f87171" : "#fca5a5"}
+                opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 1}
+              />
+            ))}
+          </Bar>
+        )}
 
         {/* Forecast bars — only shown in preview mode */}
         {showForecast && (
@@ -298,6 +333,7 @@ export function CashflowChart({
           />
         )}
       </ComposedChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </div>
   );
 }

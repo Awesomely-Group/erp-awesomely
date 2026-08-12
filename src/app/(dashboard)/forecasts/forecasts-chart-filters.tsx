@@ -21,7 +21,9 @@ const MARCA_ALL_OPTIONS = [
 const L1_OPTIONS = [
   { value: "REVENUE", label: "Revenue" },
   { value: "COGS", label: "COGS" },
+  { value: "OPEX", label: "Opex" },
   { value: "CAPEX", label: "CAPEX" },
+  { value: "AMORT", label: "Amortización" },
 ] as const;
 
 type Company = { id: string; name: string };
