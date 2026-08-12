@@ -38,6 +38,7 @@ export async function createForecast(data: ForecastInput): Promise<void> {
     },
   });
   revalidatePath("/forecasts");
+  revalidatePath("/forecasts/manuales");
   revalidatePath("/cashflow");
 }
 
@@ -62,6 +63,7 @@ export async function updateForecast(id: string, data: ForecastInput): Promise<v
     },
   });
   revalidatePath("/forecasts");
+  revalidatePath("/forecasts/manuales");
   revalidatePath("/cashflow");
 }
 
@@ -73,11 +75,13 @@ export async function setForecastPaused(id: string, isPaused: boolean): Promise<
     data: { isPaused, updatedBy: session?.user?.email ?? null },
   });
   revalidatePath("/forecasts");
+  revalidatePath("/forecasts/manuales");
   revalidatePath("/cashflow");
 }
 
 export async function deleteForecast(id: string): Promise<void> {
   await prisma.forecast.delete({ where: { id } });
   revalidatePath("/forecasts");
+  revalidatePath("/forecasts/manuales");
   revalidatePath("/cashflow");
 }

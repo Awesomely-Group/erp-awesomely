@@ -1,46 +1,14 @@
 import { Suspense } from "react";
-import { prisma } from "@/lib/prisma";
-import { ForecastType, InvoiceType, type Prisma } from "@prisma/client";
+import Link from "next/link";
+import { Table2 } from "lucide-react";
+import { InvoiceType } from "@prisma/client";
 import { formatCurrency, formatDate, holdedInvoiceUrl, holdedProformaUrl } from "@/lib/utils";
 import { getCashflowData, getCashflowCompanies, getCashflowAccounts, getMonthInvoices, getMonthProformas } from "@/lib/cashflow-data";
 import type { CashflowParams, CashflowMonthlyPoint } from "@/lib/cashflow-data";
-import { MARCA_FILTER_UNASSIGNED } from "@/lib/org";
-import Link from "next/link";
-import { ForecastsClient } from "./forecasts-client";
+import { getForecastFormOptions } from "./forecasts-data";
 import { ForecastsChartFilters } from "./forecasts-chart-filters";
+import { NewForecastButton } from "./new-forecast-button";
 import { CashflowChart } from "../cashflow/cashflow-chart";
-
-/** Resuelve el `where` de Forecast a partir de los filtros de marca/categoría/cuenta de la URL. */
-async function buildForecastWhere(params: CashflowParams): Promise<Prisma.ForecastWhereInput> {
-  const where: Prisma.ForecastWhereInput = {};
-
-  const marcaList = params.marca?.split(",").filter(Boolean) ?? [];
-  if (marcaList.length > 0) {
-    const hasUnassigned = marcaList.includes(MARCA_FILTER_UNASSIGNED);
-    const namedMarcas = marcaList.filter((m) => m !== MARCA_FILTER_UNASSIGNED);
-    const or: Prisma.ForecastWhereInput[] = [];
-    if (hasUnassigned) or.push({ marca: null });
-    if (namedMarcas.length > 0) or.push({ marca: { in: namedMarcas } });
-    if (or.length > 0) where.OR = or;
-  }
-
-  const l1List = params.l1?.split(",").filter(Boolean) ?? [];
-  const accountList = params.account?.split(",").filter(Boolean) ?? [];
-  if (l1List.length > 0 || accountList.length > 0) {
-    const mappings = await prisma.accountMapping.findMany({
-      where: {
-        ...(l1List.length > 0 ? { l1: { in: l1List } } : {}),
-        ...(accountList.length > 0
-          ? { OR: [{ accountNumSL: { in: accountList } }, { accountNumOU: { in: accountList } }] }
-          : {}),
-      },
-      select: { id: true },
-    });
-    where.accountMappingId = { in: mappings.map((m) => m.id) };
-  }
-
-  return where;
-}
 
 type MonthInvoice = {
   id: string;
@@ -74,47 +42,10 @@ export default async function ForecastsPage({
   searchParams: Promise<CashflowParams>;
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
-  const forecastWhere = await buildForecastWhere(params);
 
-  const [forecasts, projects, accountMappings, suppliers, { monthly, kpis }, companies, accounts, monthInvoicesRaw, monthProformasRaw] =
+  const [formOptions, { monthly, kpis }, companies, accounts, monthInvoicesRaw, monthProformasRaw] =
     await Promise.all([
-      prisma.forecast.findMany({
-        where: forecastWhere,
-        select: {
-          id: true,
-          month: true,
-          type: true,
-          marca: true,
-          projectId: true,
-          project: { select: { id: true, name: true } },
-          accountMappingId: true,
-          accountMapping: { select: { id: true, description: true, l1: true } },
-          supplierId: true,
-          supplier: { select: { id: true, name: true } },
-          description: true,
-          amountOptimistic: true,
-          amountPessimistic: true,
-          recurrenceId: true,
-          recurrence: { select: { id: true, frequency: true } },
-          isPaused: true,
-        },
-        orderBy: [{ month: "asc" }],
-      }),
-      prisma.jiraProject.findMany({
-        where: { active: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.accountMapping.findMany({
-        where: { l1: { in: ["COGS", "OPEX", "CAPEX"] } },
-        select: { id: true, description: true, l1: true },
-        orderBy: [{ l1: "asc" }, { description: "asc" }],
-      }),
-      prisma.supplier.findMany({
-        where: { active: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
+      getForecastFormOptions(),
       getCashflowData(params, true),
       getCashflowCompanies(),
       getCashflowAccounts(),
@@ -136,17 +67,6 @@ export default async function ForecastsPage({
   const selectedMonthPoint = params.selectedMonth
     ? monthly.find((p: CashflowMonthlyPoint) => p.monthKey === params.selectedMonth)
     : null;
-
-  const activeForecasts = forecasts.filter((f) => !f.isPaused);
-  const incomeForecasts = activeForecasts.filter((f) => f.type === ForecastType.INCOME);
-  const expenseForecasts = activeForecasts.filter((f) => f.type === ForecastType.EXPENSE);
-
-  const forecastTotals = {
-    totalIncomePessimistic: incomeForecasts.reduce((s, f) => s + Number(f.amountPessimistic), 0),
-    totalIncomeOptimistic: incomeForecasts.reduce((s, f) => s + Number(f.amountOptimistic), 0),
-    totalExpensePessimistic: expenseForecasts.reduce((s, f) => s + Number(f.amountPessimistic), 0),
-    totalExpenseOptimistic: expenseForecasts.reduce((s, f) => s + Number(f.amountOptimistic), 0),
-  };
 
   const netIsPositive = kpis.netCashflow >= 0;
   const scenarioLabel = params.scenario === "optimistic" ? "optimista" : "pesimista";
@@ -179,9 +99,25 @@ export default async function ForecastsPage({
           <h1 className="text-2xl font-bold text-gray-900">Previsiones</h1>
           <p className="text-sm text-gray-500 mt-1">Estimaciones ERP · en EUR</p>
         </div>
-        <Suspense>
-          <ForecastsChartFilters companies={companies} accounts={accounts} />
-        </Suspense>
+        <div className="flex items-end gap-3 flex-wrap">
+          <Suspense>
+            <ForecastsChartFilters companies={companies} accounts={accounts} />
+          </Suspense>
+          <div className="flex items-center gap-2">
+            <NewForecastButton
+              projects={formOptions.projects}
+              accountMappings={formOptions.accountMappings}
+              suppliers={formOptions.suppliers}
+            />
+            <Link
+              href="/forecasts/manuales"
+              title="Ver todas las previsiones en una tabla"
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2.5 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            >
+              <Table2 className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* KPIs del flujo actual */}
@@ -336,39 +272,6 @@ export default async function ForecastsPage({
           )}
         </div>
       )}
-
-      {/* Separador */}
-      <div className="border-t border-gray-200 pt-2">
-        <h2 className="text-lg font-semibold text-gray-800">Estimaciones manuales</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Gestiona los escenarios pesimista y optimista</p>
-      </div>
-
-      {/* KPIs por escenario */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ingresos pesimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-600">{formatCurrency(forecastTotals.totalIncomePessimistic)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ingresos optimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(forecastTotals.totalIncomeOptimistic)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Gastos pesimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-600">{formatCurrency(forecastTotals.totalExpensePessimistic)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Gastos optimista</p>
-          <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(forecastTotals.totalExpenseOptimistic)}</p>
-        </div>
-      </div>
-
-      <ForecastsClient
-        forecasts={forecasts}
-        projects={projects}
-        accountMappings={accountMappings}
-        suppliers={suppliers}
-      />
     </div>
   );
 }

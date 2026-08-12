@@ -86,6 +86,7 @@ export async function createForecastRecurrence(
   });
 
   revalidatePath("/forecasts");
+  revalidatePath("/forecasts/manuales");
   revalidatePath("/cashflow");
 
   return { success: true, count: dates.length };
@@ -95,5 +96,6 @@ export async function createForecastRecurrence(
 export async function deleteForecastRecurrence(id: string): Promise<void> {
   await prisma.forecastRecurrence.delete({ where: { id } });
   revalidatePath("/forecasts");
+  revalidatePath("/forecasts/manuales");
   revalidatePath("/cashflow");
 }
