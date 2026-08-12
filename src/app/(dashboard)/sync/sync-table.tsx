@@ -111,6 +111,7 @@ function SyncLogModal({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset del estado de carga al cambiar logId, antes del fetch
     setLoading(true);
     fetch(`/api/sync-logs/${logId}`)
       .then((r) => r.json())

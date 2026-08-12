@@ -33,6 +33,7 @@ export function ApiKeysClient({
   // When a new key is returned, show it and reset the form
   useEffect(() => {
     if (createState?.newKey) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reacciona a la respuesta de una server action (useActionState), no a un prop normal
       setRevealed(createState.newKey);
       setCopied(false);
       formRef.current?.reset();
