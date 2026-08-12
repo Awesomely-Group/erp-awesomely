@@ -1,3 +1,11 @@
+> **⚠️ Superado — ver `docs/proposals-plan-v2.md`.** Este plan asumía que todo vivía dentro
+> de `erp-awesomely` (link público `/p/[token]`, aceptación por clic + email, PostHog,
+> Resend). Se decidió en su lugar repartir la funcionalidad entre `gigsonapps.com`,
+> `latroupeapps.com` (creación + experiencia de cliente por marca) y `erp-awesomely`
+> (Holded + firma electrónica centralizados). Las ideas de este documento sobre precios
+> BUILD/DISCOVER, el configurador drag&drop y la skill conversacional siguen vigentes y se
+> han trasladado al plan v2 — solo cambia dónde vive el link de cliente y cómo se firma.
+
 # Plan: AW Proposals — Extensión de /budgets en erp-awesomely
 
 ## Context
