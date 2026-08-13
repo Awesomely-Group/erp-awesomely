@@ -68,7 +68,11 @@ jobs:
       - name: Run database migrations
         run: pnpm prisma migrate deploy
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Endpoint directo (no pooled) de Neon: los advisory locks de Prisma
+          # son de sesión y PgBouncer (modo transacción) puede reciclar la
+          # conexión física del pool sin liberar el lock, dejando un lock
+          # zombi que bloquea este job (visto en el merge del PR #4, P1002).
+          DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
 
   deploy:
     needs: migrate
