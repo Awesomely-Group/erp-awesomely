@@ -29,3 +29,4 @@ npm-debug.log*
 /src/generated/prisma
 .vercel
 .env*.local
+.env*
