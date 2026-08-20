@@ -10,11 +10,18 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const { searchParams } = new URL(request.url);
   const marca = searchParams.get("marca") ?? undefined;
+  const companyId = searchParams.get("companyId") ?? undefined;
+  const contactId = searchParams.get("contactId") ?? undefined;
   const q = searchParams.get("q")?.trim() ?? "";
 
   const where: Prisma.InvoiceWhereInput = {
     type: "SALE",
     ...invoiceWhereMarca(marca),
+    // Without a companyId this would return invoices across ALL companies — always scope
+    // when the caller knows which company it's searching within (e.g. linking a proforma
+    // to one of its own company's invoices).
+    ...(companyId ? { companyId } : {}),
+    ...(contactId ? { holdedContactId: contactId } : {}),
   };
 
   if (q) {

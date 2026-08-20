@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { MARCA_FILTER_UNASSIGNED, MARCA_OPTIONS } from "@/lib/org";
+import { PROFORMA_STATUS_FILTER_OPTIONS } from "@/lib/proforma-status";
 
 const PERIODS = [
   { value: "", label: "Todos los períodos" },
@@ -15,13 +16,7 @@ const PERIODS = [
   { value: "custom", label: "Personalizado…" },
 ];
 
-const STATUSES = [
-  { value: "", label: "Todos los estados" },
-  { value: "0", label: "Borrador" },
-  { value: "2", label: "Aprobado" },
-  { value: "-1", label: "Cancelada" },
-  { value: "3", label: "Facturado" },
-];
+const STATUSES = PROFORMA_STATUS_FILTER_OPTIONS;
 
 const MARCA_ALL_OPTIONS = [
   { value: MARCA_FILTER_UNASSIGNED, label: "Sin asignar" },

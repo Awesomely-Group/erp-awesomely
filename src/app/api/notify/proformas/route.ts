@@ -106,7 +106,7 @@ async function handleNotify(req: Request): Promise<NextResponse> {
 
   const proformas = await prisma.proforma.findMany({
     where: {
-      holdedStatus: { in: [0, 1] },
+      holdedStatus: { in: [0, 1, 4] },
       date: { lte: cutoff },
     },
     select: {

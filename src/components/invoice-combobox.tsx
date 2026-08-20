@@ -12,13 +12,15 @@ interface InvoiceOption {
 }
 
 interface Props {
-  marca: string;
+  marca?: string;
+  companyId?: string;
+  contactId?: string;
   value: string | null;
   onChange: (id: string | null) => void;
   disabled?: boolean;
 }
 
-export function InvoiceCombobox({ marca, value, onChange, disabled }: Props): React.JSX.Element {
+export function InvoiceCombobox({ marca, companyId, contactId, value, onChange, disabled }: Props): React.JSX.Element {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<InvoiceOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,15 +29,25 @@ export function InvoiceCombobox({ marca, value, onChange, disabled }: Props): Re
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const buildParams = useCallback(
+    (q: string): URLSearchParams => {
+      const params = new URLSearchParams();
+      if (marca) params.set("marca", marca);
+      if (companyId) params.set("companyId", companyId);
+      if (contactId) params.set("contactId", contactId);
+      if (q) params.set("q", q);
+      return params;
+    },
+    [marca, companyId, contactId]
+  );
+
   const fetchInvoices = useCallback(
     (q: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
         setLoading(true);
         try {
-          const params = new URLSearchParams({ marca });
-          if (q) params.set("q", q);
-          const res = await fetch(`/api/invoices/search?${params.toString()}`);
+          const res = await fetch(`/api/invoices/search?${buildParams(q).toString()}`);
           if (res.ok) {
             const data = (await res.json()) as InvoiceOption[];
             setOptions(data);
@@ -45,7 +57,7 @@ export function InvoiceCombobox({ marca, value, onChange, disabled }: Props): Re
         }
       }, 300);
     },
-    [marca]
+    [buildParams]
   );
 
   useEffect(() => {
@@ -63,7 +75,7 @@ export function InvoiceCombobox({ marca, value, onChange, disabled }: Props): Re
       setSelected(found);
     } else if (value) {
       // fetch single invoice to get label
-      fetch(`/api/invoices/search?marca=${encodeURIComponent(marca)}&q=`)
+      fetch(`/api/invoices/search?${buildParams("").toString()}`)
         .then((r) => r.json())
         .then((data: InvoiceOption[]) => {
           const match = data.find((o) => o.id === value);
@@ -71,7 +83,7 @@ export function InvoiceCombobox({ marca, value, onChange, disabled }: Props): Re
         })
         .catch(() => null);
     }
-  }, [value, marca]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value, buildParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown when clicking outside
   useEffect(() => {

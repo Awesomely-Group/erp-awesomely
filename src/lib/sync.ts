@@ -250,11 +250,23 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     console.error("[sync] Error syncing proformas:", err);
   });
 
-  // Mark converted proformas AFTER syncProformas so we override whatever Holded returned.
-  // Holded v2 does not return a `from` field on invoices (v1 did), so we can't detect
-  // conversion from the API response. Instead we cross-reference by DB:
-  // a proforma is considered converted when a SALE invoice exists for the same company,
-  // contact, currency and exact native-currency total, dated within 45 days after the proforma.
+  // Resolve each SALE invoice's source document (Holded's `from` field — only exposed on
+  // the per-document detail endpoint, GET /invoices/{id}, not on the list endpoint used by
+  // syncProformas/syncHoldedCompany above). Cached via sourceDocumentChecked so this only
+  // costs an extra API call once per invoice, not on every sync.
+  await resolveInvoiceSourceDocuments(companyId).catch((err: unknown) => {
+    console.error("[sync] Error resolving invoice source documents:", err);
+  });
+
+  // Primary detection: link a proforma to the invoice it was converted into using Holded's
+  // own recorded relation (deterministic, no guessing).
+  await linkProformasByHoldedRelation(companyId).catch((err: unknown) => {
+    console.error("[sync] Error linking proformas by Holded relation:", err);
+  });
+
+  // Fallback ONLY for proformas that resolveInvoiceSourceDocuments/linkProformasByHoldedRelation
+  // could not resolve (e.g. invoices predating this account's proforma-tracking, or a
+  // temporary API gap). Never runs for proformas that already have invoiceId set.
   await markConvertedProformas(companyId).catch((err: unknown) => {
     console.error("[sync] Error marking converted proformas:", err);
   });
@@ -593,11 +605,16 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
   });
 }
 
-// ─── Converted-proforma detection ──────────────────────────────────────────────
-// Holded v2 API does not expose the proforma→invoice link (v1 had invoice.from.docType).
-// We infer conversion by matching: same company + same contact + same currency +
+// ─── Converted-proforma detection (legacy fallback) ────────────────────────────
+// Deterministic detection now happens in linkProformasByHoldedRelation(), using Holded's
+// own recorded proforma→invoice relation (the `from` field on the invoice's detail
+// endpoint). This heuristic only runs as a fallback for proformas that could NOT be
+// resolved that way (e.g. invoices predating this account's proforma-tracking, or a
+// temporary gap in resolveInvoiceSourceDocuments) — it never touches a proforma that
+// already has `invoiceId` set. Kept unchanged (same thresholds as before) since it's now
+// a narrow safety net rather than the primary mechanism.
+// It infers conversion by matching: same company + same contact + same currency +
 // exact native-currency total + invoice dated within 45 days AFTER the proforma.
-// Runs after every invoice+proforma sync so the notification never shows billed proformas.
 
 async function markConvertedProformas(companyId: string): Promise<void> {
   // Window: invoices issued up to 15 days BEFORE the proforma (handles cases where the
@@ -611,6 +628,7 @@ async function markConvertedProformas(companyId: string): Promise<void> {
       where: {
         companyId,
         holdedStatus: { notIn: [3, -1] },
+        invoiceId: null,
         holdedContactId: { not: null },
       },
       select: { holdedId: true, holdedContactId: true, currency: true, total: true, totalEur: true, date: true },
@@ -686,11 +704,98 @@ async function markConvertedProformas(companyId: string): Promise<void> {
       companyId,
       holdedId: { in: toMarkConverted },
       holdedStatus: { notIn: [3, -1] },
+      invoiceId: null,
     },
-    data: { holdedStatus: 3 },
+    data: { holdedStatus: 3, invoiceLinkConfidence: "amount_match" },
   });
 
-  console.log(`[sync] Marked ${toMarkConverted.length} proforma(s) as converted (contact+amount+date match)`);
+  console.log(`[sync] Marked ${toMarkConverted.length} proforma(s) as converted (contact+amount+date match, no Holded-native link found)`);
+}
+
+// ─── Invoice source-document resolution ────────────────────────────────────────
+// Holded's `from: { id, doc_type }` field — the real, deterministic record of what
+// document an invoice was created from (e.g. a proforma) — is only exposed on the
+// per-document detail endpoint (GET /invoices/{id}), not on the list endpoint used by
+// getAllInvoicesPaginated(). This resolves it once per invoice and caches the result
+// locally (sourceDocumentChecked) so subsequent syncs don't re-fetch it.
+
+async function resolveInvoiceSourceDocuments(companyId: string): Promise<void> {
+  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const client = new HoldedClient(company.holdedApiKey);
+
+  const unresolvedInvoices = await prisma.invoice.findMany({
+    where: { companyId, type: InvoiceType.SALE, sourceDocumentChecked: false },
+    select: { id: true, holdedId: true },
+  });
+
+  if (unresolvedInvoices.length === 0) return;
+
+  const BATCH_SIZE = 10;
+  let resolvedCount = 0;
+
+  for (let i = 0; i < unresolvedInvoices.length; i += BATCH_SIZE) {
+    const chunk = unresolvedInvoices.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      chunk.map(async (inv) => {
+        try {
+          const detail = await client.getDocumentById("invoice", inv.holdedId);
+          await prisma.invoice.update({
+            where: { id: inv.id },
+            data: {
+              sourceDocumentHoldedId: detail?.from?.id ?? null,
+              sourceDocumentType: detail?.from?.docType ?? null,
+              sourceDocumentChecked: true,
+            },
+          });
+          if (detail?.from) resolvedCount++;
+        } catch (err) {
+          console.error(`[sync] Error resolving source document for invoice ${inv.holdedId}:`, err);
+        }
+      })
+    );
+  }
+
+  console.log(`[sync] Resolved source documents for ${unresolvedInvoices.length} invoice(s), ${resolvedCount} had a source document`);
+}
+
+// ─── Proforma↔invoice linking via Holded's native relation ────────────────────
+// Deterministic — no amount/date guessing. If Holded recorded that an invoice came from
+// one of our proformas, trust it directly.
+
+async function linkProformasByHoldedRelation(companyId: string): Promise<void> {
+  const linkedInvoices = await prisma.invoice.findMany({
+    where: {
+      companyId,
+      type: InvoiceType.SALE,
+      sourceDocumentType: "proform",
+      sourceDocumentHoldedId: { not: null },
+    },
+    select: { id: true, sourceDocumentHoldedId: true },
+  });
+
+  if (linkedInvoices.length === 0) return;
+
+  let linkedCount = 0;
+  for (const inv of linkedInvoices) {
+    const result = await prisma.proforma.updateMany({
+      where: {
+        companyId,
+        holdedId: inv.sourceDocumentHoldedId!,
+        invoiceLinkedManually: false,
+        OR: [{ invoiceId: null }, { invoiceId: { not: inv.id } }],
+      },
+      data: {
+        invoiceId: inv.id,
+        invoiceLinkConfidence: "holded_link",
+        holdedStatus: 3,
+      },
+    });
+    linkedCount += result.count;
+  }
+
+  if (linkedCount > 0) {
+    console.log(`[sync] Linked ${linkedCount} proforma(s) to their invoice via Holded's native relation`);
+  }
 }
 
 // ─── Proforma Sync ─────────────────────────────────────────────────────────────
@@ -739,12 +844,16 @@ export async function syncProformas(companyId: string): Promise<void> {
     const tags = pf.tags ?? [];
     const description = pf.products?.[0]?.name ?? null;
 
-    // Preserve existing classification and holdedStatus=3 (converted).
-    // Holded v2 never updates proforma status on conversion — we set 3 ourselves via
-    // markConvertedProformas. We must not let the API reset it back to 1 on every sync.
+    // Preserve existing classification, holdedStatus=3 (converted) and any established
+    // proforma→invoice link. Holded v2 never updates proforma status on conversion — we set
+    // 3 ourselves via linkProformasByHoldedRelation/markConvertedProformas. We must not let
+    // the API reset it, or the link, back on every resync.
     const existing = await prisma.proforma.findUnique({
       where: { holdedId_companyId: { holdedId: pf.id, companyId } },
-      select: { marca: true, projectId: true, notes: true, holdedStatus: true },
+      select: {
+        marca: true, projectId: true, notes: true, holdedStatus: true,
+        invoiceId: true, invoiceLinkedManually: true, invoiceLinkConfidence: true,
+      },
     });
     const marcaFromTags = tagToBrand(tags);
 
@@ -770,6 +879,14 @@ export async function syncProformas(companyId: string): Promise<void> {
         tags,
         // Preserve manual marca; update auto-mapped marca only if never manually set
         ...(existing?.marca == null && marcaFromTags ? { marca: marcaFromTags } : {}),
+        // Never let a resync clobber an already-established proforma→invoice link
+        // (automatic or manual) — linkProformasByHoldedRelation/markConvertedProformas/the
+        // manual linking action are the only things allowed to change these.
+        ...(existing?.invoiceId ? {
+          invoiceId: existing.invoiceId,
+          invoiceLinkedManually: existing.invoiceLinkedManually,
+          invoiceLinkConfidence: existing.invoiceLinkConfidence,
+        } : {}),
       },
       create: {
         holdedId: pf.id,

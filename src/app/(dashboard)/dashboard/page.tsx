@@ -141,10 +141,13 @@ async function getAlerts() {
       _sum: { totalEur: true },
     }),
     prisma.proforma.count({
-      where: { dueDate: { gte: now, lte: fourteenDaysLater } },
+      // Exclude converted (3) and cancelled (-1) — a proforma already invoiced or
+      // cancelled shouldn't count as "pending" here (aligns with /proformas and the
+      // notify/proformas cron, which already exclude them).
+      where: { dueDate: { gte: now, lte: fourteenDaysLater }, holdedStatus: { in: [0, 1, 4] } },
     }),
     prisma.proforma.count({
-      where: { dueDate: { lt: now } },
+      where: { dueDate: { lt: now }, holdedStatus: { in: [0, 1, 4] } },
     }),
   ]);
 

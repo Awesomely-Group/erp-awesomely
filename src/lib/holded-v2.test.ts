@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import {
   parseCommaNum,
   v2StatusToNum,
+  v2ProformaStatusToNum,
   normalizeV2Invoice,
   type HoldedInvoiceV2Raw,
 } from "./holded";
@@ -54,6 +55,29 @@ describe("v2StatusToNum", () => {
     expect(v2StatusToNum("paid", true)).toBe(0);
     expect(v2StatusToNum("pending", true)).toBe(0);
     expect(v2StatusToNum(undefined, true)).toBe(0);
+  });
+});
+
+// ─── v2ProformaStatusToNum ──────────────────────────────────────────────────────
+// Same as v2StatusToNum, except overdue/late must map to 4 ("Vencida"), not 3 — code 3 is
+// reserved for the locally-synthesized "converted to invoice" status on proformas, and must
+// never collide with Holded's own raw "overdue" status (see src/lib/sync.ts,
+// linkProformasByHoldedRelation / markConvertedProformas).
+
+describe("v2ProformaStatusToNum", () => {
+  it("maps paid → 2", () => expect(v2ProformaStatusToNum("paid")).toBe(2));
+  it("maps pending → 1", () => expect(v2ProformaStatusToNum("pending")).toBe(1));
+  it("maps overdue → 4 (not 3, to avoid colliding with 'converted')", () =>
+    expect(v2ProformaStatusToNum("overdue")).toBe(4));
+  it("maps late → 4 (not 3, to avoid colliding with 'converted')", () =>
+    expect(v2ProformaStatusToNum("late")).toBe(4));
+  it("maps void → -1", () => expect(v2ProformaStatusToNum("void")).toBe(-1));
+  it("maps cancelled → -1", () => expect(v2ProformaStatusToNum("cancelled")).toBe(-1));
+  it("maps unknown → 1", () => expect(v2ProformaStatusToNum("whatever")).toBe(1));
+  it("maps undefined → 1", () => expect(v2ProformaStatusToNum(undefined)).toBe(1));
+  it("draft=true always → 0", () => {
+    expect(v2ProformaStatusToNum("paid", true)).toBe(0);
+    expect(v2ProformaStatusToNum(undefined, true)).toBe(0);
   });
 });
 
@@ -279,6 +303,28 @@ describe("normalizeV2Invoice — correct values", () => {
   it("draft invoice gets status 0", () => {
     const inv = normalizeV2Invoice(makeRaw({ draft: true }));
     expect(inv.status).toBe(0);
+  });
+
+  it("uses v2StatusToNum by default (overdue → 3)", () => {
+    const inv = normalizeV2Invoice(makeRaw({ status: "overdue" }));
+    expect(inv.status).toBe(3);
+  });
+
+  it("uses a custom statusMapper when provided (e.g. v2ProformaStatusToNum: overdue → 4)", () => {
+    const inv = normalizeV2Invoice(makeRaw({ status: "overdue" }), v2ProformaStatusToNum);
+    expect(inv.status).toBe(4);
+  });
+
+  it("propagates the `from` source-document field when present", () => {
+    const inv = normalizeV2Invoice(
+      makeRaw({ from: { id: "proforma123", doc_type: "proform" } })
+    );
+    expect(inv.from).toEqual({ id: "proforma123", docType: "proform" });
+  });
+
+  it("`from` is undefined when absent from the raw response", () => {
+    const inv = normalizeV2Invoice(makeRaw());
+    expect(inv.from).toBeUndefined();
   });
 
   it("maps docNumber from document_number", () => {

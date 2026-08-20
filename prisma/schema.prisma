@@ -282,6 +282,13 @@ model Invoice {
   // Null = active in Holded; DateTime = detected as removed on that date (kept for user data)
   removedFromHoldedAt DateTime?
 
+  // Source document this invoice was created from, per Holded's `from` field (only exposed
+  // on the per-document detail endpoint, GET /invoices/{id} — not on the list endpoint).
+  // Cached here so we only need to fetch the detail endpoint once per invoice.
+  sourceDocumentHoldedId String?
+  sourceDocumentType     String?  // raw Holded value, e.g. "proform"
+  sourceDocumentChecked  Boolean  @default(false)
+
   lines              InvoiceLine[]
   auditLogs          AuditLog[]
   erpPayments        InvoicePayment[]
@@ -289,6 +296,7 @@ model Invoice {
   hourBuckets        HourBucket[]       @relation("HourBucketInvoice")
   fixedPriceProjects JiraProject[]      @relation("FixedPriceInvoice")
   regularFeeEntries  RegularFeeEntry[]  @relation("RegularFeeInvoice")
+  sourceProformas    Proforma[]         @relation("ProformaInvoiceLink")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -635,6 +643,14 @@ model Proforma {
   holdedContactId String?
   holdedStatus    Int?
 
+  // Link to the invoice this proforma was converted into. Set either by
+  // linkProformasByHoldedRelation() (confidence "holded_link", from Holded's real
+  // proforma→invoice relation) or manually by a user (confidence "manual").
+  invoiceId             String?
+  invoice               Invoice? @relation("ProformaInvoiceLink", fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceLinkedManually Boolean  @default(false)
+  invoiceLinkConfidence String?  // "holded_link" | "amount_match" | "manual"
+
   date            DateTime
   dueDate         DateTime?
 
@@ -662,6 +678,7 @@ model Proforma {
   @@index([companyId])
   @@index([companyId, date])
   @@index([marca])
+  @@index([invoiceId])
   @@map("proformas")
 }
 

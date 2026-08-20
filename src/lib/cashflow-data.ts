@@ -191,7 +191,7 @@ export async function getCashflowData(
         prisma.$queryRaw<ProformaMonthRow[]>`
           SELECT DATE_TRUNC('month', date) AS month, SUM("totalEur") AS total_eur
           FROM proformas
-          WHERE "holdedStatus" IN (0, 1)
+          WHERE "holdedStatus" IN (0, 1, 4)
           ${dateRange.gte ? Prisma.sql`AND date >= ${dateRange.gte}` : Prisma.empty}
           ${dateRange.lte ? Prisma.sql`AND date <= ${dateRange.lte}` : Prisma.empty}
           GROUP BY DATE_TRUNC('month', date)
@@ -414,7 +414,7 @@ export async function getMonthProformas(
   const marcaFilter = proformaWhereMarca(params.marca);
   const where: Prisma.ProformaWhereInput = {
     date: { gte: from, lte: to },
-    holdedStatus: { in: [0, 1] },
+    holdedStatus: { in: [0, 1, 4] },
     ...(marcaFilter ?? {}),
     ...(params.company ? { companyId: params.company } : {}),
   };

@@ -89,7 +89,7 @@ function buildWhere(params: ProformaPageParams): Prisma.ProformaWhereInput {
     in5Days.setHours(23, 59, 59, 999);
     andConditions.push({
       date: { gte: today, lte: in5Days },
-      holdedStatus: { in: [0, 1] },
+      holdedStatus: { in: [0, 1, 4] },
     });
   }
 
