@@ -117,11 +117,32 @@ export function v2StatusToNum(status: string | undefined, draft?: boolean): numb
   }
 }
 
-export function normalizeV2Invoice(raw: HoldedInvoiceV2Raw): HoldedInvoice {
+// Proformas reuse the same raw shape/status strings as invoices, but the app also uses the
+// numeric code `3` locally to mean "converted to invoice" (see linkProformasByHoldedRelation
+// and the legacy markConvertedProformas in src/lib/sync.ts). Holded's raw "overdue"/"late"
+// status for a proforma must NOT collide with that locally-synthesized code, so it's mapped
+// to a distinct code `4` ("Vencida") here instead of the `3` that v2StatusToNum uses for
+// real invoices.
+export function v2ProformaStatusToNum(status: string | undefined, draft?: boolean): number {
+  if (draft) return 0;
+  switch (status) {
+    case "paid":      return 2;
+    case "overdue":
+    case "late":      return 4;
+    case "void":
+    case "cancelled": return -1;
+    default:          return 1; // "pending" and unknown
+  }
+}
+
+export function normalizeV2Invoice(
+  raw: HoldedInvoiceV2Raw,
+  statusMapper: (status: string | undefined, draft?: boolean) => number = v2StatusToNum
+): HoldedInvoice {
   const parseIsoToUnix = (s?: string): number | undefined =>
     s ? Math.floor(new Date(s).getTime() / 1000) : undefined;
 
-  const statusNum = v2StatusToNum(raw.status, raw.draft);
+  const statusNum = statusMapper(raw.status, raw.draft);
   const total = parseCommaNum(raw.total);
   const isPaid = statusNum === 2;
 
@@ -764,7 +785,7 @@ export class HoldedClient {
         limit: "5000",
       });
       const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
-      return rawBatch.map(normalizeV2Invoice);
+      return rawBatch.map((r) => normalizeV2Invoice(r, v2ProformaStatusToNum));
     }
 
     // v1: quarterly time windows workaround (page param does not work reliably)
@@ -812,7 +833,7 @@ export class HoldedClient {
           limit: "5000",
         });
         const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
-        return rawBatch.map(normalizeV2Invoice);
+        return rawBatch.map((r) => normalizeV2Invoice(r));
       }
 
       // /purchases: Holded v2 hard-caps at 200 per request regardless of `limit`.

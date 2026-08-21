@@ -7,6 +7,7 @@ import { MARCA_OPTIONS, filterProjectsByMarca } from "@/lib/org";
 import { classifyProforma } from "./actions";
 import { ProjectCombobox } from "@/components/project-combobox";
 import { SortTh } from "@/components/sort-th";
+import { getProformaStatusInfo } from "@/lib/proforma-status";
 
 type ProformaSortKey = "date" | "counterparty" | "totalEur";
 
@@ -33,17 +34,9 @@ type ProformaRow = {
 };
 
 function statusBadge(status: number | null): React.JSX.Element {
-  const s = status ?? 0;
-  const map: Record<number, { label: string; cls: string }> = {
-    [-1]: { label: "Cancelada", cls: "bg-red-100 text-red-700" },
-    [0]: { label: "Borrador", cls: "bg-gray-100 text-gray-600" },
-    [1]: { label: "Borrador", cls: "bg-gray-100 text-gray-600" },
-    [2]: { label: "Aprobado", cls: "bg-green-100 text-green-700" },
-    [3]: { label: "Facturado", cls: "bg-blue-100 text-blue-700" },
-  };
-  const { label, cls } = map[s] ?? { label: `Estado ${s}`, cls: "bg-gray-100 text-gray-600" };
+  const { label, badgeClass } = getProformaStatusInfo(status);
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
       {label}
     </span>
   );

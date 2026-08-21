@@ -1,20 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate, holdedProformaUrl } from "@/lib/utils";
+import { getProformaStatusInfo } from "@/lib/proforma-status";
 import { ProformaClassifyForm } from "./proforma-classify-form";
-
-const STATUS_LABELS: Record<number, string> = {
-  [-1]: "Cancelada",
-  [0]: "Borrador",
-  [1]: "Borrador",
-  [2]: "Aprobado",
-};
-
-const STATUS_COLORS: Record<number, string> = {
-  [-1]: "bg-red-100 text-red-700",
-  [0]: "bg-gray-100 text-gray-600",
-  [1]: "bg-gray-100 text-gray-600",
-  [2]: "bg-green-100 text-green-700",
-};
+import { ProformaInvoiceLinkForm } from "./proforma-invoice-link-form";
 
 export async function ProformaPanel({
   proformaId,
@@ -27,6 +15,8 @@ export async function ProformaPanel({
       select: {
         id: true,
         holdedId: true,
+        companyId: true,
+        holdedContactId: true,
         number: true,
         counterparty: true,
         description: true,
@@ -40,6 +30,18 @@ export async function ProformaPanel({
         marca: true,
         projectId: true,
         notes: true,
+        invoiceId: true,
+        invoiceLinkConfidence: true,
+        invoice: {
+          select: {
+            id: true,
+            number: true,
+            counterparty: true,
+            date: true,
+            totalEur: true,
+            paymentsPending: true,
+          },
+        },
       },
     }),
     prisma.jiraProject.findMany({
@@ -55,9 +57,8 @@ export async function ProformaPanel({
     );
   }
 
-  const status = proforma.holdedStatus ?? 0;
-  const statusLabel = STATUS_LABELS[status] ?? `Estado ${status}`;
-  const statusColor = STATUS_COLORS[status] ?? "bg-gray-100 text-gray-600";
+  const { label: statusLabel, badgeClass: statusColor } = getProformaStatusInfo(proforma.holdedStatus);
+  const isInvoicePaid = proforma.invoice ? Number(proforma.invoice.paymentsPending) <= 0 : false;
 
   return (
     <div className="flex flex-col gap-5">
@@ -121,6 +122,39 @@ export async function ProformaPanel({
         </div>
       </div>
 
+      {/* Linked invoice */}
+      {proforma.invoice && (
+        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Factura
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                isInvoicePaid ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+              }`}
+            >
+              {isInvoicePaid ? "Pagada" : "Pendiente"}
+            </span>
+          </div>
+          <p className="text-sm text-gray-800">
+            {proforma.invoice.number ?? "(sin nº)"} · {formatDate(proforma.invoice.date.toISOString())}
+          </p>
+          <p className="text-sm font-semibold text-gray-700">
+            {formatCurrency(Number(proforma.invoice.totalEur))}
+          </p>
+          {proforma.invoiceLinkConfidence && (
+            <p className="text-xs text-gray-400">
+              Vínculo: {proforma.invoiceLinkConfidence === "holded_link"
+                ? "confirmado por Holded"
+                : proforma.invoiceLinkConfidence === "manual"
+                  ? "vinculado manualmente"
+                  : "estimado por importe/fecha"}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Classification form */}
       <ProformaClassifyForm
         proformaId={proforma.id}
@@ -128,6 +162,14 @@ export async function ProformaPanel({
         initialProjectId={proforma.projectId}
         initialNotes={proforma.notes}
         projects={projects}
+      />
+
+      {/* Manual invoice link */}
+      <ProformaInvoiceLinkForm
+        proformaId={proforma.id}
+        companyId={proforma.companyId}
+        contactId={proforma.holdedContactId}
+        initialInvoiceId={proforma.invoiceId}
       />
     </div>
   );
