@@ -283,6 +283,16 @@ function toV2DocumentPayload(payload: HoldedCreateDocumentPayload): Record<strin
   return base;
 }
 
+/** Thrown by HoldedClient on any non-OK HTTP response, carrying the status code so callers
+ *  can distinguish "not found" (404 — safe to treat as absent) from transient/server errors
+ *  (which should be retried on a later sync, not treated as a confirmed negative result). */
+export class HoldedApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "HoldedApiError";
+  }
+}
+
 export class HoldedClient {
   private readonly apiKey: string;
 
@@ -303,7 +313,7 @@ export class HoldedClient {
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
   }
 
@@ -314,7 +324,7 @@ export class HoldedClient {
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
   }
 
@@ -359,7 +369,7 @@ export class HoldedClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+      throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
     }
 
     return res.json() as Promise<T>;
@@ -415,7 +425,7 @@ export class HoldedClient {
         next: { revalidate: 0 },
       });
       if (!res.ok) {
-        throw new Error(`Holded API error ${res.status}: ${await res.text()}`);
+        throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
       }
       return this.normalizeChartList(await res.json());
     };
@@ -932,9 +942,13 @@ export class HoldedClient {
       } else {
         return await this.fetch<HoldedInvoice>(path);
       }
-    } catch {
-      // 404 or other errors — document not found
-      return null;
+    } catch (err) {
+      // Only treat a real 404 as "document not found" (safe to cache as a negative result).
+      // Any other error (network blip, 5xx, rate limit, etc.) must propagate so callers like
+      // resolveInvoiceSourceDocuments() in sync.ts know NOT to mark it as checked — otherwise
+      // a transient failure gets permanently (and silently) cached as "no source document".
+      if (err instanceof HoldedApiError && err.status === 404) return null;
+      throw err;
     }
   }
 
