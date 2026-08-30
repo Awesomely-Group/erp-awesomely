@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { MARCA_FILTER_UNASSIGNED, MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_FILTER_UNASSIGNED, MARCA_OPTIONS, groupAccountsByL1 } from "@/lib/org";
 
 const PERIODS = [
   { value: "", label: "Últimos 12 meses (por defecto)" },
@@ -25,7 +25,7 @@ const L1_OPTIONS = [
 ] as const;
 
 type Company = { id: string; name: string };
-type AccountOption = { num: string; name: string };
+type AccountOption = { num: string; name: string; l1: string | null };
 
 function ChevronIcon({ open }: { open: boolean }): React.JSX.Element {
   return (
@@ -353,19 +353,26 @@ export function CashflowFilters({
 
             {accountsOpen && (
               <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[16rem] max-h-64 overflow-y-auto">
-                {accounts.map((a) => (
-                  <label
-                    key={a.num}
-                    className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAccounts.includes(a.num)}
-                      onChange={() => toggleAccount(a.num)}
-                      className="mt-0.5 rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                    />
-                    <span className="text-sm leading-snug text-gray-800">{a.name}</span>
-                  </label>
+                {groupAccountsByL1(accounts).map((group) => (
+                  <div key={group.label}>
+                    <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 sticky top-0 bg-white">
+                      {group.label}
+                    </p>
+                    {group.items.map((a) => (
+                      <label
+                        key={a.num}
+                        className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAccounts.includes(a.num)}
+                          onChange={() => toggleAccount(a.num)}
+                          className="mt-0.5 rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                        />
+                        <span className="text-sm leading-snug text-gray-800">{a.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 ))}
               </div>
             )}
