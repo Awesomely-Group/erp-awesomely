@@ -10,10 +10,19 @@ interface WorkspaceEditProps {
   id: string;
   domain: string;
   email: string;
+  giroOrgSlug: string | null;
+  hasGiroApiKey: boolean;
   onClose: () => void;
 }
 
-export function WorkspaceEdit({ id, domain, email, onClose }: WorkspaceEditProps): React.JSX.Element {
+export function WorkspaceEdit({
+  id,
+  domain,
+  email,
+  giroOrgSlug,
+  hasGiroApiKey,
+  onClose,
+}: WorkspaceEditProps): React.JSX.Element {
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
@@ -73,6 +82,31 @@ export function WorkspaceEdit({ id, domain, email, onClose }: WorkspaceEditProps
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Org de Giro <span className="text-gray-400">(para conciliación — F3)</span>
+          </label>
+          <input
+            name="giroOrgSlug"
+            defaultValue={giroOrgSlug ?? ""}
+            placeholder="gigson-solutions"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            API Key de Giro{" "}
+            <span className="text-gray-400">
+              ({hasGiroApiKey ? "configurada — vacío para no cambiar" : "no configurada"})
+            </span>
+          </label>
+          <input
+            name="giroApiKey"
+            type="password"
+            placeholder="giro_••••••••••••"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
       </div>
       <div className="flex gap-2">
         <button
@@ -102,9 +136,19 @@ interface WorkspaceCardProps {
   domain: string;
   email: string;
   active: boolean;
+  giroOrgSlug: string | null;
+  hasGiroApiKey: boolean;
 }
 
-export function WorkspaceCard({ id, name, domain, email, active }: WorkspaceCardProps): React.JSX.Element {
+export function WorkspaceCard({
+  id,
+  name,
+  domain,
+  email,
+  active,
+  giroOrgSlug,
+  hasGiroApiKey,
+}: WorkspaceCardProps): React.JSX.Element {
   const [editing, setEditing] = useState(false);
 
   return (
@@ -114,6 +158,14 @@ export function WorkspaceCard({ id, name, domain, email, active }: WorkspaceCard
           <p className="font-medium text-gray-900">{name}</p>
           <p className="text-xs text-gray-400 mt-0.5">
             {domain} · {email}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Giro:{" "}
+            {giroOrgSlug && hasGiroApiKey ? (
+              <span className="text-green-700">{giroOrgSlug} (conectado)</span>
+            ) : (
+              <span className="text-gray-400">sin vincular</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -134,7 +186,14 @@ export function WorkspaceCard({ id, name, domain, email, active }: WorkspaceCard
         </div>
       </div>
       {editing && (
-        <WorkspaceEdit id={id} domain={domain} email={email} onClose={() => setEditing(false)} />
+        <WorkspaceEdit
+          id={id}
+          domain={domain}
+          email={email}
+          giroOrgSlug={giroOrgSlug}
+          hasGiroApiKey={hasGiroApiKey}
+          onClose={() => setEditing(false)}
+        />
       )}
     </div>
   );

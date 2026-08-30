@@ -7,6 +7,7 @@ import { ProjectOverviewCharts } from "./project-overview-charts";
 import { ProjectInvoicesSection } from "./project-invoices-section";
 import { StatusBadge } from "./status-badge";
 import { ProjectSettingsPanel } from "./project-settings-panel";
+import { GiroLinkForm } from "./giro-link-form";
 import { ProjectTypesDashboard } from "./project-types-dashboard";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
 import { ProjectTimesheetSection } from "./project-timesheet-section";
@@ -150,6 +151,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
           )}
           {activeTab === "timesheet" && <TimesheetSummarySlot />}
+          <GiroLinkForm projectId={project.id} giroProjectId={project.giroProjectId} />
           <ProjectSettingsPanel
             projectId={project.id}
             marca={project.workspace.name}

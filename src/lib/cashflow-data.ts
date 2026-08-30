@@ -1,7 +1,12 @@
 import { Prisma, ForecastType } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getDateRange } from "./date-range";
-import { MARCA_FILTER_UNASSIGNED, invoiceWhereMarca, proformaWhereMarca } from "./org";
+import {
+  MARCA_FILTER_UNASSIGNED,
+  cashflowScopeConditions,
+  invoiceWhereMarca,
+  proformaWhereMarca,
+} from "./org";
 import { HoldedClient } from "./holded";
 
 export type CashflowParams = {
@@ -188,32 +193,40 @@ export async function getCashflowData(
 
   const [proformaRows, forecastRows] = withForecast
     ? await Promise.all([
-        prisma.$queryRaw<ProformaMonthRow[]>`
-          SELECT DATE_TRUNC('month', date) AS month, SUM("totalEur") AS total_eur
-          FROM proformas
-          WHERE "holdedStatus" IN (0, 1, 4)
-          ${dateRange.gte ? Prisma.sql`AND date >= ${dateRange.gte}` : Prisma.empty}
-          ${dateRange.lte ? Prisma.sql`AND date <= ${dateRange.lte}` : Prisma.empty}
-          GROUP BY DATE_TRUNC('month', date)
-          ORDER BY month ASC
-        `,
         (() => {
-          const conditions: Prisma.Sql[] = [Prisma.sql`"isPaused" = false`];
+          // Mismos filtros que la consulta de facturas de más arriba (cuenta
+          // contable no aplica: una proforma no tiene líneas contables todavía). Antes
+          // esta consulta solo filtraba por fecha y `holdedStatus`, así que una
+          // proforma de otra entidad legal o marca se colaba en el gráfico de
+          // cualquier filtro — el bug que vio Irene con una proforma de Modus
+          // Operandi apareciendo en la cuenta de la SL. `cashflowScopeConditions` es
+          // la misma lógica de marca/entidad que usa el forecast de abajo: compartida
+          // a propósito para que no se pueda volver a desincronizar así.
+          const conditions: Prisma.Sql[] = [
+            Prisma.sql`"holdedStatus" IN (0, 1, 4)`,
+            ...cashflowScopeConditions({ marca: params.marca, company: params.company }),
+          ];
+          if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
+          if (dateRange.lte) conditions.push(Prisma.sql`date <= ${dateRange.lte}`);
+
+          const where = Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`;
+          return prisma.$queryRaw<ProformaMonthRow[]>`
+            SELECT DATE_TRUNC('month', date) AS month, SUM("totalEur") AS total_eur
+            FROM proformas
+            ${where}
+            GROUP BY DATE_TRUNC('month', date)
+            ORDER BY month ASC
+          `;
+        })(),
+        (() => {
+          // Los forecasts no tienen `companyId` (son previsiones por marca, no por
+          // entidad legal): solo se les pasa `marca`, nunca `company`.
+          const conditions: Prisma.Sql[] = [
+            Prisma.sql`"isPaused" = false`,
+            ...cashflowScopeConditions({ marca: params.marca }),
+          ];
           if (dateRange.gte) conditions.push(Prisma.sql`month >= ${dateRange.gte}`);
           if (dateRange.lte) conditions.push(Prisma.sql`month <= ${dateRange.lte}`);
-          {
-            const marcaList = params.marca?.split(",").filter(Boolean) ?? [];
-            const hasUnassigned = marcaList.includes(MARCA_FILTER_UNASSIGNED);
-            const namedMarcas = marcaList.filter((m) => m !== MARCA_FILTER_UNASSIGNED);
-            if (marcaList.length > 0) {
-              const mc: Prisma.Sql[] = [];
-              if (hasUnassigned) mc.push(Prisma.sql`marca IS NULL`);
-              if (namedMarcas.length > 0)
-                mc.push(Prisma.sql`marca IN (${Prisma.join(namedMarcas.map((m) => Prisma.sql`${m}`))})`);
-              if (mc.length === 1) conditions.push(mc[0]);
-              else if (mc.length > 1) conditions.push(Prisma.sql`(${Prisma.join(mc, " OR ")})`);
-            }
-          }
           if (forecastAccountMappingIds) {
             conditions.push(
               forecastAccountMappingIds.length > 0
@@ -442,7 +455,14 @@ export async function getCashflowCompanies(): Promise<{ id: string; name: string
   });
 }
 
-export async function getCashflowAccounts(): Promise<{ num: string; name: string }[]> {
+export type CashflowAccountOption = { num: string; name: string; l1: string | null };
+
+/**
+ * Cuentas contables filtrables en cashflow/forecasts, con su categoría `l1`
+ * (plan 28-ago, F2 redefinido: agrupar el selector en OPEX/CAPEX/COGS en vez del
+ * módulo de justificantes sin factura que planteaba el plan original).
+ */
+export async function getCashflowAccounts(): Promise<CashflowAccountOption[]> {
   const [rows, companies, mappings] = await Promise.all([
     prisma.invoiceLine.findMany({
       where: { accountingAccount: { not: null } },
@@ -451,13 +471,27 @@ export async function getCashflowAccounts(): Promise<{ num: string; name: string
       orderBy: { accountingAccount: "asc" },
     }),
     prisma.company.findMany({ where: { active: true }, select: { holdedApiKey: true } }),
-    // Cuentas usadas en previsiones manuales (COGS/OPEX/CAPEX) aunque no tengan
-    // todavía ninguna factura histórica — así son filtrables desde el primer día.
+    // Todas las cuentas mapeadas, no solo COGS/OPEX/CAPEX: hace falta el mapeo
+    // completo para poder etiquetar con su categoría también las que ya aparecían
+    // por facturas reales (típicamente REVENUE), no solo las que se añaden más abajo
+    // sin historial.
     prisma.accountMapping.findMany({
-      where: { l1: { in: ["COGS", "OPEX", "CAPEX"] } },
-      select: { description: true, accountNumSL: true, accountNameSL: true, accountNumOU: true, accountNameOU: true },
+      select: {
+        l1: true,
+        description: true,
+        accountNumSL: true,
+        accountNameSL: true,
+        accountNumOU: true,
+        accountNameOU: true,
+      },
     }),
   ]);
+
+  const l1ByNum = new Map<string, string>();
+  for (const m of mappings) {
+    if (m.accountNumSL) l1ByNum.set(m.accountNumSL, m.l1);
+    if (m.accountNumOU) l1ByNum.set(m.accountNumOU, m.l1);
+  }
 
   const holdedById = new Map<string, string>();
   const holdedByNum = new Map<string, string>();
@@ -471,20 +505,25 @@ export async function getCashflowAccounts(): Promise<{ num: string; name: string
   );
 
   const seen = new Set<string>();
-  const result: { num: string; name: string }[] = [];
+  const result: CashflowAccountOption[] = [];
   for (const r of rows) {
     const dbKey = r.accountingAccount!;
     const name = r.accountingAccountName ?? holdedById.get(dbKey) ?? holdedByNum.get(dbKey);
     if (name && !seen.has(dbKey)) {
       seen.add(dbKey);
-      result.push({ num: dbKey, name });
+      result.push({ num: dbKey, name, l1: l1ByNum.get(dbKey) ?? null });
     }
   }
+  // Cuentas usadas en previsiones manuales (COGS/OPEX/CAPEX) aunque no tengan
+  // todavía ninguna factura histórica — así son filtrables desde el primer día. Solo
+  // estas tres categorías, igual que antes: el resto del catálogo contable no se
+  // añade sin que haya al menos una factura detrás.
   for (const m of mappings) {
+    if (!["COGS", "OPEX", "CAPEX"].includes(m.l1)) continue;
     for (const num of [m.accountNumSL, m.accountNumOU]) {
       if (!num || seen.has(num)) continue;
       seen.add(num);
-      result.push({ num, name: m.accountNameSL ?? m.accountNameOU ?? m.description });
+      result.push({ num, name: m.accountNameSL ?? m.accountNameOU ?? m.description, l1: m.l1 });
     }
   }
   return result;

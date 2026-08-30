@@ -71,9 +71,11 @@ export async function createWorkspace(data: FormData): Promise<void> {
   const email = data.get("email") as string;
   const apiToken = data.get("apiToken") as string;
   const tempoApiToken = (data.get("tempoApiToken") as string) || undefined;
+  const giroOrgSlug = (data.get("giroOrgSlug") as string) || undefined;
+  const giroApiKey = (data.get("giroApiKey") as string) || undefined;
 
   const workspace = await prisma.jiraWorkspace.create({
-    data: { name, domain, email, apiToken, tempoApiToken },
+    data: { name, domain, email, apiToken, tempoApiToken, giroOrgSlug, giroApiKey },
   });
 
   await prisma.auditLog.create({
@@ -98,10 +100,23 @@ export async function updateWorkspace(id: string, data: FormData): Promise<void>
   const email = data.get("email") as string;
   const apiToken = data.get("apiToken") as string;
   const tempoApiToken = data.get("tempoApiToken") as string;
+  const giroOrgSlug = data.get("giroOrgSlug") as string;
+  const giroApiKey = data.get("giroApiKey") as string;
 
-  const update: { domain: string; email: string; apiToken?: string; tempoApiToken?: string } = { domain, email };
+  const update: {
+    domain: string;
+    email: string;
+    giroOrgSlug: string | null;
+    apiToken?: string;
+    tempoApiToken?: string;
+    giroApiKey?: string;
+  } = { domain, email, giroOrgSlug: giroOrgSlug || null };
   if (apiToken) update.apiToken = apiToken;
   if (tempoApiToken) update.tempoApiToken = tempoApiToken;
+  // giroOrgSlug sí se guarda vacío (permite desvincular, no es un secreto); giroApiKey
+  // solo se sobrescribe si se rellena, mismo criterio que apiToken/tempoApiToken — no
+  // tiene sentido borrar un secreto sin querer al dejar el campo en blanco.
+  if (giroApiKey) update.giroApiKey = giroApiKey;
 
   await prisma.jiraWorkspace.update({ where: { id }, data: update });
 
