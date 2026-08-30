@@ -65,6 +65,8 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
               domain={w.domain}
               email={w.email}
               active={w.active}
+              giroOrgSlug={w.giroOrgSlug}
+              hasGiroApiKey={Boolean(w.giroApiKey)}
             />
           ))}
         </div>

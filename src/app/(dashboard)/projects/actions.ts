@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ProjectStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { GiroClient } from "@/lib/giro-client";
 
 async function generateBucketCode(): Promise<string> {
   const year = new Date().getFullYear();
@@ -56,6 +57,65 @@ export async function updateProjectStatus(
   if (!session?.user) throw new Error("Unauthorized");
   await prisma.jiraProject.update({ where: { id: projectId }, data: { status } });
   revalidatePath("/projects", "layout");
+}
+
+/**
+ * Vincula este proyecto con su equivalente en Giro (plan 28-ago, F3 —
+ * conciliación), a partir de su **key** (p.ej. "AWI") — es lo único que la UI de
+ * Giro enseña; su id interno (lo que de verdad guarda `giroProjectId`) no aparece en
+ * ningún sitio, así que hay que resolverlo aquí llamando a `GET /api/v1/projects` del
+ * workspace y buscando la key. Vacío = quitar el vínculo. `giroProjectId` es único
+ * (`@unique` en schema): un mismo proyecto de Giro no puede vincularse dos veces.
+ */
+export async function updateGiroProjectId(
+  projectId: string,
+  giroProjectKey: string
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const key = giroProjectKey.trim();
+
+  if (!key) {
+    await prisma.jiraProject.update({ where: { id: projectId }, data: { giroProjectId: null } });
+    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/reconciliation");
+    return {};
+  }
+
+  const project = await prisma.jiraProject.findUnique({
+    where: { id: projectId },
+    select: { workspace: { select: { giroOrgSlug: true, giroApiKey: true } } },
+  });
+  if (!project) return { error: "El proyecto no existe" };
+  if (!project.workspace.giroOrgSlug || !project.workspace.giroApiKey) {
+    return { error: "Este workspace no tiene Giro configurado — ver Configuración → Workspaces Jira" };
+  }
+  if (!process.env.GIRO_BASE_URL) {
+    return { error: "GIRO_BASE_URL no está configurado en el entorno del ERP" };
+  }
+
+  let giroProjects;
+  try {
+    const client = new GiroClient(process.env.GIRO_BASE_URL, project.workspace.giroApiKey);
+    giroProjects = await client.listProjects();
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Error consultando Giro" };
+  }
+
+  const match = giroProjects.find((p) => p.key.toUpperCase() === key.toUpperCase());
+  if (!match) {
+    return { error: `No existe ningún proyecto con key "${key}" en la org de Giro configurada` };
+  }
+
+  try {
+    await prisma.jiraProject.update({ where: { id: projectId }, data: { giroProjectId: match.id } });
+  } catch {
+    return { error: "Ese proyecto de Giro ya está vinculado a otro proyecto" };
+  }
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/reconciliation");
+  return {};
 }
 
 export async function updateProjectTypes(
