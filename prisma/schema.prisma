@@ -109,6 +109,14 @@ model JiraWorkspace {
   tempoApiToken String?
   active        Boolean @default(true)
 
+  /// Org de Giro de la que leer coste aprobado por proyecto (plan 28-ago, F3 —
+  /// conciliación horas aprobadas ↔ facturas). Guardados en claro, mismo criterio
+  /// que `apiToken`/`tempoApiToken` de este mismo modelo — no es el paso 3 completo
+  /// del Bloque E (eso sustituiría Tempo entero); es solo lo mínimo para que F3
+  /// pueda llamar a `GET /api/v1/project-cost` de Giro.
+  giroOrgSlug String?
+  giroApiKey  String?
+
   projects JiraProject[]
   syncLogs SyncLog[]
 
@@ -127,6 +135,11 @@ model JiraProject {
   workspace   JiraWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   active      Boolean       @default(true)
   status      ProjectStatus @default(NOT_STARTED)
+
+  /// Proyecto equivalente en Giro, para F3 (conciliación) — mismo campo que
+  /// propone el Bloque E paso 1, adoptado aquí de forma aislada sin el resto de la
+  /// migración (Tempo sigue siendo la fuente para todo lo demás).
+  giroProjectId String? @unique
 
   // Tipos de proyecto (no exclusivos entre sí)
   isPrecioCerrado  Boolean  @default(false)
