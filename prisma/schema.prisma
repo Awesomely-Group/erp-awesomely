@@ -327,12 +327,19 @@ model Invoice {
 }
 
 model InvoicePayment {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   invoiceId String?
-  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice   Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   amount    Decimal
-  paidAt    DateTime
-  paidBy    String
+  // Ligado a factura: siempre se rellena al crearse (pago ya realizado, igual que
+  // antes). Suelto (invoiceId null): queda en null hasta que se marca como pagado
+  // (markManualPaymentPaid) — mientras tanto es un pago PENDIENTE, visible en la
+  // misma lista de Pagos/Cobros pendientes que las facturas.
+  paidAt    DateTime?
+  paidBy    String?
+  // Solo se usa en la rama suelta y pendiente: fecha prevista de pago/cobro,
+  // equivalente al "Vencimiento" de una factura mientras no se marca pagado.
+  dueDate   DateTime?
   notes     String?
 
   // Solo se rellenan cuando invoiceId es null (pago suelto, sin factura asociada).
@@ -352,6 +359,7 @@ model InvoicePayment {
 
   @@index([invoiceId])
   @@index([paidAt])
+  @@index([dueDate])
   @@index([direction])
   @@index([companyId])
   @@index([accountMappingId])

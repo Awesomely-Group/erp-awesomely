@@ -39,6 +39,12 @@ export function PaymentForm({
   const router = useRouter();
 
   const isExpense = direction === "EXPENSE";
+  // Ligado a factura: se registra ya como pagado (mismo comportamiento de siempre).
+  // Suelto: se crea como pago PENDIENTE — aparece en la lista de pendientes hasta que
+  // se marca pagado desde ahí, así que el copy del modal lo deja claro.
+  const noun = isExpense ? "pago" : "cobro";
+  const title = unlinked ? `Crear ${noun} pendiente` : `Registrar ${noun}`;
+  const submitLabel = unlinked ? `Crear ${noun} pendiente` : "Guardar";
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
@@ -49,7 +55,7 @@ export function PaymentForm({
     const marca = (fd.get("marca") as string) || null;
     const companyId = (fd.get("companyId") as string) || null;
     const amount = parseFloat(fd.get("amount") as string);
-    const paidAt = fd.get("paidAt") as string;
+    const date = fd.get("date") as string;
     const notes = (fd.get("notes") as string) || "";
 
     if (!unlinked && !invoiceId) {
@@ -60,7 +66,7 @@ export function PaymentForm({
       setError("La cuenta contable es obligatoria para pagos sin factura asociada.");
       return;
     }
-    if (isNaN(amount) || !paidAt) {
+    if (isNaN(amount) || !date) {
       setError("Indica un importe y una fecha válidos.");
       return;
     }
@@ -71,7 +77,7 @@ export function PaymentForm({
         invoiceId,
         direction,
         amount,
-        paidAt,
+        date,
         notes,
         companyId: unlinked ? companyId : null,
         marca: unlinked ? marca : null,
@@ -86,9 +92,7 @@ export function PaymentForm({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Registrar {isExpense ? "pago" : "cobro"}
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -165,10 +169,12 @@ export function PaymentForm({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Fecha *</label>
+              <label className="text-xs font-medium text-gray-600">
+                {unlinked ? "Fecha prevista *" : "Fecha *"}
+              </label>
               <input
                 type="date"
-                name="paidAt"
+                name="date"
                 required
                 defaultValue={todayIso()}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
@@ -203,7 +209,7 @@ export function PaymentForm({
               disabled={pending}
               className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
             >
-              {pending ? "Guardando…" : "Guardar"}
+              {pending ? "Guardando…" : submitLabel}
             </button>
           </div>
         </form>

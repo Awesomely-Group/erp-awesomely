@@ -21,17 +21,17 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { PaymentRow, type PaymentInvoice } from "./payment-row";
-import { PaymentCreateButton, type ManualPaymentRow } from "./payment-create-button";
+import { PaymentCreateButton } from "./payment-create-button";
 import { type AccountMappingOption } from "@/app/(dashboard)/forecasts/forecast-classification-fields";
 
 interface Props {
+  /** Incluye tanto facturas (Holded) como pagos sueltos pendientes/pagados creados a mano
+   * (`source: "manual"`) — ver payment-row.tsx. Se muestran mezclados en la misma lista. */
   pendingPayments: PaymentInvoice[];
   pendingCollections: PaymentInvoice[];
   companies: string[];
-  manualExpensePayments: ManualPaymentRow[];
-  manualIncomePayments: ManualPaymentRow[];
   invoiceOptionsPurchase: { id: string; label: string; sublabel?: string }[];
   invoiceOptionsSale: { id: string; label: string; sublabel?: string }[];
   accountMappings: AccountMappingOption[];
@@ -367,22 +367,6 @@ function CollapsibleMonthGroup({
   );
 }
 
-// ─── Manual payment row (pagos/cobros sueltos, sin factura asociada) ─────────
-
-function ManualPaymentRowItem({ row }: { row: ManualPaymentRow }): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-4 px-4 py-2.5 border-b border-gray-100 last:border-0 text-sm">
-      <span className="font-medium text-gray-900 w-24 shrink-0">{formatCurrency(row.amount)}</span>
-      <span className="text-gray-500 w-24 shrink-0">{formatDate(row.paidAt)}</span>
-      <span className="text-gray-400 flex-1 min-w-0 truncate">
-        {[row.companyName, row.marca, row.accountMappingLabel].filter(Boolean).join(" · ") || "Sin clasificar"}
-      </span>
-      {row.notes && <span className="italic text-gray-400 truncate max-w-xs">{row.notes}</span>}
-      <span className="text-gray-300 text-xs shrink-0">{row.paidBy}</span>
-    </div>
-  );
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CURRENT_MONTH = toMonthKey(new Date());
@@ -394,8 +378,6 @@ export function PaymentsView({
   pendingPayments,
   pendingCollections,
   companies,
-  manualExpensePayments,
-  manualIncomePayments,
   invoiceOptionsPurchase,
   invoiceOptionsSale,
   accountMappings,
@@ -826,18 +808,6 @@ export function PaymentsView({
         </div>
       )}
 
-      {/* ── Pagos sueltos (sin factura asociada) ──────────────────────────────── */}
-      {tab === "pagos" && manualExpensePayments.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            Pagos sueltos
-          </div>
-          {manualExpensePayments.map((row) => (
-            <ManualPaymentRowItem key={row.id} row={row} />
-          ))}
-        </div>
-      )}
-
       {/* ── Cobros tab (no DnD) ───────────────────────────────────────────────── */}
       {tab === "cobros" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -885,18 +855,6 @@ export function PaymentsView({
               </CollapsibleMonthGroup>
             ))
           )}
-        </div>
-      )}
-
-      {/* ── Cobros sueltos (sin factura asociada) ─────────────────────────────── */}
-      {tab === "cobros" && manualIncomePayments.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            Cobros sueltos
-          </div>
-          {manualIncomePayments.map((row) => (
-            <ManualPaymentRowItem key={row.id} row={row} />
-          ))}
         </div>
       )}
     </div>

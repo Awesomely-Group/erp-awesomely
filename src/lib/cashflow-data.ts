@@ -192,15 +192,18 @@ export async function getCashflowData(
     forecastAccountMappingIds = mappings.map((m) => m.id);
   }
 
-  // Pagos manuales sueltos (sin factura asociada): a diferencia de proformas/forecasts
-  // son movimientos de caja reales (`paidAt` ya ha ocurrido, no una proyección), así que
-  // se calculan siempre, independientemente de `withForecast`, y se suman más abajo a los
-  // actuals (inflowsBase/outflowsBase), no a forecastInflows/forecastOutflows. Los pagos
-  // ligados a una factura (invoiceId no nulo) no se incluyen aquí: su importe ya se cuenta
-  // a través de la propia factura en la consulta `rows` de más arriba — sumarlos también
-  // aquí duplicaría el importe.
+  // Pagos manuales sueltos (sin factura asociada) YA MARCADOS COMO PAGADOS
+  // (`paidAt` no nulo — los pendientes, con `paidAt` null, todavía no son un movimiento
+  // de caja real y no deben contar aquí, solo aparecen en la lista de pendientes de
+  // /payments). A diferencia de proformas/forecasts son movimientos de caja reales
+  // (ya ocurrieron, no una proyección), así que se calculan siempre, independientemente
+  // de `withForecast`, y se suman más abajo a los actuals (inflowsBase/outflowsBase), no
+  // a forecastInflows/forecastOutflows. Los pagos ligados a una factura (invoiceId no
+  // nulo) no se incluyen aquí: su importe ya se cuenta a través de la propia factura en
+  // la consulta `rows` de más arriba — sumarlos también aquí duplicaría el importe.
   const manualPaymentConditions: Prisma.Sql[] = [
     Prisma.sql`"invoiceId" IS NULL`,
+    Prisma.sql`"paidAt" IS NOT NULL`,
     ...cashflowScopeConditions({ marca: params.marca, company: params.company }),
   ];
   if (dateRange.gte) manualPaymentConditions.push(Prisma.sql`"paidAt" >= ${dateRange.gte}`);

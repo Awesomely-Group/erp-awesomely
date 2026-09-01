@@ -6,12 +6,16 @@ import { useRouter } from "next/navigation";
 import { GripVertical } from "lucide-react";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { registerPayment } from "./actions";
+import { registerPayment, markManualPaymentPaid } from "./actions";
 
 export interface PaymentInvoice {
   id: string;
   holdedId: string;
   type: "PURCHASE" | "SALE";
+  /** "invoice" = factura sincronizada de Holded (comportamiento de siempre). "manual" =
+   * pago suelto creado a mano, sin factura — no tiene enlaces a Holded/ERP y "Marcar
+   * pagada" actualiza el propio registro en vez de crear uno nuevo. */
+  source: "invoice" | "manual";
   number: string | null;
   counterparty: string | null;
   dueDate: string | null;
@@ -45,14 +49,22 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
 
   const isPaid = invoice.effectivePending <= 0.005;
 
+  const isManual = invoice.source === "manual";
+
   function handleSubmit(): void {
     startTransition(async () => {
-      await registerPayment({
-        invoiceId: invoice.id,
-        amount: parseFloat(amount),
-        paidAt,
-        notes,
-      });
+      if (isManual) {
+        // El registro suelto ES el pago (no hay factura de la que colgar uno nuevo):
+        // se actualiza el propio registro pendiente, el importe queda fijo.
+        await markManualPaymentPaid({ id: invoice.id, paidAt, notes });
+      } else {
+        await registerPayment({
+          invoiceId: invoice.id,
+          amount: parseFloat(amount),
+          paidAt,
+          notes,
+        });
+      }
       setShowPayForm(false);
       setAmount(invoice.effectivePending.toFixed(2));
       setNotes("");
@@ -120,35 +132,39 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
         </div>
 
         <div className="text-right shrink-0 w-28">
-          <p className="text-xs text-gray-400">Total factura</p>
+          <p className="text-xs text-gray-400">{isManual ? "Importe" : "Total factura"}</p>
           <p className="text-sm font-medium text-gray-700">{formatCurrency(invoice.totalEur)}</p>
         </div>
 
         <div className="text-right shrink-0 w-28">
-          <p className="text-xs text-gray-400">Pendiente conciliar</p>
+          <p className="text-xs text-gray-400">{isManual ? "Pendiente" : "Pendiente conciliar"}</p>
           <p className={cn("text-sm font-semibold", isPaid ? "text-green-600" : "text-red-600")}>
             {isPaid ? "Pagado" : formatCurrency(invoice.effectivePending)}
           </p>
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
-          <Link
-            href={`/invoices/${invoice.id}`}
-            className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
-          >
-            ERP
-          </Link>
-          <span className="text-gray-300">·</span>
-          <Link
-            href={holdedInvoiceUrl(invoice.holdedId, invoice.type)}
-            target="_blank"
-            className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
-          >
-            Holded
-          </Link>
+          {!isManual && (
+            <>
+              <Link
+                href={`/invoices/${invoice.id}`}
+                className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
+              >
+                ERP
+              </Link>
+              <span className="text-gray-300">·</span>
+              <Link
+                href={holdedInvoiceUrl(invoice.holdedId, invoice.type)}
+                target="_blank"
+                className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
+              >
+                Holded
+              </Link>
+            </>
+          )}
           {!isPaid && (
             <>
-              <span className="text-gray-300">·</span>
+              {!isManual && <span className="text-gray-300">·</span>}
               <button
                 onClick={() => setShowPayForm((v) => !v)}
                 className="text-xs font-medium text-emerald-600 hover:text-emerald-700 whitespace-nowrap"
@@ -169,8 +185,9 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
               type="number"
               step="0.01"
               value={amount}
+              disabled={isManual}
               onChange={(e) => setAmount(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className="rounded border border-gray-300 px-2 py-1 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:bg-gray-100 disabled:text-gray-500"
             />
           </div>
           <div className="flex flex-col gap-1">

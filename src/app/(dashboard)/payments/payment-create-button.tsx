@@ -4,18 +4,6 @@ import { useState } from "react";
 import { type AccountMappingOption } from "@/app/(dashboard)/forecasts/forecast-classification-fields";
 import { PaymentForm } from "./payment-form";
 
-/** Fila de pago manual sin factura asociada, para la lista de "Pagos/Cobros sueltos". */
-export type ManualPaymentRow = {
-  id: string;
-  amount: number;
-  paidAt: string;
-  paidBy: string;
-  notes: string | null;
-  companyName: string | null;
-  marca: string | null;
-  accountMappingLabel: string | null;
-};
-
 interface Props {
   /** Fijado según la pestaña activa — Pagos → EXPENSE, Cobros → INCOME. */
   direction: "INCOME" | "EXPENSE";

@@ -3,7 +3,8 @@ import { HoldedClient } from "@/lib/holded";
 import { getForecastFormOptions } from "@/app/(dashboard)/forecasts/forecasts-data";
 import { PaymentsView } from "./payments-view";
 import { type PaymentInvoice } from "./payment-row";
-import { type ManualPaymentRow } from "./payment-create-button";
+
+const L1_LABELS: Record<string, string> = { COGS: "COGS", OPEX: "Opex", CAPEX: "Capex" };
 
 // holdedContactId is not populated on invoices (Holded list endpoint omits it),
 // so we match partners by normalized counterparty name + companyId instead.
@@ -38,14 +39,16 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       }),
-      // Pagos manuales sueltos (sin factura asociada) — se muestran separados por dirección.
+      // Pagos manuales sueltos (sin factura asociada) — pendientes (paidAt null) o ya
+      // pagados. Se mezclan más abajo en las mismas listas pendingPayments/pendingCollections
+      // que las facturas, no se muestran aparte.
       prisma.invoicePayment.findMany({
         where: { invoiceId: null },
         include: {
           company: { select: { name: true } },
           accountMapping: { select: { description: true, l1: true } },
         },
-        orderBy: { paidAt: "desc" },
+        orderBy: { createdAt: "desc" },
       }),
     ]);
 
@@ -131,11 +134,14 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
 
     companyNames.add(inv.company.name);
 
+    // Los pagos ligados a factura (relación erpPayments) siempre se crean con paidAt/paidBy
+    // ya informados (registerPayment/createManualPayment rama ligada) — solo quedan a null
+    // en la rama suelta y pendiente (invoiceId null), que no aparece aquí.
     const erpPaymentsPayload = inv.erpPayments.map((p) => ({
       id: p.id,
       amount: Number(p.amount),
-      paidAt: p.paidAt.toISOString(),
-      paidBy: p.paidBy,
+      paidAt: p.paidAt!.toISOString(),
+      paidBy: p.paidBy!,
       notes: p.notes,
     }));
 
@@ -149,6 +155,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         id: inv.id,
         holdedId: inv.holdedId,
         type: inv.type,
+        source: "invoice",
         number: inv.number,
         counterparty: inv.counterparty,
         dueDate: inv.dueDate ? inv.dueDate.toISOString() : null,
@@ -169,6 +176,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         id: inv.id,
         holdedId: inv.holdedId,
         type: inv.type,
+        source: "invoice",
         number: inv.number,
         counterparty: inv.counterparty,
         dueDate: inv.dueDate ? inv.dueDate.toISOString() : null,
@@ -185,35 +193,50 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     }
   }
 
-  const companyNameList = Array.from(companyNames).sort();
-
-  const L1_LABELS: Record<string, string> = { COGS: "COGS", OPEX: "Opex", CAPEX: "Capex" };
-  const manualExpensePayments: ManualPaymentRow[] = [];
-  const manualIncomePayments: ManualPaymentRow[] = [];
+  // Pagos manuales sueltos: se mezclan en la MISMA lista que las facturas (pendientes o
+  // ya pagadas), no aparte — con `holdedId`/enlaces vacíos y `source: "manual"` para que
+  // PaymentRow oculte los enlaces a Holded/ERP y use markManualPaymentPaid al marcarlos.
   for (const p of manualPayments) {
-    const row: ManualPaymentRow = {
+    const amount = Number(p.amount);
+    const isPaid = p.paidAt != null;
+    const accountMappingLabel = p.accountMapping
+      ? `${L1_LABELS[p.accountMapping.l1] ?? p.accountMapping.l1} · ${p.accountMapping.description}`
+      : null;
+    const isExpense = p.direction !== "INCOME";
+
+    const row: PaymentInvoice = {
       id: p.id,
-      amount: Number(p.amount),
-      paidAt: p.paidAt.toISOString(),
-      paidBy: p.paidBy,
-      notes: p.notes,
-      companyName: p.company?.name ?? null,
-      marca: p.marca,
-      accountMappingLabel: p.accountMapping
-        ? `${L1_LABELS[p.accountMapping.l1] ?? p.accountMapping.l1} · ${p.accountMapping.description}`
-        : null,
+      holdedId: "",
+      type: isExpense ? "PURCHASE" : "SALE",
+      source: "manual",
+      number: accountMappingLabel,
+      counterparty: p.notes?.trim() || (isExpense ? "Pago suelto" : "Cobro suelto"),
+      dueDate: (p.dueDate ?? p.paidAt)?.toISOString() ?? null,
+      totalEur: amount,
+      paymentsPending: amount,
+      erpPaid: isPaid ? amount : 0,
+      effectivePending: isPaid ? 0 : amount,
+      companyName: p.company?.name ?? "Sin empresa",
+      verificationStatus: null,
+      erpPayments: isPaid
+        ? [{ id: p.id, amount, paidAt: p.paidAt!.toISOString(), paidBy: p.paidBy ?? "—", notes: p.notes }]
+        : [],
+      contactIban: null,
+      contactHoldedUrl: null,
     };
-    if (p.direction === "INCOME") manualIncomePayments.push(row);
-    else manualExpensePayments.push(row);
+
+    if (p.company?.name) companyNames.add(p.company.name);
+    if (isExpense) pendingPayments.push(row);
+    else pendingCollections.push(row);
   }
+
+  const companyNameList = Array.from(companyNames).sort();
 
   return (
     <PaymentsView
       pendingPayments={pendingPayments}
       pendingCollections={pendingCollections}
       companies={companyNameList}
-      manualExpensePayments={manualExpensePayments}
-      manualIncomePayments={manualIncomePayments}
       invoiceOptionsPurchase={invoiceOptionsPurchase}
       invoiceOptionsSale={invoiceOptionsSale}
       accountMappings={forecastOptions.accountMappings}
