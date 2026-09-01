@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MARCA_FILTER_UNASSIGNED, cashflowScopeConditions, groupAccountsByL1 } from "./org";
+import {
+  MARCA_FILTER_UNASSIGNED,
+  accountGroupSelectionState,
+  cashflowScopeConditions,
+  groupAccountsByL1,
+  toggleAccountGroup,
+} from "./org";
 
 /**
  * Regresión de F1 (plan 28-ago): la consulta de proformas del gráfico de cashflow se
@@ -112,5 +118,55 @@ describe("groupAccountsByL1", () => {
 
   it("con la lista vacía no devuelve grupos", () => {
     expect(groupAccountsByL1([])).toEqual([]);
+  });
+});
+
+/**
+ * Selección masiva por grupo en el multiselect de "Cuenta contable" (Cashflow):
+ * permite marcar/desmarcar de un click todas las cuentas de un grupo (OPEX, CAPEX,
+ * COGS, Otras cuentas) en vez de una por una.
+ */
+describe("accountGroupSelectionState", () => {
+  const items = [{ num: "1" }, { num: "2" }];
+
+  it("ninguna seleccionada", () => {
+    expect(accountGroupSelectionState(items, [])).toEqual({ allSelected: false, someSelected: false });
+  });
+
+  it("todas seleccionadas", () => {
+    expect(accountGroupSelectionState(items, ["1", "2"])).toEqual({ allSelected: true, someSelected: false });
+  });
+
+  it("algunas seleccionadas → indeterminate", () => {
+    expect(accountGroupSelectionState(items, ["1"])).toEqual({ allSelected: false, someSelected: true });
+  });
+
+  it("selección de otro grupo no cuenta", () => {
+    expect(accountGroupSelectionState(items, ["99"])).toEqual({ allSelected: false, someSelected: false });
+  });
+
+  it("grupo vacío nunca aparece como seleccionado", () => {
+    expect(accountGroupSelectionState([], ["1"])).toEqual({ allSelected: false, someSelected: false });
+  });
+});
+
+describe("toggleAccountGroup", () => {
+  const opex = [{ num: "1" }, { num: "2" }];
+
+  it("de ninguna a todas", () => {
+    expect(toggleAccountGroup([], opex)).toEqual(["1", "2"]);
+  });
+
+  it("de todas a ninguna", () => {
+    expect(toggleAccountGroup(["1", "2"], opex)).toEqual([]);
+  });
+
+  it("parcial → deselecciona todo el grupo (no lo completa)", () => {
+    expect(toggleAccountGroup(["1"], opex)).toEqual([]);
+  });
+
+  it("preserva cuentas seleccionadas de otros grupos", () => {
+    expect(toggleAccountGroup(["99"], opex)).toEqual(["99", "1", "2"]);
+    expect(toggleAccountGroup(["1", "99"], opex)).toEqual(["99"]);
   });
 });
