@@ -2,7 +2,13 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { MARCA_FILTER_UNASSIGNED, MARCA_OPTIONS, groupAccountsByL1 } from "@/lib/org";
+import {
+  MARCA_FILTER_UNASSIGNED,
+  MARCA_OPTIONS,
+  accountGroupSelectionState,
+  groupAccountsByL1,
+  toggleAccountGroup,
+} from "@/lib/org";
 
 const PERIODS = [
   { value: "", label: "Últimos 12 meses (por defecto)" },
@@ -148,6 +154,16 @@ export function CashflowFilters({
     const next = selectedAccounts.includes(num)
       ? selectedAccounts.filter((a) => a !== num)
       : [...selectedAccounts, num];
+    setSelectedAccounts(next);
+
+    if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
+    applyTimerRef.current = setTimeout(() => {
+      applyWith({ account: next.join(",") });
+    }, 600);
+  }
+
+  function toggleGroup(groupItems: AccountOption[]): void {
+    const next = toggleAccountGroup(selectedAccounts, groupItems);
     setSelectedAccounts(next);
 
     if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
@@ -353,11 +369,28 @@ export function CashflowFilters({
 
             {accountsOpen && (
               <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[16rem] max-h-64 overflow-y-auto">
-                {groupAccountsByL1(accounts).map((group) => (
+                {groupAccountsByL1(accounts).map((group) => {
+                  const { allSelected, someSelected } = accountGroupSelectionState(
+                    group.items,
+                    selectedAccounts
+                  );
+                  return (
                   <div key={group.label}>
-                    <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 sticky top-0 bg-white">
-                      {group.label}
-                    </p>
+                    <label className="flex items-center gap-2.5 px-3 pt-2 pb-1 sticky top-0 bg-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someSelected;
+                        }}
+                        onChange={() => toggleGroup(group.items)}
+                        aria-label={`Seleccionar todas las cuentas de ${group.label}`}
+                        className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                      />
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                        {group.label}
+                      </span>
+                    </label>
                     {group.items.map((a) => (
                       <label
                         key={a.num}
@@ -373,7 +406,8 @@ export function CashflowFilters({
                       </label>
                     ))}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

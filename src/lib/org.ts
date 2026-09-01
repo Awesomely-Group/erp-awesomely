@@ -49,6 +49,43 @@ export function groupAccountsByL1<T extends { l1: string | null }>(
   return groups;
 }
 
+/**
+ * Estado de selección de un grupo de cuentas contables en el multiselect de
+ * "Cuenta contable" (Cashflow) — permite pintar el checkbox de cabecera del grupo
+ * como marcado, sin marcar o `indeterminate`.
+ */
+export function accountGroupSelectionState<T extends { num: string }>(
+  items: T[],
+  selectedAccounts: string[]
+): { allSelected: boolean; someSelected: boolean } {
+  if (items.length === 0) return { allSelected: false, someSelected: false };
+  const selected = new Set(selectedAccounts);
+  const selectedCount = items.filter((a) => selected.has(a.num)).length;
+  return {
+    allSelected: selectedCount === items.length,
+    someSelected: selectedCount > 0 && selectedCount < items.length,
+  };
+}
+
+/**
+ * Añade o quita todos los `num` de un grupo de `selectedAccounts` en un solo toggle:
+ * si el grupo está completo o parcialmente seleccionado, lo deselecciona entero;
+ * si no tiene ninguno seleccionado, lo selecciona entero. Preserva la selección de
+ * cuentas de otros grupos.
+ */
+export function toggleAccountGroup<T extends { num: string }>(
+  selectedAccounts: string[],
+  groupItems: T[]
+): string[] {
+  const groupNums = new Set(groupItems.map((a) => a.num));
+  const { allSelected, someSelected } = accountGroupSelectionState(groupItems, selectedAccounts);
+  if (allSelected || someSelected) {
+    return selectedAccounts.filter((num) => !groupNums.has(num));
+  }
+  const rest = selectedAccounts.filter((num) => !groupNums.has(num));
+  return [...rest, ...groupItems.map((a) => a.num)];
+}
+
 /** Filtra proyectos según la marca seleccionada (workspace.name === marca). */
 export function filterProjectsByMarca<T extends { workspaceName: string }>(
   projects: T[],
