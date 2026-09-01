@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import Link from "next/link";
 import {
   closestCorners,
   DndContext,
@@ -22,36 +21,27 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { PaymentRow, type PaymentInvoice } from "./payment-row";
-
-export interface PendingInvoice {
-  id: string;
-  holdedId: string;
-  type: "PURCHASE" | "SALE";
-  number: string | null;
-  counterparty: string | null;
-  dueDate: string | null;
-  totalEur: number;
-  effectivePending: number;
-  companyName: string;
-}
+import { PaymentCreateButton, type ManualPaymentRow } from "./payment-create-button";
+import { type AccountMappingOption } from "@/app/(dashboard)/forecasts/forecast-classification-fields";
 
 interface Props {
   pendingPayments: PaymentInvoice[];
-  pendingCollections: PendingInvoice[];
+  pendingCollections: PaymentInvoice[];
   companies: string[];
+  manualExpensePayments: ManualPaymentRow[];
+  manualIncomePayments: ManualPaymentRow[];
+  invoiceOptionsPurchase: { id: string; label: string; sublabel?: string }[];
+  invoiceOptionsSale: { id: string; label: string; sublabel?: string }[];
+  accountMappings: AccountMappingOption[];
+  companyOptions: { id: string; name: string }[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function dueDayOf(dueDate: string): number {
   return parseInt(dueDate.slice(8, 10), 10);
-}
-
-function isOverdue(dueDate: string | null): boolean {
-  if (!dueDate) return false;
-  return new Date(dueDate) < new Date();
 }
 
 function toMonthKey(d: Date): string {
@@ -377,41 +367,18 @@ function CollapsibleMonthGroup({
   );
 }
 
-// ─── Collection row ───────────────────────────────────────────────────────────
+// ─── Manual payment row (pagos/cobros sueltos, sin factura asociada) ─────────
 
-function CollectionRow({ row }: { row: PendingInvoice }): React.JSX.Element {
-  const overdue = isOverdue(row.dueDate);
+function ManualPaymentRowItem({ row }: { row: ManualPaymentRow }): React.JSX.Element {
   return (
-    <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 items-center px-4 py-3 border-b border-gray-100 last:border-0 text-sm">
-      <div className="truncate text-gray-900">{row.counterparty ?? "—"}</div>
-      <div className="truncate text-gray-600">{row.number ?? row.holdedId.slice(0, 8)}</div>
-      <div className="truncate text-gray-600">{row.companyName}</div>
-      <div className="text-right flex items-center justify-end gap-2">
-        {overdue && (
-          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-600">
-            Vencido
-          </span>
-        )}
-        <span className={overdue ? "text-red-600 font-medium" : "text-gray-600"}>
-          {row.dueDate ? formatDate(row.dueDate) : "Sin fecha"}
-        </span>
-      </div>
-      <div className="text-right font-semibold text-amber-600">
-        {formatCurrency(row.effectivePending)}
-      </div>
-      <div className="text-right flex items-center justify-end gap-2">
-        <Link href={`/invoices/${row.id}`} className="text-xs text-indigo-600 hover:text-indigo-700">
-          ERP
-        </Link>
-        <span className="text-gray-300">·</span>
-        <Link
-          href={holdedInvoiceUrl(row.holdedId, row.type)}
-          target="_blank"
-          className="text-xs text-indigo-600 hover:text-indigo-700"
-        >
-          Holded
-        </Link>
-      </div>
+    <div className="flex items-center gap-4 px-4 py-2.5 border-b border-gray-100 last:border-0 text-sm">
+      <span className="font-medium text-gray-900 w-24 shrink-0">{formatCurrency(row.amount)}</span>
+      <span className="text-gray-500 w-24 shrink-0">{formatDate(row.paidAt)}</span>
+      <span className="text-gray-400 flex-1 min-w-0 truncate">
+        {[row.companyName, row.marca, row.accountMappingLabel].filter(Boolean).join(" · ") || "Sin clasificar"}
+      </span>
+      {row.notes && <span className="italic text-gray-400 truncate max-w-xs">{row.notes}</span>}
+      <span className="text-gray-300 text-xs shrink-0">{row.paidBy}</span>
     </div>
   );
 }
@@ -427,6 +394,12 @@ export function PaymentsView({
   pendingPayments,
   pendingCollections,
   companies,
+  manualExpensePayments,
+  manualIncomePayments,
+  invoiceOptionsPurchase,
+  invoiceOptionsSale,
+  accountMappings,
+  companyOptions,
 }: Props): React.JSX.Element {
   const [tab, setTab] = useState<"pagos" | "cobros">("pagos");
   const [company, setCompany] = useState("all");
@@ -643,6 +616,12 @@ export function PaymentsView({
           <p className="text-sm text-gray-500 mt-1">Facturas pendientes de pago y cobro</p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">
+          <PaymentCreateButton
+            direction={tab === "pagos" ? "EXPENSE" : "INCOME"}
+            invoiceOptions={tab === "pagos" ? invoiceOptionsPurchase : invoiceOptionsSale}
+            accountMappings={accountMappings}
+            companyOptions={companyOptions}
+          />
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500 font-medium">Empresa</label>
             <select
@@ -847,18 +826,21 @@ export function PaymentsView({
         </div>
       )}
 
+      {/* ── Pagos sueltos (sin factura asociada) ──────────────────────────────── */}
+      {tab === "pagos" && manualExpensePayments.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Pagos sueltos
+          </div>
+          {manualExpensePayments.map((row) => (
+            <ManualPaymentRowItem key={row.id} row={row} />
+          ))}
+        </div>
+      )}
+
       {/* ── Cobros tab (no DnD) ───────────────────────────────────────────────── */}
       {tab === "cobros" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_1fr_140px_130px_120px] gap-3 bg-gray-50 border-b border-gray-200 px-4 py-2 text-xs font-medium text-gray-500">
-            <div>Cliente</div>
-            <div>Factura</div>
-            <div>Empresa</div>
-            <div className="text-right">Vencimiento</div>
-            <div className="text-right">Pendiente conciliar</div>
-            <div className="text-right">Links</div>
-          </div>
-
           {filteredCollections.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-gray-400">
               No hay cobros pendientes con los filtros actuales.
@@ -883,7 +865,7 @@ export function PaymentsView({
                       isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
                     />
                     {group.firstHalf.length > 0
-                      ? group.firstHalf.map((row) => <CollectionRow key={row.id} row={row} />)
+                      ? group.firstHalf.map((row) => <PaymentRow key={row.id} invoice={row} />)
                       : <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">Sin facturas en este período</p>}
 
                     <HalfSectionHeader
@@ -893,16 +875,28 @@ export function PaymentsView({
                       isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
                     />
                     {group.secondHalf.length > 0
-                      ? group.secondHalf.map((row) => <CollectionRow key={row.id} row={row} />)
+                      ? group.secondHalf.map((row) => <PaymentRow key={row.id} invoice={row} />)
                       : <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">Sin facturas en este período</p>}
                   </>
                 ))()}
                 {group.key === "sin-fecha" && group.firstHalf.map((row) => (
-                  <CollectionRow key={row.id} row={row} />
+                  <PaymentRow key={row.id} invoice={row} />
                 ))}
               </CollapsibleMonthGroup>
             ))
           )}
+        </div>
+      )}
+
+      {/* ── Cobros sueltos (sin factura asociada) ─────────────────────────────── */}
+      {tab === "cobros" && manualIncomePayments.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Cobros sueltos
+          </div>
+          {manualIncomePayments.map((row) => (
+            <ManualPaymentRowItem key={row.id} row={row} />
+          ))}
         </div>
       )}
     </div>

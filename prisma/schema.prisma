@@ -9,9 +9,9 @@ datasource db {
 // ─── Auth (NextAuth) ───────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
+  id            String     @id @default(cuid())
   name          String?
-  email         String    @unique
+  email         String     @unique
   emailVerified DateTime?
   image         String?
   accounts      Account[]
@@ -69,11 +69,11 @@ model SsoAllowedEmail {
 // ─── Companies ─────────────────────────────────────────────────────────────────
 
 model Company {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
   holdedApiKey String
-  currency     String   @default("EUR")
-  active       Boolean  @default(true)
+  currency     String  @default("EUR")
+  active       Boolean @default(true)
 
   invoices          Invoice[]
   suppliers         Supplier[]
@@ -81,6 +81,7 @@ model Company {
   proformas         Proforma[]
   budgets           Budget[]
   journalEntryLines JournalEntryLine[]
+  manualPayments    InvoicePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -142,9 +143,9 @@ model JiraProject {
   giroProjectId String? @unique
 
   // Tipos de proyecto (no exclusivos entre sí)
-  isPrecioCerrado  Boolean  @default(false)
-  isBolsasHoras    Boolean  @default(false)
-  isFeeRegular     Boolean  @default(false)
+  isPrecioCerrado Boolean @default(false)
+  isBolsasHoras   Boolean @default(false)
+  isFeeRegular    Boolean @default(false)
 
   // Precio cerrado
   fixedPrice          Decimal?
@@ -152,15 +153,15 @@ model JiraProject {
   fixedPriceInvoiceId String?
   fixedPriceInvoice   Invoice? @relation("FixedPriceInvoice", fields: [fixedPriceInvoiceId], references: [id], onDelete: SetNull)
 
-  classifications              Classification[]
-  userRoles                    ProjectUserRole[]
-  proformas                    Proforma[]
-  forecasts                    Forecast[]
-  forecastRecurrences          ForecastRecurrence[]
-  hourBuckets                  HourBucket[]
-  regularFeeEntries            RegularFeeEntry[]
-  issueHourBucketAssignments   IssueHourBucketAssignment[]
-  budgets                      Budget[]
+  classifications            Classification[]
+  userRoles                  ProjectUserRole[]
+  proformas                  Proforma[]
+  forecasts                  Forecast[]
+  forecastRecurrences        ForecastRecurrence[]
+  hourBuckets                HourBucket[]
+  regularFeeEntries          RegularFeeEntry[]
+  issueHourBucketAssignments IssueHourBucketAssignment[]
+  budgets                    Budget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -269,21 +270,21 @@ model Invoice {
   counterparty    String?
   holdedContactId String?
 
-  date         DateTime
-  dueDate      DateTime?
+  date    DateTime
+  dueDate DateTime?
 
-  currency     String  @default("EUR")
-  fxRateToEur  Decimal @default(1)
-  subtotal     Decimal @default(0)
-  tax          Decimal @default(0)
-  total        Decimal @default(0)
-  totalEur     Decimal @default(0)
+  currency    String  @default("EUR")
+  fxRateToEur Decimal @default(1)
+  subtotal    Decimal @default(0)
+  tax         Decimal @default(0)
+  total       Decimal @default(0)
+  totalEur    Decimal @default(0)
 
   // Brand from Holded tags (mapped to readable name)
-  marca           String?
+  marca String?
 
   // Recurrence classification (inferred for PURCHASE, manual for SALE)
-  recurrence      InvoiceRecurrence?
+  recurrence InvoiceRecurrence?
 
   // Mes contable al que pertenece la factura (primer día del mes; por defecto el mes de date)
   accountingMonth DateTime?
@@ -299,17 +300,17 @@ model Invoice {
   // on the per-document detail endpoint, GET /invoices/{id} — not on the list endpoint).
   // Cached here so we only need to fetch the detail endpoint once per invoice.
   sourceDocumentHoldedId String?
-  sourceDocumentType     String?  // raw Holded value, e.g. "proform"
-  sourceDocumentChecked  Boolean  @default(false)
+  sourceDocumentType     String? // raw Holded value, e.g. "proform"
+  sourceDocumentChecked  Boolean @default(false)
 
   lines              InvoiceLine[]
   auditLogs          AuditLog[]
   erpPayments        InvoicePayment[]
   verifications      SupplierVerification[]
-  hourBuckets        HourBucket[]       @relation("HourBucketInvoice")
-  fixedPriceProjects JiraProject[]      @relation("FixedPriceInvoice")
-  regularFeeEntries  RegularFeeEntry[]  @relation("RegularFeeInvoice")
-  sourceProformas    Proforma[]         @relation("ProformaInvoiceLink")
+  hourBuckets        HourBucket[]           @relation("HourBucketInvoice")
+  fixedPriceProjects JiraProject[]          @relation("FixedPriceInvoice")
+  regularFeeEntries  RegularFeeEntry[]      @relation("RegularFeeInvoice")
+  sourceProformas    Proforma[]             @relation("ProformaInvoiceLink")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -327,23 +328,40 @@ model Invoice {
 
 model InvoicePayment {
   id        String   @id @default(cuid())
-  invoiceId String
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   amount    Decimal
   paidAt    DateTime
   paidBy    String
   notes     String?
 
+  // Solo se rellenan cuando invoiceId es null (pago suelto, sin factura asociada).
+  // Replican a propósito la forma de clasificación de Forecast, para que
+  // cashflow-data.ts pueda escoger/atribuir estos pagos igual que ya hace con
+  // los forecasts (ver cashflowScopeConditions en src/lib/org.ts). La
+  // obligatoriedad (accountMappingId cuando es suelto) se valida en
+  // createManualPayment, no a nivel de BD.
+  direction        PaymentDirection?
+  companyId        String?
+  company          Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  marca            String?
+  accountMappingId String?
+  accountMapping   AccountMapping?   @relation(fields: [accountMappingId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
 
   @@index([invoiceId])
+  @@index([paidAt])
+  @@index([direction])
+  @@index([companyId])
+  @@index([accountMappingId])
   @@map("invoice_payments")
 }
 
 model InvoiceLine {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   invoiceId    String
-  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   holdedLineId String?
 
   name        String
@@ -431,14 +449,14 @@ enum AuditAction {
 }
 
 model AuditLog {
-  id             String      @id @default(cuid())
-  userId         String?
-  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action         AuditAction
-  entityType     String
-  entityId       String
-  previousValue  Json?
-  newValue       Json?
+  id            String      @id @default(cuid())
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action        AuditAction
+  entityType    String
+  entityId      String
+  previousValue Json?
+  newValue      Json?
 
   invoiceId        String?
   invoice          Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
@@ -465,8 +483,8 @@ model Supplier {
   company         Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
   name            String
 
-  hourlyRate    Decimal?
-  tipo          SupplierTipo?
+  hourlyRate Decimal?
+  tipo       SupplierTipo?
 
   defaultRoleId String?
   defaultRole   SupplierRole? @relation("SupplierDefaultRole", fields: [defaultRoleId], references: [id], onDelete: SetNull)
@@ -558,7 +576,6 @@ enum SupplierTipo {
   @@map("supplier_tipo")
 }
 
-
 enum VerificationStatus {
   PENDING
   HOURS_CAPTURED
@@ -646,10 +663,10 @@ model SyncLog {
 // ─── Proformas (Holded) ───────────────────────────────────────────────────────
 
 model Proforma {
-  id              String       @id @default(cuid())
-  holdedId        String
-  companyId       String
-  company         Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  holdedId  String
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   number          String?
   counterparty    String?
@@ -662,30 +679,30 @@ model Proforma {
   invoiceId             String?
   invoice               Invoice? @relation("ProformaInvoiceLink", fields: [invoiceId], references: [id], onDelete: SetNull)
   invoiceLinkedManually Boolean  @default(false)
-  invoiceLinkConfidence String?  // "holded_link" | "amount_match" | "manual"
+  invoiceLinkConfidence String? // "holded_link" | "amount_match" | "manual"
 
-  date            DateTime
-  dueDate         DateTime?
+  date    DateTime
+  dueDate DateTime?
 
-  currency        String   @default("EUR")
-  fxRateToEur     Decimal  @default(1)
-  subtotal        Decimal  @default(0)
-  tax             Decimal  @default(0)
-  total           Decimal  @default(0)
-  totalEur        Decimal  @default(0)
+  currency    String  @default("EUR")
+  fxRateToEur Decimal @default(1)
+  subtotal    Decimal @default(0)
+  tax         Decimal @default(0)
+  total       Decimal @default(0)
+  totalEur    Decimal @default(0)
 
-  description     String?
-  tags            String[]
+  description String?
+  tags        String[]
 
-  marca           String?
-  projectId       String?
-  project         JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  notes           String?
+  marca     String?
+  projectId String?
+  project   JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  notes     String?
 
-  paymentTerms    PaymentTerm[]
+  paymentTerms PaymentTerm[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([holdedId, companyId])
   @@index([companyId])
@@ -702,6 +719,15 @@ enum ForecastType {
   EXPENSE
 
   @@map("forecast_type")
+}
+
+// ─── Pagos manuales ──────────────────────────────────────────────────────────
+
+enum PaymentDirection {
+  INCOME
+  EXPENSE
+
+  @@map("payment_direction")
 }
 
 enum ForecastFrequency {
@@ -749,12 +775,12 @@ model ForecastRecurrence {
 }
 
 model Forecast {
-  id                String       @id @default(cuid())
-  month             DateTime
-  type              ForecastType
-  marca             String?
-  projectId         String?
-  project           JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  id        String       @id @default(cuid())
+  month     DateTime
+  type      ForecastType
+  marca     String?
+  projectId String?
+  project   JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   accountMappingId String?
   accountMapping   AccountMapping? @relation(fields: [accountMappingId], references: [id], onDelete: SetNull)
@@ -769,11 +795,11 @@ model Forecast {
   recurrence   ForecastRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: Cascade)
   isPaused     Boolean             @default(false)
 
-  createdBy         String?
-  updatedBy         String?
+  createdBy String?
+  updatedBy String?
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([month])
   @@index([marca])
@@ -833,9 +859,9 @@ enum BudgetLineType {
 }
 
 model Budget {
-  id        String       @id @default(cuid())
+  id        String      @id @default(cuid())
   projectId String
-  project   JiraProject  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  project   JiraProject @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   name           String
   type           BudgetType
@@ -850,11 +876,11 @@ model Budget {
   endDate        DateTime?
   notes          String?
 
-  clientName        String?
-  holdedContactId   String?
+  clientName      String?
+  holdedContactId String?
 
   companyId      String?
-  company        Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  company        Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
   holdedDocId    String?
   holdedSyncedAt DateTime?
 
@@ -862,17 +888,17 @@ model Budget {
   // El presupuesto/propuesta se crea desde una plataforma externa por marca; estos
   // campos rastrean su origen, el contenido de la propuesta enviada a firma, y el
   // estado de la firma en Documenso. Ver docs/proposals-plan-v2.md.
-  sourcePlatform       String?   // "LT_TOOLS" | "GIGSONAPPS"
-  externalRef          String?   // uuid generado por la plataforma llamante (idempotencia)
-  executiveSummary     String?   // resumen ejecutivo de la propuesta
-  paymentConditions    String?   // condiciones de pago en texto libre
-  validUntil           DateTime? // validez comercial de la propuesta
-  sentAt               DateTime? // cuándo se envió a firmar
-  documensoDocumentId  Int?
-  documensoStatus      String?   // "DRAFT" | "SENT" | "VIEWED" | "SIGNED"
+  sourcePlatform      String? // "LT_TOOLS" | "GIGSONAPPS"
+  externalRef         String? // uuid generado por la plataforma llamante (idempotencia)
+  executiveSummary    String? // resumen ejecutivo de la propuesta
+  paymentConditions   String? // condiciones de pago en texto libre
+  validUntil          DateTime? // validez comercial de la propuesta
+  sentAt              DateTime? // cuándo se envió a firmar
+  documensoDocumentId Int?
+  documensoStatus     String? // "DRAFT" | "SENT" | "VIEWED" | "SIGNED"
 
-  lines          BudgetLine[]
-  paymentTerms   PaymentTerm[]
+  lines           BudgetLine[]
+  paymentTerms    PaymentTerm[]
   classifications Classification[]
 
   createdAt DateTime @default(now())
@@ -908,8 +934,8 @@ model BudgetLine {
   // Configurador de propuesta (heredado de docs/proposals-plan.md) — opcional,
   // usado sobre todo por el catálogo de servicios de Gigson Solutions (tarifas
   // BUILD/DISCOVER); LaTroupe puede dejarlo vacío si su lógica de precios es otra.
-  rateType     String?  // "BUILD" | "DISCOVER"
-  serviceType  String?  // p.ej. "discovery" | "desarrollo" | "integracion" | "consultoria" | "devops" | "qa" | "pm" | "mantenimiento"
+  rateType     String? // "BUILD" | "DISCOVER"
+  serviceType  String? // p.ej. "discovery" | "desarrollo" | "integracion" | "consultoria" | "devops" | "qa" | "pm" | "mantenimiento"
   deliverables String[] @default([])
 
   sortOrder Int @default(0)
@@ -923,13 +949,13 @@ model BudgetLine {
 }
 
 model PaymentTerm {
-  id       String               @id @default(cuid())
-  budgetId String
-  budget   Budget               @relation(fields: [budgetId], references: [id], onDelete: Cascade)
-  order    Int
-  valueType PaymentTermValueType
-  value    Decimal
-  dueDate  DateTime?
+  id          String               @id @default(cuid())
+  budgetId    String
+  budget      Budget               @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  order       Int
+  valueType   PaymentTermValueType
+  value       Decimal
+  dueDate     DateTime?
   description String?
 
   proformaId String?
@@ -994,6 +1020,7 @@ model AccountMapping {
 
   forecasts           Forecast[]
   forecastRecurrences ForecastRecurrence[]
+  payments            InvoicePayment[]
 
   @@map("account_mappings")
 }
@@ -1009,21 +1036,21 @@ model AccountMapping {
 //   cuentas de ingreso (7xx): credit > debit → amountEur > 0 (suma a resultado)
 
 model JournalEntryLine {
-  id          String  @id @default(cuid())
-  companyId   String
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   // Claves de Holded para identificar el apunte de forma única
-  holdedEntryId  String  // ID del asiento padre en Holded
-  holdedLineIdx  Int     // posición (0-based) dentro de las líneas del asiento
+  holdedEntryId String // ID del asiento padre en Holded
+  holdedLineIdx Int // posición (0-based) dentro de las líneas del asiento
 
   date            DateTime
   accountingMonth DateTime? // override manual del mes contable (futuro)
   description     String?
-  account         String    // código PGC numérico (e.g. "640" o "64000000")
-  amountEur       Decimal   // crédito − débito, en EUR
+  account         String // código PGC numérico (e.g. "640" o "64000000")
+  amountEur       Decimal // crédito − débito, en EUR
 
-  originType      String?   // "payroll", "manual", "bank", "depreciation", null…
+  originType String? // "payroll", "manual", "bank", "depreciation", null…
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

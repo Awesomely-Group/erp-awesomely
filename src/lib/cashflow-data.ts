@@ -1,4 +1,4 @@
-import { Prisma, ForecastType } from "@prisma/client";
+import { Prisma, ForecastType, PaymentDirection } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getDateRange } from "./date-range";
 import {
@@ -55,6 +55,7 @@ type RawMonthlyRow = {
 
 type ProformaMonthRow = { month: Date; total_eur: unknown };
 type ForecastMonthRow = { month: Date; type: string; pessimistic: unknown; optimistic: unknown };
+type ManualPaymentMonthRow = { month: Date; direction: string; total_eur: unknown };
 
 function resolveDateRange(params: CashflowParams): { gte?: Date; lte?: Date } {
   const now = new Date();
@@ -191,9 +192,37 @@ export async function getCashflowData(
     forecastAccountMappingIds = mappings.map((m) => m.id);
   }
 
-  const [proformaRows, forecastRows] = withForecast
-    ? await Promise.all([
-        (() => {
+  // Pagos manuales sueltos (sin factura asociada): a diferencia de proformas/forecasts
+  // son movimientos de caja reales (`paidAt` ya ha ocurrido, no una proyección), así que
+  // se calculan siempre, independientemente de `withForecast`, y se suman más abajo a los
+  // actuals (inflowsBase/outflowsBase), no a forecastInflows/forecastOutflows. Los pagos
+  // ligados a una factura (invoiceId no nulo) no se incluyen aquí: su importe ya se cuenta
+  // a través de la propia factura en la consulta `rows` de más arriba — sumarlos también
+  // aquí duplicaría el importe.
+  const manualPaymentConditions: Prisma.Sql[] = [
+    Prisma.sql`"invoiceId" IS NULL`,
+    ...cashflowScopeConditions({ marca: params.marca, company: params.company }),
+  ];
+  if (dateRange.gte) manualPaymentConditions.push(Prisma.sql`"paidAt" >= ${dateRange.gte}`);
+  if (dateRange.lte) manualPaymentConditions.push(Prisma.sql`"paidAt" <= ${dateRange.lte}`);
+  if (forecastAccountMappingIds) {
+    manualPaymentConditions.push(
+      forecastAccountMappingIds.length > 0
+        ? Prisma.sql`"accountMappingId" IN (${Prisma.join(forecastAccountMappingIds.map((id) => Prisma.sql`${id}`))})`
+        : Prisma.sql`FALSE`
+    );
+  }
+  const manualPaymentsPromise = prisma.$queryRaw<ManualPaymentMonthRow[]>`
+    SELECT DATE_TRUNC('month', "paidAt") AS month, direction, SUM(amount) AS total_eur
+    FROM invoice_payments
+    WHERE ${Prisma.join(manualPaymentConditions, " AND ")}
+    GROUP BY DATE_TRUNC('month', "paidAt"), direction
+    ORDER BY month ASC
+  `;
+
+  const [proformaRows, forecastRows, manualPaymentRows] = await Promise.all([
+    withForecast
+      ? (() => {
           // Mismos filtros que la consulta de facturas de más arriba (cuenta
           // contable no aplica: una proforma no tiene líneas contables todavía). Antes
           // esta consulta solo filtraba por fecha y `holdedStatus`, así que una
@@ -217,8 +246,10 @@ export async function getCashflowData(
             GROUP BY DATE_TRUNC('month', date)
             ORDER BY month ASC
           `;
-        })(),
-        (() => {
+        })()
+      : Promise.resolve([] as ProformaMonthRow[]),
+    withForecast
+      ? (() => {
           // Los forecasts no tienen `companyId` (son previsiones por marca, no por
           // entidad legal): solo se les pasa `marca`, nunca `company`.
           const conditions: Prisma.Sql[] = [
@@ -244,9 +275,10 @@ export async function getCashflowData(
             GROUP BY DATE_TRUNC('month', month), type
             ORDER BY month ASC
           `;
-        })(),
-      ])
-    : [[], []];
+        })()
+      : Promise.resolve([] as ForecastMonthRow[]),
+    manualPaymentsPromise,
+  ]);
 
   const pointMap = new Map<string, CashflowMonthlyPoint>();
 
@@ -306,6 +338,23 @@ export async function getCashflowData(
     } else {
       point.forecastOutflows += amount;
     }
+  }
+
+  // Pagos manuales sueltos: son actuals (ya han ocurrido), no proyección — se suman a
+  // inflowsBase/outflowsBase igual que las facturas, sin componente de impuesto (un
+  // movimiento de caja puro no tiene desglose de IVA).
+  for (const row of manualPaymentRows) {
+    const d = new Date(row.month);
+    const point = ensurePoint(d);
+    const amount = Number(row.total_eur);
+    if (row.direction === PaymentDirection.INCOME) {
+      point.inflowsBase += amount;
+      point.inflows = point.inflowsBase + point.inflowsTax;
+    } else {
+      point.outflowsBase += amount;
+      point.outflows = point.outflowsBase + point.outflowsTax;
+    }
+    point.net = point.inflows - point.outflows;
   }
 
   const monthly = Array.from(pointMap.values()).sort((a, b) =>

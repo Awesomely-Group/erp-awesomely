@@ -11,6 +11,7 @@ import { registerPayment } from "./actions";
 export interface PaymentInvoice {
   id: string;
   holdedId: string;
+  type: "PURCHASE" | "SALE";
   number: string | null;
   counterparty: string | null;
   dueDate: string | null;
@@ -139,7 +140,7 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
           </Link>
           <span className="text-gray-300">·</span>
           <Link
-            href={holdedInvoiceUrl(invoice.holdedId, "PURCHASE")}
+            href={holdedInvoiceUrl(invoice.holdedId, invoice.type)}
             target="_blank"
             className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
           >
