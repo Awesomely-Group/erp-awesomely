@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { registerPayment, markManualPaymentPaid } from "./actions";
+import { registerPayment, markManualPaymentPaid, deletePayment } from "./actions";
 
 export interface PaymentInvoice {
   id: string;
@@ -37,6 +37,45 @@ interface Props {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Botón de eliminar con confirmación inline (mismo patrón que forecasts-table.tsx). */
+function DeletePaymentButton({ id, onDeleted }: { id: string; onDeleted: () => void }): React.JSX.Element {
+  const [pending, startTransition] = useTransition();
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <span className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => startTransition(async () => { await deletePayment(id); onDeleted(); })}
+          disabled={pending}
+          className="text-xs text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
+        >
+          {pending ? "…" : "Confirmar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
+        >
+          Cancelar
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setConfirming(true)}
+      className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+      title="Eliminar pago"
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  );
 }
 
 export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Element {
@@ -173,6 +212,14 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
               </button>
             </>
           )}
+          {/* Pago suelto aún pendiente: no tiene entrada en "Pagos registrados en ERP"
+           * de la que colgar el botón de borrar (ver más abajo), así que se ofrece aquí. */}
+          {isManual && !isPaid && (
+            <>
+              <span className="text-gray-300">·</span>
+              <DeletePaymentButton id={invoice.id} onDeleted={router.refresh} />
+            </>
+          )}
         </div>
       </div>
 
@@ -229,7 +276,8 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
                 <span className="font-medium text-green-700">{formatCurrency(p.amount)}</span>
                 <span>{formatDate(p.paidAt)}</span>
                 <span className="text-gray-400">{p.paidBy}</span>
-                {p.notes && <span className="italic text-gray-400">{p.notes}</span>}
+                {p.notes && <span className="italic text-gray-400 truncate">{p.notes}</span>}
+                <DeletePaymentButton id={p.id} onDeleted={router.refresh} />
               </div>
             ))}
           </div>

@@ -124,3 +124,21 @@ export async function markManualPaymentPaid({
   revalidatePath("/cashflow");
   revalidatePath("/forecasts");
 }
+
+/**
+ * Elimina un registro de pago del ERP — tanto ligado a una factura (uno de los
+ * "Pagos registrados en ERP" de una fila, p.ej. creado con `registerPayment`) como
+ * suelto/sin factura, pendiente o ya pagado (creado con `createManualPayment`). Sirve
+ * para corregir un pago mal introducido (importe erróneo, factura equivocada, prueba…)
+ * sin tener que tocar la BD a mano.
+ */
+export async function deletePayment(id: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  await prisma.invoicePayment.delete({ where: { id } });
+
+  revalidatePath("/payments");
+  revalidatePath("/cashflow");
+  revalidatePath("/forecasts");
+}
