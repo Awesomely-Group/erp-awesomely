@@ -57,12 +57,8 @@ const ENTRIES = [
   { tag: "OPEX:Compliance",      l1: "OPEX", description: "RGPD/DPO, ISO 27001/ENS, pentesting recurrente",                                    accountNumSL: "62300501", accountNameSL: "623 Servicios profesionales", accountNumOU: "52300400", accountNameOU: "4370 Consultations, trainings" },
   { tag: "OPEX:Impuestos/Tasas", l1: "OPEX", description: "Tasas y tributos no repercutibles (no IVA, no IS)",                                  accountNumSL: "63100500", accountNameSL: "631 Otros tributos",          accountNumOU: "51800000", accountNameOU: "4395 Other operating expenses" },
   { tag: "OPEX:Banca/TPV/FX:DifCambioTarjeta", l1: "OPEX", description: "Diferencias de cambio en pagos con tarjeta de suscripciones SaaS en divisa extranjera (AWS, OpenAI, Figma, Cursor, etc.); importes pequeños, positivos y negativos", accountNumSL: "62600501", accountNameSL: "626 Servicios bancarios y similares", accountNumOU: "63100000", accountNameOU: "Card FX rounding (AWS/OpenAI/Figma/Cursor…)" },
-
-  // Cuentas OU investigadas y NO mapeadas a propósito (residual documentado):
-  // - 34800000: sin actividad en el mayor OU sincronizado hasta ahora; prefijo 3xx típico
-  //   de anticipos/balance en el plan contable estonio. No es P&L.
-  // - 17500001: aparece en invoice_lines con nombre ".finishedgoods" (inventario) →
-  //   cuenta de balance, no de P&L.
+  { tag: "OPEX:OU:SinDesglose", l1: "OPEX", description: "Cuenta OU cajón de sastre sin sub-cuenta propia en Holded: AWS, asesoría (COMPANIOESTONIA), Telia, Anthropic, freelance (Felipe Antonio), pagos a MAKSU- JA TOLLIAMET (Hacienda estonia), etc. Verificado contra el mayor real (920,31€ en 2026, 26 asientos) — no es cuenta de balance, es P&L genérico", accountNumSL: "62900006", accountNameSL: "629 Otros servicios", accountNumOU: "34800000", accountNameOU: "Sin sub-cuenta (mixto)" },
+  { tag: "OPEX:SaaS:Desarrollo:Miro", l1: "OPEX", description: "Suscripción a Miro (whiteboard colaborativo); cuenta OU separada del resto de SaaS de desarrollo", accountNumSL: "62900201", accountNameSL: "629 Otros servicios", accountNumOU: "17500001", accountNameOU: "Miro subscription" },
 
   // ─── CAPEX (balance — no P&L; números OU los abre la gestoría) ─────────────────
   { tag: "CAPEX:Equipos",            l1: "CAPEX", description: "Portátiles, estaciones, monitores, servidores propios", accountNumSL: "21700000", accountNameSL: "217 Equipos para procesos de información",        accountNumOU: null, accountNameOU: "1240 Tangible fixed assets" },
