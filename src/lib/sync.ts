@@ -954,16 +954,32 @@ const HOLDED_INVOICE_DOC_TYPES = new Set([
   "vat_regularization", // regularización IVA → cuenta 47x (balance)
 ]);
 
-// Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos).
-// Las cuentas de balance (1xx-5xx, 8xx-9xx) se descartan.
-function isPlAccount(account: string): boolean {
-  const first = account.replace(/\D/g, "")[0];
-  return first === "6" || first === "7";
+// Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos), más las
+// cuentas del plan contable OU (Estonia) que account_mappings traduce explícitamente
+// a una cuenta PGC 6xx/7xx (coincidencia exacta con accountNumOU o accountNumSL).
+// El resto de cuentas de balance (1xx-5xx, 8xx-9xx sin mapear) se descartan.
+function isPlAccount(account: string, mappedAccounts: Set<string>): boolean {
+  const digits = account.replace(/\D/g, "");
+  const first  = digits[0];
+  if (first === "6" || first === "7") return true;
+  return mappedAccounts.has(digits);
 }
 
 export async function syncJournalEntries(companyId: string): Promise<number> {
   const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
   const client  = new HoldedClient(company.holdedApiKey);
+
+  // Cuentas OU↔SL mapeadas explícitamente (account_mappings), cargadas una única vez
+  // por sync — permiten que isPlAccount reconozca cuentas del plan contable estonio
+  // que no empiezan por 6/7 pero sí representan gasto/ingreso real.
+  const accountMappingRows = await prisma.accountMapping.findMany({
+    select: { accountNumOU: true, accountNumSL: true },
+  });
+  const mappedAccounts = new Set<string>();
+  for (const m of accountMappingRows) {
+    if (m.accountNumOU) mappedAccounts.add(m.accountNumOU);
+    if (m.accountNumSL) mappedAccounts.add(m.accountNumSL);
+  }
 
   const currentYear         = new Date().getFullYear();
   let   totalSynced         = 0;
@@ -986,8 +1002,8 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
       allReturnedEntryIds.add(entry.id);
       const date = new Date(entry.date);
 
-      // Solo líneas de cuentas P&L (6xx / 7xx)
-      const plLines = entry.lines.filter((l) => isPlAccount(l.account));
+      // Solo líneas de cuentas P&L (6xx / 7xx, o cuentas OU mapeadas explícitamente)
+      const plLines = entry.lines.filter((l) => isPlAccount(l.account, mappedAccounts));
 
       for (let idx = 0; idx < plLines.length; idx++) {
         const line      = plLines[idx];
