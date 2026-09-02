@@ -935,35 +935,58 @@ export async function syncProformas(companyId: string): Promise<void> {
 
 // Tipos de asiento de /api/v2/ledger-entries que NO deben sincronizarse como
 // journal_entry_lines para evitar doble contabilización o datos incorrectos:
-//   - invoice / purchase / purchaserefund / collect: ya cubiertos por el sync
-//     de facturas (revenueRows + expenseRows en la tabla invoices).
+//   - invoice / purchase: ya cubiertos por el sync de facturas (revenueRows +
+//     expenseRows en la tabla invoices) — sus líneas 6xx/7xx NO deben duplicarse
+//     aquí. getAllInvoicesPaginated solo trae "invoice"/"purchase", nunca los
+//     demás tipos de este Set, así que no hay riesgo de doble conteo con ellos.
 //   - opening:          asiento de apertura — saldos iniciales de balance, no P&L.
 //   - reg:              asiento de regularización/cierre anual (carga a P&G) — ya
 //                       queda reflejado en el resultado del ejercicio, no debe
 //                       incluirse en el cálculo de líneas individuales.
 //   - vat_regularization: regularización de IVA — cuenta 47x (balance).
-// Tipos incluidos (no en esta lista): payroll, entry, expense, payment, creditnote,
-//   amortization, y cualquier otro que Holded pueda añadir en el futuro.
+// Tipos incluidos (no en esta lista, SÍ se sincronizan como journal_entry_lines):
+//   - purchaserefund: rectificativas de compra — no existe endpoint de facturas
+//     para importarlas de otra forma (/api/v2/purchaserefunds da 404), así que
+//     esta es su única vía de entrada al P&L.
+//   - collect: cobros de clientes — normalmente solo tocan cuentas de balance
+//     (430/57x, excluidas por isPlAccount), pero cuando afectan a una cuenta
+//     6xx/7xx (u OU mapeada) sí debe contabilizarse.
+//   - payroll, entry, expense, payment, creditnote, amortization, y cualquier
+//     otro tipo que Holded pueda añadir en el futuro.
 const HOLDED_INVOICE_DOC_TYPES = new Set([
-  "invoice",            // facturas de venta → revenueRows
-  "purchase",           // facturas de compra → expenseRows
-  "purchaserefund",     // abonos de compra  → expenseRows (importe negativo)
-  "collect",            // cobros de clientes → solo cuentas de balance (430/57x)
-  "opening",            // asiento de apertura → balance, no P&L
-  "reg",                // cierre anual → no debe sumarse a las líneas del período
+  "invoice",  // facturas de venta → revenueRows
+  "purchase", // facturas de compra → expenseRows
+  "opening",  // asiento de apertura → balance, no P&L
+  "reg",      // cierre anual → no debe sumarse a las líneas del período
   "vat_regularization", // regularización IVA → cuenta 47x (balance)
 ]);
 
-// Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos).
-// Las cuentas de balance (1xx-5xx, 8xx-9xx) se descartan.
-function isPlAccount(account: string): boolean {
-  const first = account.replace(/\D/g, "")[0];
-  return first === "6" || first === "7";
+// Solo almacenamos líneas de cuentas de P&L (6xx gastos, 7xx ingresos), más las
+// cuentas del plan contable OU (Estonia) que account_mappings traduce explícitamente
+// a una cuenta PGC 6xx/7xx (coincidencia exacta con accountNumOU o accountNumSL).
+// El resto de cuentas de balance (1xx-5xx, 8xx-9xx sin mapear) se descartan.
+function isPlAccount(account: string, mappedAccounts: Set<string>): boolean {
+  const digits = account.replace(/\D/g, "");
+  const first  = digits[0];
+  if (first === "6" || first === "7") return true;
+  return mappedAccounts.has(digits);
 }
 
 export async function syncJournalEntries(companyId: string): Promise<number> {
   const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
   const client  = new HoldedClient(company.holdedApiKey);
+
+  // Cuentas OU↔SL mapeadas explícitamente (account_mappings), cargadas una única vez
+  // por sync — permiten que isPlAccount reconozca cuentas del plan contable estonio
+  // que no empiezan por 6/7 pero sí representan gasto/ingreso real.
+  const accountMappingRows = await prisma.accountMapping.findMany({
+    select: { accountNumOU: true, accountNumSL: true },
+  });
+  const mappedAccounts = new Set<string>();
+  for (const m of accountMappingRows) {
+    if (m.accountNumOU) mappedAccounts.add(m.accountNumOU);
+    if (m.accountNumSL) mappedAccounts.add(m.accountNumSL);
+  }
 
   const currentYear         = new Date().getFullYear();
   let   totalSynced         = 0;
@@ -986,8 +1009,8 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
       allReturnedEntryIds.add(entry.id);
       const date = new Date(entry.date);
 
-      // Solo líneas de cuentas P&L (6xx / 7xx)
-      const plLines = entry.lines.filter((l) => isPlAccount(l.account));
+      // Solo líneas de cuentas P&L (6xx / 7xx, o cuentas OU mapeadas explícitamente)
+      const plLines = entry.lines.filter((l) => isPlAccount(l.account, mappedAccounts));
 
       for (let idx = 0; idx < plLines.length; idx++) {
         const line      = plLines[idx];

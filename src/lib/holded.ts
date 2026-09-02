@@ -954,98 +954,65 @@ export class HoldedClient {
 
   // ─── Journal Entries ──────────────────────────────────────────────────────────
   //
-  // Devuelve los asientos contables de Holded para el año indicado.
+  // Devuelve los asientos contables de Holded para el año indicado (01/01–31/12
+  // completo, incluidos asientos con fecha futura dentro del año — p.ej. facturas
+  // recurrentes pre-generadas a fin de mes — no se trunca al día de hoy).
   // Solo disponible en API v2. Devuelve [] en v1 (no-op seguro).
   //
-  // /ledger-entries tiene un límite de ~200 líneas por petición que Holded aplica
-  // de forma silenciosa (el parámetro `limit` se ignora). Para evitar perder
-  // asientos de meses con mucho movimiento, usamos ventanas SEMANALES en lugar
-  // de mensuales: cada semana raramente supera las 200 líneas.
-  // Las fechas se construyen como strings "YYYY-MM-DD" para evitar problemas de
-  // zona horaria al convertir objetos Date a ISO.
+  // /ledger-entries pagina de verdad: la respuesta incluye `items`, `cursor` y
+  // `has_more` (confirmado contra la API real). Basta una única ventana de fecha
+  // por año y seguir el cursor mientras `has_more` sea true — no hace falta
+  // trocear en ventanas semanales/mensuales como antes.
 
   async getJournalEntries(year: number): Promise<HoldedJournalEntry[]> {
     if (!IS_V2) return [];
 
-    const now  = new Date();
-    // Último día a incluir: hoy si es el año en curso, 31-dic si es pasado.
-    const endY = now.getFullYear();
-    const endM = now.getMonth() + 1; // 1-based
-    const endD = now.getDate();
+    const startDate = `${year}-01-01`;
+    const endDate   = `${year}-12-31`;
 
-    // Helpers para construir strings YYYY-MM-DD sin conversión UTC
-    const pad2 = (n: number) => String(n).padStart(2, "0");
-    const isoDate = (y: number, m: number, d: number) =>
-      `${y}-${pad2(m)}-${pad2(d)}`;
-    const lastDayOfMonth = (y: number, m: number) =>
-      new Date(y, m, 0).getDate();
-
-    // Construir límite superior en formato y/m/d
-    let limY: number, limM: number, limD: number;
-    if (year === endY) {
-      limY = endY; limM = endM; limD = endD;
-    } else {
-      limY = year; limM = 12; limD = 31;
+    interface LedgerEntriesPage {
+      items?:    HoldedLedgerLineRaw[];
+      cursor?:   string | null;
+      has_more?: boolean;
     }
 
-    // Generar ventanas semanales: cada ventana = 7 días naturales
-    const windows: Array<{ start: string; end: string }> = [];
-    let y = year, m = 1, d = 1;
+    const rawLines: HoldedLedgerLineRaw[] = [];
+    let cursor: string | undefined;
+    let pageCount = 0;
+    const MAX_PAGES = 500; // salvaguarda ante un bug de paginación infinita (~100k líneas)
 
-    while (y < limY || (y === limY && m < limM) || (y === limY && m === limM && d <= limD)) {
-      const startStr = isoDate(y, m, d);
+    do {
+      const params: Record<string, string> = { start_date: startDate, end_date: endDate, limit: "200" };
+      if (cursor) params.cursor = cursor;
 
-      // Avanzar 6 días para el fin de la ventana (7-day window inclusive)
-      let ey = y, em = m, ed = d + 6;
-      while (ed > lastDayOfMonth(ey, em)) {
-        ed -= lastDayOfMonth(ey, em);
-        em++;
-        if (em > 12) { em = 1; ey++; }
+      let page: LedgerEntriesPage;
+      try {
+        page = await this.fetchFromBase<LedgerEntriesPage>(HOLDED_BASE_URL, "/ledger-entries", params);
+      } catch (err) {
+        console.error(`[holded] getJournalEntries year=${year} cursor=${cursor ?? "(none)"}:`, err);
+        break;
       }
-      // Truncar al límite si nos pasamos
-      if (ey > limY || (ey === limY && em > limM) || (ey === limY && em === limM && ed > limD)) {
-        ey = limY; em = limM; ed = limD;
+
+      rawLines.push(...(page.items ?? []));
+      pageCount++;
+
+      cursor = page.has_more && page.cursor ? page.cursor : undefined;
+
+      if (pageCount >= MAX_PAGES) {
+        console.error(`[holded] getJournalEntries year=${year}: alcanzado MAX_PAGES=${MAX_PAGES}, deteniendo paginación (posible bug de cursor)`);
+        break;
       }
-      const endStr = isoDate(ey, em, ed);
-
-      windows.push({ start: startStr, end: endStr });
-
-      // Avanzar al día siguiente del fin de ventana
-      d = ed + 1;
-      if (d > lastDayOfMonth(y, m)) {
-        // Recalcular m/y basándonos en la fecha de fin de ventana
-        d = ed + 1;
-        m = em; y = ey;
-        if (d > lastDayOfMonth(y, m)) { d = 1; m++; if (m > 12) { m = 1; y++; } }
-      } else {
-        m = em; y = ey;
-      }
-    }
-
-    // Descarga secuencial para no saturar la API (Holded rate-limits en paralelo)
-    const batches: HoldedLedgerLineRaw[][] = [];
-    for (const { start, end } of windows) {
-      const batch = await this.fetchFromBase<{ items?: HoldedLedgerLineRaw[] }>(
-        HOLDED_BASE_URL,
-        "/ledger-entries",
-        { start_date: start, end_date: end, limit: "200" }
-      )
-        .then((raw) => raw.items ?? [])
-        .catch((): HoldedLedgerLineRaw[] => []);
-      batches.push(batch);
-    }
+    } while (cursor);
 
     // Deduplica por (entry_number, line) y agrupa por entry_number
     const seenKeys = new Set<string>();
     const entryMap = new Map<number, HoldedLedgerLineRaw[]>();
-    for (const batch of batches) {
-      for (const l of batch) {
-        const key = `${l.entry_number}:${l.line}`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          if (!entryMap.has(l.entry_number)) entryMap.set(l.entry_number, []);
-          entryMap.get(l.entry_number)!.push(l);
-        }
+    for (const l of rawLines) {
+      const key = `${l.entry_number}:${l.line}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        if (!entryMap.has(l.entry_number)) entryMap.set(l.entry_number, []);
+        entryMap.get(l.entry_number)!.push(l);
       }
     }
 

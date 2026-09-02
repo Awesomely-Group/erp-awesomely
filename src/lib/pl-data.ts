@@ -135,9 +135,20 @@ function nameToDataKey(name: string | null): PlDataKey {
  *    (nameToDataKey defaults to otros_gastos_explotacion in that case, which is
  *    acceptable for lines whose account is truly unknown).
  */
-function resolveExpenseKey(account: string | null, accountName: string | null): PlDataKey | null {
+function resolveExpenseKey(
+  account: string | null,
+  accountName: string | null,
+  ouToSl: Map<string, string>
+): PlDataKey | null {
   if (account) {
     const trimmed = account.trim();
+    // Cuenta OU (Estonia) mapeada explícitamente a su equivalente SL/PGC — prioridad
+    // sobre el fallback por prefijo, ya que el número OU en sí no sigue el PGC.
+    const mappedSl = ouToSl.get(trimmed);
+    if (mappedSl) {
+      const key = prefixToDataKey(accountPrefix(mappedSl));
+      if (key) return key;
+    }
     // Holded ObjectId (24-char hex): cannot determine PGC group — use name heuristic
     if (HOLDED_OBJECT_ID_RE.test(trimmed)) {
       return nameToDataKey(accountName);
@@ -158,8 +169,12 @@ function resolveExpenseKey(account: string | null, accountName: string | null): 
 // A diferencia de prefixToDataKey, cubre también cuentas de ingreso (7xx)
 // en su rango completo y devuelve null para cuentas de balance (no P&L).
 // Los importes de asientos ya vienen con signo (crédito − débito): no hay que negarlos.
-function journalAccountToPlKey(account: string): PlDataKey | null {
-  const digits = account.replace(/\D/g, "");
+function journalAccountToPlKey(account: string, ouToSl: Map<string, string>): PlDataKey | null {
+  const trimmed = account.trim();
+  // Cuenta OU (Estonia) mapeada explícitamente a su equivalente SL/PGC — prioridad
+  // sobre el cálculo de prefijo directo sobre la cuenta OU original.
+  const mappedSl = ouToSl.get(trimmed);
+  const digits = (mappedSl ?? account).replace(/\D/g, "");
   if (!digits) return null;
   const prefix = parseInt(digits.substring(0, 3), 10) || 0;
 
@@ -291,7 +306,7 @@ export async function getPlData(params: PlParams): Promise<PlData> {
   const startDate  = new Date(year, 0, 1);
   const endDate    = new Date(year + 1, 0, 1);
 
-  const [revenueRows, expenseRows, journalRows] = await Promise.all([
+  const [revenueRows, expenseRows, journalRows, accountMappingRows] = await Promise.all([
     // ── Facturas de venta ────────────────────────────────────────────────────
     prisma.$queryRaw<RevenueRow[]>`
       SELECT
@@ -309,10 +324,10 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       GROUP BY c.id, c.name, DATE_TRUNC('month', COALESCE(i."accountingMonth", i.date))
     `,
     // ── Líneas de facturas de compra ─────────────────────────────────────────
-    // Holded solo contabiliza facturas de compra en estado >= 2 (aprobadas/pagadas).
-    // Estado 0 = borrador, estado 1 = recibida pendiente de aprobación
-    // (sin asiento contable en Holded → excluir del P&L).
-    // Para ventas el estado 1 sí está contabilizado; para compras no.
+    // Decisión de negocio: incluir en el P&L las compras en estado >= 1 (recibida),
+    // alineado con Holded, que sí las contabiliza contablemente en ese estado.
+    // Estado 0 = borrador (sin asiento contable, se excluye). Estado -1 = cancelada
+    // (excluida explícitamente más abajo).
     prisma.$queryRaw<ExpenseLineRow[]>`
       SELECT
         c.id                       AS company_id,
@@ -325,7 +340,7 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       JOIN companies c ON c.id = i."companyId"
       JOIN invoice_lines il ON il."invoiceId" = i.id
       WHERE i.type::text = 'PURCHASE'
-        AND (i."holdedStatus" IS NULL OR i."holdedStatus" >= 2)
+        AND (i."holdedStatus" IS NULL OR i."holdedStatus" >= 1)
         AND i."holdedStatus" != -1
         AND i."removedFromHoldedAt" IS NULL
         AND COALESCE(i."accountingMonth", i.date) >= ${startDate}
@@ -350,7 +365,16 @@ export async function getPlData(params: PlParams): Promise<PlData> {
                DATE_TRUNC('month', COALESCE(jel."accountingMonth", jel.date)),
                jel.account
     `,
+    // ── Mapeo de cuentas OU (Estonia) → SL/PGC ───────────────────────────────
+    prisma.accountMapping.findMany({
+      select: { accountNumOU: true, accountNumSL: true },
+    }),
   ]);
+
+  const ouToSl = new Map<string, string>();
+  for (const m of accountMappingRows) {
+    if (m.accountNumOU && m.accountNumSL) ouToSl.set(m.accountNumOU, m.accountNumSL);
+  }
 
   // ── Populate entity maps ───────────────────────────────────────────────────
 
@@ -375,7 +399,7 @@ export async function getPlData(params: PlParams): Promise<PlData> {
     if (!point) continue;
 
     const rawAmount = Number(row.amount);
-    const lineKey   = resolveExpenseKey(row.account, row.account_name);
+    const lineKey   = resolveExpenseKey(row.account, row.account_name, ouToSl);
 
     // null → cuenta de balance (1xx–5xx, 8xx–9xx): excluir del P&L
     if (!lineKey) continue;
@@ -396,7 +420,7 @@ export async function getPlData(params: PlParams): Promise<PlData> {
     const point    = entity.months.get(monthKey);
     if (!point) continue;
 
-    const lineKey = journalAccountToPlKey(row.account);
+    const lineKey = journalAccountToPlKey(row.account, ouToSl);
     if (!lineKey) continue; // cuenta de balance → ignorar
 
     point.data[lineKey] += Number(row.amount);
