@@ -11,6 +11,7 @@ const ENTRIES = [
   { tag: "REV:Proyecto:Consulting",    l1: "REVENUE", description: "Desarrollo a medida, integraciones, automatizaciones",                          accountNumSL: "70500001", accountNameSL: "705 Prestación de servicios", accountNumOU: "42200200", accountNameOU: "3000 Service Revenue" },
   { tag: "REV:Proyecto:Software",      l1: "REVENUE", description: "CTO as a Service, auditorías, workshops, definición de procesos",             accountNumSL: "70500002", accountNameSL: "705 Prestación de servicios", accountNumOU: "42200300", accountNameOU: "3000 Service Revenue" },
   { tag: "REV:Proyecto:Mantenimiento", l1: "REVENUE", description: "Mantenimiento/soporte de desarrollos ya entregados",                          accountNumSL: "70500003", accountNameSL: "705 Prestación de servicios", accountNumOU: "42200400", accountNameOU: "3000 Service Revenue" },
+  { tag: "REV:OU:SinDesglose",         l1: "REVENUE", description: "Ingresos OU sin sub-cuenta de categoría o correcciones sobre facturas ya emitidas (ej. factura I260025)", accountNumSL: "70500004", accountNameSL: "705 Prestación de servicios", accountNumOU: "42200000", accountNameOU: "3000 Service Revenue (sin desglose)" },
 
   // ─── COGS ─────────────────────────────────────────────────────────────────────
   { tag: "COGS:Subcontrata",       l1: "COGS", description: "Freelance / estudios externos imputables a un proyecto",            accountNumSL: "62300000", accountNameSL: "623 Servicios profesionales independientes", accountNumOU: "52300100", accountNameOU: "4370 Consultations, trainings" },
@@ -46,6 +47,7 @@ const ENTRIES = [
 
   // ─── OPEX — Oficina & IT ──────────────────────────────────────────────────────
   { tag: "OPEX:Oficina:Coworking", l1: "OPEX", description: "Espacio de oficina / coworking",       accountNumSL: "62100400", accountNameSL: "621 Arrendamientos y cánones",     accountNumOU: "51700000", accountNameOU: "4395 Other operating expenses" },
+  { tag: "OPEX:Oficina:AlquilerIndividual", l1: "OPEX", description: "Alquiler recurrente mensual a persona física (Ferrari Andrea Laura), ~25€/mes", accountNumSL: "62100401", accountNameSL: "621 Arrendamientos y cánones", accountNumOU: "62100000", accountNameOU: "Rent — Ferrari Andrea Laura" },
   { tag: "OPEX:IT:Telecom",        l1: "OPEX", description: "Internet, móviles, telefonía/VoIP",     accountNumSL: "62800400", accountNameSL: "628 Suministros",                  accountNumOU: "51400600", accountNameOU: "4310 Telephone, Internet" },
   { tag: "OPEX:IT:Soporte",        l1: "OPEX", description: "Mantenimiento IT, reparaciones de equipos", accountNumSL: "62200400", accountNameSL: "622 Reparaciones y conservación", accountNumOU: "51402000", accountNameOU: "4320 IT services" },
 
@@ -54,6 +56,13 @@ const ENTRIES = [
   { tag: "OPEX:Banca/TPV/FX",    l1: "OPEX", description: "Comisiones bancarias, Stripe/PayPal, FX, intereses",                                accountNumSL: "62600500", accountNameSL: "626 Servicios bancarios y similares", accountNumOU: "52300700", accountNameOU: "4395 Other operating expenses" },
   { tag: "OPEX:Compliance",      l1: "OPEX", description: "RGPD/DPO, ISO 27001/ENS, pentesting recurrente",                                    accountNumSL: "62300501", accountNameSL: "623 Servicios profesionales", accountNumOU: "52300400", accountNameOU: "4370 Consultations, trainings" },
   { tag: "OPEX:Impuestos/Tasas", l1: "OPEX", description: "Tasas y tributos no repercutibles (no IVA, no IS)",                                  accountNumSL: "63100500", accountNameSL: "631 Otros tributos",          accountNumOU: "51800000", accountNameOU: "4395 Other operating expenses" },
+  { tag: "OPEX:Banca/TPV/FX:DifCambioTarjeta", l1: "OPEX", description: "Diferencias de cambio en pagos con tarjeta de suscripciones SaaS en divisa extranjera (AWS, OpenAI, Figma, Cursor, etc.); importes pequeños, positivos y negativos", accountNumSL: "62600501", accountNameSL: "626 Servicios bancarios y similares", accountNumOU: "63100000", accountNameOU: "Card FX rounding (AWS/OpenAI/Figma/Cursor…)" },
+
+  // Cuentas OU investigadas y NO mapeadas a propósito (residual documentado):
+  // - 34800000: sin actividad en el mayor OU sincronizado hasta ahora; prefijo 3xx típico
+  //   de anticipos/balance en el plan contable estonio. No es P&L.
+  // - 17500001: aparece en invoice_lines con nombre ".finishedgoods" (inventario) →
+  //   cuenta de balance, no de P&L.
 
   // ─── CAPEX (balance — no P&L; números OU los abre la gestoría) ─────────────────
   { tag: "CAPEX:Equipos",            l1: "CAPEX", description: "Portátiles, estaciones, monitores, servidores propios", accountNumSL: "21700000", accountNameSL: "217 Equipos para procesos de información",        accountNumOU: null, accountNameOU: "1240 Tangible fixed assets" },
