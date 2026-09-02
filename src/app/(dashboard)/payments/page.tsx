@@ -121,16 +121,28 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
 
     // El selector de factura del formulario de pago suelto incluye TODAS las facturas
     // (también las ya pagadas del todo, para permitir registrar correcciones o excesos de
-    // pago) — se construye para todas antes de filtrar por pendiente > 0 más abajo.
+    // pago) — se construye para todas antes de filtrar por pendiente > 0 más abajo. En
+    // PURCHASE solo se ofrecen facturas de proveedores "partner": la pestaña Pagos solo
+    // muestra esos (ver filtro más abajo) — ofrecer el resto en el selector creaba pagos
+    // que quedaban invisibles para siempre (bug: pago de prueba contra factura de Todoist,
+    // proveedor no-partner, 2026-09-02).
+    const nkForOption = inv.counterparty ? nameKey(inv.companyId, inv.counterparty) : null;
     const option = {
       id: inv.id,
       label: inv.counterparty ?? "Sin nombre",
       sublabel: `${inv.number ?? inv.holdedId.slice(0, 8)} · ${inv.company.name}`,
     };
-    if (inv.type === "PURCHASE") invoiceOptionsPurchase.push(option);
-    else invoiceOptionsSale.push(option);
+    if (inv.type === "PURCHASE") {
+      if (nkForOption && partnerNameSet.has(nkForOption)) invoiceOptionsPurchase.push(option);
+    } else {
+      invoiceOptionsSale.push(option);
+    }
 
-    if (holdedPending <= 0.005) continue;
+    // Si Holded ya no muestra pendiente pero hay pagos ERP registrados encima (una
+    // corrección o exceso de pago contra una factura ya reconciliada), la fila se sigue
+    // mostrando — de lo contrario ese pago queda invisible sin ninguna forma de verlo o
+    // borrarlo desde aquí.
+    if (holdedPending <= 0.005 && inv.erpPayments.length === 0) continue;
 
     companyNames.add(inv.company.name);
 
