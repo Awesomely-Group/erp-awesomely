@@ -36,7 +36,6 @@ const ENTRIES = [
 
   // ─── OPEX — Tools (SaaS & Cloud) ──────────────────────────────────────────────
   { tag: "OPEX:SaaS:Productividad", l1: "OPEX", description: "Google Workspace, Notion, Atlassian, Holded, ReadAI",          accountNumSL: "62900200", accountNameSL: "629 Otros servicios", accountNumOU: "51400100", accountNameOU: "4320 IT services" },
-  { tag: "OPEX:SaaS:Productividad:OU:GoogleCloud", l1: "OPEX", description: "Sub-cuenta de contacto en Holded OU (Google Cloud EMEA Limited) para Google Workspace — mismo destino que OPEX:SaaS:Productividad, cuenta OU distinta por ser sub-cuenta de proveedor, no de categoría", accountNumSL: "62900200", accountNameSL: "629 Otros servicios", accountNumOU: "33100027", accountNameOU: "GOOGLE CLOUD EMEA LIMITED" },
   { tag: "OPEX:SaaS:Desarrollo",    l1: "OPEX", description: "Revit, GitHub/GitLab, Figma, Adobe",                           accountNumSL: "62900201", accountNameSL: "629 Otros servicios", accountNumOU: "51400200", accountNameOU: "4320 IT services" },
   { tag: "OPEX:CloudCompartido",    l1: "OPEX", description: "Infra común no trazable a un cliente (Hetzner, GCP general)",   accountNumSL: "62900202", accountNameSL: "629 Otros servicios", accountNumOU: "51400300", accountNameOU: "4320 IT services" },
 

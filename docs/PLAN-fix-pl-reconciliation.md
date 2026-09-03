@@ -73,40 +73,34 @@ Añadir vía seed/script (o UI Settings) las cuentas OU sin mapear:
 
 ---
 
-## Estado tras verificación real (2026-09-02/03)
+## Estado tras verificación real y fix de FX (2026-09-02/03)
 
-La PR (7 commits, `fix/pl-holded-reconciliation` → PR #13) se mergeó y desplegó. Los puntos 1-4 y 6 de "Cambios" están implementados y confirmados en el código (`HOLDED_INVOICE_DOC_TYPES` sin `purchaserefund`/`collect`, `isPlAccount` con `account_mappings`, traducción OU→SL en `pl-data.ts`, filtro compras `>= 1`, paginación cursor en `getJournalEntries` sin truncar en hoy). **El punto 5 (FX con `currencyChange` de Holded) nunca se implementó** — ninguno de los 7 commits lo toca.
+La PR (7 commits, `fix/pl-holded-reconciliation` → PR #13) se mergeó y desplegó. Los puntos 1-4 y 6 de "Cambios" están implementados y confirmados en el código. **El punto 5 (FX) no se implementó en esa PR** — se investigó y arregló aparte, en `main` directamente, tras verificar contra los PyG reales exportados de Holded (PDF, 03/09/2026).
 
-Se hizo un resync completo real contra producción (`HOLDED_API_VERSION=v2` forzado — ver nota de entorno más abajo) y se comparó contra los PyG reales exportados de Holded (PDF, 03/09/2026) para 2026 completo:
+### Causa raíz real del problema de FX (no era la que parecía)
 
-### SL — prácticamente resuelto
+Primera pista falsa: se pensó que había que usar el tipo de cambio `currencyChange` de Holded (dividiendo o multiplicando) o el importe EUR de la línea `4220xxxx` del asiento automático de cada factura. **Ninguna de las dos reproducía el número exacto de Holded** — se llegó a implementar la segunda (código en un commit local, revertido) y solo mejoraba el hueco de 7.929 € a 450 €, no lo cerraba.
 
-| Línea | ERP | Holded | Δ |
+La causa real, encontrada al depurar un asiento factura a factura: **`currencyChange` solo lo devuelve el endpoint de detalle de un documento (`/invoices/{id}`) — el endpoint de listado que usamos para el sync en bloque (`/invoices`, `/purchases`) nunca lo incluye.** El código de `upsertInvoice` ya tenía lógica correcta para usarlo (`fxRateToEur = 1 / holdedRate`), pero como el campo nunca llega en el sync real, **siempre caía al fallback BCE** (`convertToEur`, `src/lib/exchange-rates.ts`) — que es justo el que no cuadraba.
+
+Además, inspeccionando el asiento automático línea a línea (no solo el agregado), se descubrió que **el propio asiento de Holded guarda el importe en la divisa original de la factura, no convertido a EUR** — es decir, Holded tampoco aplica una conversión real para esta cuenta a nivel contable. Confirmado empíricamente: tratar `fxRateToEur = 1` (sin conversión) para toda factura en divisa cuya `currencyChange` no llega reproduce el PyG real casi exacto.
+
+### Fix implementado
+
+`src/lib/sync.ts` — en `upsertInvoice` y `syncProformas`, el fallback que antes llamaba a `convertToEur` (BCE/Frankfurter) ahora fija `fxRateToEur = 1` directamente. Se eliminó el import de `convertToEur` (sin más usos en el fichero). `src/lib/exchange-rates.ts` no se toca (puede servir para otro caso futuro).
+
+De paso, se detectó y corrigió un **mapeo de cuenta erróneo** añadido en esta misma investigación: `33100027` (OU) se había mapeado como gasto OPEX (Google Cloud) a partir de 2 facturas reales, pero resultó ser una **sub-cuenta de proveedor/acreedor** (patrón análogo a las cuentas `400xxx` de SL) contra la que Holded registra 24 asientos de tipo `payment` (domiciliaciones bancarias) — sumarla como categoría de gasto propia duplicaba ~1.529 € de gasto. Se revirtió el mapeo (queda excluida del P&L, como corresponde a una cuenta de balance). `51403000` (seguros de viaje) sí se mantiene — verificado que no tiene asientos `payment` asociados, es una cuenta de gasto limpia.
+
+### Resultado final (PyG 2026, tras resync completo con el fix)
+
+| | ERP | Holded real | Δ |
 |---|---|---|---|
-| Gastos de personal | −5.493,85 € | −5.493,85 € | **0 €** (exacto) |
-| Resultado financiero | −196,58 € | −196,58 € | **0 €** (exacto) |
-| Resultado del ejercicio | −5.699,94 € | −3.132,18 € | ≈ −2.568 € |
+| **SL — Ventas** | 137.832,54 € | 137.832,54 € | **0 €** (exacto) |
+| **SL — Resultado del ejercicio** | −3.069,13 € | −3.132,18 € | 63,05 € (0,05%) |
+| **OU — Ventas** | 114.971,75 € | 114.971,75 € | **0 €** (exacto) |
+| **OU — Resultado del ejercicio** | −3.142,54 € | −3.278,28 € | 135,74 € (0,04%) |
 
-El residual viene sobre todo del lado de ventas (~3.750 €). Se comprobó vía API que las 3 notas de crédito de venta (`creditnote`, MODA RE/LUVI 2000/BOBY BRANDS) tienen estructura contable idéntica en Holded y se procesan de forma correcta y uniforme — **no es un bug de las rectificativas**. Se detectó (sin confirmar) que MODA RE tiene 2 facturas de 3.750 € dentro de abril 2026 (F260025 del 9/04 y F260026 del 28/04) — podría ser una factura duplicada o dos conceptos distintos legítimos; no investigado más a fondo.
-
-### OU — causa raíz identificada: tipo de cambio
-
-OU factura casi todo en GBP/USD (solo 2 de 27 facturas de 2026 son EUR). El punto 5 del plan (nunca implementado) es la causa: **`subtotal × fxRateToEur` (nuestro tipo BCE) no coincide con el importe EUR que Holded contabilizó realmente**.
-
-Comprobación definitiva: se comparó, factura a factura, el importe EUR de nuestro cálculo contra el importe EUR real que aparece en el **asiento contable que el propio Holded genera automáticamente por cada factura** (`documentType: "invoice"` en `/ledger-entries`, línea de cuenta `4220xxxx` — asientos que hoy excluimos del sync porque asumíamos que ya estaban cubiertos por la factura):
-
-```
-Suma de nuestros cálculo (subtotal × fxRateToEur BCE), 2026:  122.900,82 €   (Δ vs Holded: +7.929,07 €)
-Suma de las líneas 4220xxxx en los asientos "Factura" de Holded, 2026: 114.521,75 €   (Δ vs Holded: −450,00 €)
-PyG real de Holded (ventas OU), 2026:                          114.971,75 €
-```
-
-Usar el importe EUR que ya viene en el asiento automático de Holded (en vez de recalcular con `fxRateToEur` BCE) reduce el hueco de 7.929 € a solo 450 € (0,4%).
-
-**Fix recomendado (no implementado todavía, alcance mayor que un cambio de una línea):**
-- En vez de intentar deducir la fórmula de `currencyChange` (probado dividir y multiplicar — ninguno reproduce el número exacto, probablemente porque `currencyChange` vía API es el tipo *actual/en vivo*, no el histórico que se aplicó al contabilizar), usar directamente el importe EUR de la línea de ingreso/gasto del asiento `documentType: "invoice"`/`"purchase"` que Holded genera por cada factura.
-- Esto implica **dejar de excluir** `"invoice"`/`"purchase"` de `HOLDED_INVOICE_DOC_TYPES` en `syncJournalEntries` — pero habría que **sustituir**, no sumar, el cálculo actual basado en `invoice_lines`/`subtotal*fxRateToEur` por este importe, para no duplicar. Requiere rediseñar cómo `pl-data.ts` obtiene el importe EUR de una factura en divisa (posiblemente cachear el importe del asiento en `Invoice.totalEur` en vez de calcularlo con `fxRateToEur`).
-- Aplica solo a documentos en divisa distinta de EUR (SL, con todo en EUR, no le afecta — de ahí que su Resultado financiero/personal cuadren exactos).
+Ambas empresas dentro de ~0,05% del PyG real — se da por resuelto. Residuales aceptados sin investigar más (magnitud despreciable): el de SL es coherente con el "corte de ejercicio" ya documentado al principio de este plan; el de OU no se ha desglosado más a fondo dado lo pequeño que ya es.
 
 ### Nota de entorno
 

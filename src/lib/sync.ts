@@ -1,7 +1,6 @@
 import { prisma } from "./prisma";
 import { HoldedClient, HOLDED_SYNC_FROM_YEAR, type HoldedJournalEntry } from "./holded";
 import { JiraClient } from "./jira";
-import { convertToEur } from "./exchange-rates";
 import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
 import { inferInvoiceRecurrence } from "./invoice-recurrence";
@@ -342,12 +341,20 @@ async function upsertInvoice(
     invSubtotalForeign = (inv.subtotal ?? 0) * holdedRate;
     invTaxForeign = (inv.tax ?? 0) * holdedRate;
   } else {
-    // Holded omits rate; inv.total is in foreign → fetch FOREIGN→EUR from Frankfurter
-    const { rate } = await convertToEur(1, currency, date);
-    fxRateToEur = rate;
+    // Holded omite currency_change SIEMPRE en el endpoint de listado (/invoices,
+    // /purchases) que usamos en el sync en bloque — solo lo devuelve el endpoint de
+    // detalle de un documento individual. Antes caíamos aquí a un tipo BCE (Frankfurter)
+    // calculado por nosotros, pero verificado contra el PyG real de Holded (ver
+    // docs/PLAN-fix-pl-reconciliation.md, "Estado tras verificación real"): el propio
+    // asiento contable que Holded genera para estas facturas guarda el importe en la
+    // divisa original de la factura, no convertido — es decir, Holded tampoco aplica
+    // una conversión real aquí, trata el importe como si ya fuera EUR. El BCE producía
+    // una cifra de ventas ~7.000€ por encima de la real para una empresa con toda su
+    // facturación en GBP/USD; con fxRateToEur=1 el PyG cuadra exacto.
+    fxRateToEur = 1;
     toForeign = 1;
     invTotalForeign = inv.total ?? 0;
-    invTotalEur = invTotalForeign * rate;
+    invTotalEur = invTotalForeign;
     invSubtotalForeign = inv.subtotal ?? 0;
     invTaxForeign = inv.tax ?? 0;
   }
@@ -833,9 +840,11 @@ export async function syncProformas(companyId: string): Promise<void> {
       taxForeign = (pf.tax ?? 0) * holdedRate;
       totalForeign = (pf.total ?? 0) * holdedRate;
     } else {
-      const { rate } = await convertToEur(1, currency, date);
-      fxRateToEur = rate;
-      totalEur = (pf.total ?? 0) * rate;
+      // Mismo criterio que upsertInvoice: Holded no da currency_change en el listado
+      // de proformas y, para esta cuenta, tampoco aplica conversión real — se trata el
+      // importe como si ya fuera EUR en vez de recalcularlo con el tipo BCE.
+      fxRateToEur = 1;
+      totalEur = pf.total ?? 0;
       subtotalForeign = pf.subtotal ?? 0;
       taxForeign = pf.tax ?? 0;
       totalForeign = pf.total ?? 0;
