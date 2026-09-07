@@ -30,6 +30,22 @@ export function formatAccountNamePair(
   return accountNameSL ?? accountNameOU ?? null;
 }
 
+/**
+ * Deduce el sistema contable (SL = España, OU = Estonia) de una entidad legal a
+ * partir del sufijo de su nombre (`"Gigson SL"` → `"SL"`, `"Awesomely OÜ"` → `"OU"`).
+ * Heurística deliberada: el schema no tiene un campo `Company.system` dedicado, solo
+ * el nombre visible sigue esta convención hoy. Si una entidad futura no siguiera este
+ * patrón, devuelve `null` y el llamante debe usar un fallback genérico (p.ej.
+ * `formatAccountNamePair`).
+ */
+export function entitySystemFromCompanyName(name: string | null | undefined): "SL" | "OU" | null {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (trimmed.endsWith("OÜ") || trimmed.endsWith("OU")) return "OU";
+  if (trimmed.endsWith("SL")) return "SL";
+  return null;
+}
+
 const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
 
 /**
