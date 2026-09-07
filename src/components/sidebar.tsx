@@ -160,7 +160,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }): React.JSX.
               <button
                 type="button"
                 onClick={() => toggleGroup(group)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 transition-colors"
+                className="flex w-full items-center gap-1 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 transition-colors"
                 aria-expanded={isOpen}
               >
                 {isOpen ? (

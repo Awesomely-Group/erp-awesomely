@@ -116,21 +116,13 @@ export default async function ForecastsPage({
           <Suspense>
             <ForecastsChartFilters companies={companies} accounts={accounts} />
           </Suspense>
-          <div className="flex items-center gap-2">
-            <ForecastCreateButton
-              projects={formOptions.projects}
-              accountMappings={formOptions.accountMappings}
-              suppliers={formOptions.suppliers}
-              companies={formOptions.companies}
-            />
-            <Link
-              href="/forecasts/manuales"
-              title="Ver todas las previsiones en una tabla"
-              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2.5 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-            >
-              <Table2 className="h-4 w-4" />
-            </Link>
-          </div>
+          <Link
+            href="/forecasts/manuales"
+            title="Ver todas las previsiones en una tabla"
+            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2.5 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+          >
+            <Table2 className="h-4 w-4" />
+          </Link>
         </div>
       </div>
 
@@ -193,7 +185,15 @@ export default async function ForecastsPage({
 
       {/* Vista principal: previsión por cuenta contable (E5) */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Previsión por cuenta contable</h2>
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <h2 className="text-sm font-semibold text-gray-700">Previsión por cuenta contable</h2>
+          <ForecastCreateButton
+            projects={formOptions.projects}
+            accountMappings={formOptions.accountMappings}
+            suppliers={formOptions.suppliers}
+            companies={formOptions.companies}
+          />
+        </div>
         <ForecastAccountsTable rows={accountRows} scenarioLabel={scenarioLabel} />
         {kpis.totalCommittedInflows > 0 && (
           <p className="mt-3 text-xs text-gray-400">
