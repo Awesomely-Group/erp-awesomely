@@ -641,6 +641,10 @@ export type ForecastAccountRow = {
   marca: string | null;
   companyId: string | null;
   companyName: string | null;
+  accountNumSL: string | null;
+  accountNameSL: string | null;
+  accountNumOU: string | null;
+  accountNameOU: string | null;
   estimado: number;
   real: number;
   pendiente: number;
@@ -670,7 +674,15 @@ export async function getForecastAccountsTable(
         ? { OR: [{ accountNumSL: { in: accountList } }, { accountNumOU: { in: accountList } }] }
         : {}),
     },
-    select: { id: true, description: true, l1: true, accountNumSL: true, accountNumOU: true },
+    select: {
+      id: true,
+      description: true,
+      l1: true,
+      accountNumSL: true,
+      accountNameSL: true,
+      accountNumOU: true,
+      accountNameOU: true,
+    },
   });
   if (mappings.length === 0) return [];
 
@@ -734,6 +746,10 @@ export async function getForecastAccountsTable(
         marca,
         companyId,
         companyName: companyId ? (companyNameById.get(companyId) ?? null) : null,
+        accountNumSL: mapping.accountNumSL,
+        accountNameSL: mapping.accountNameSL,
+        accountNumOU: mapping.accountNumOU,
+        accountNameOU: mapping.accountNameOU,
         estimado: 0,
         real: 0,
         pendiente: 0,
