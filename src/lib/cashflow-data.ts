@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { getDateRange } from "./date-range";
 import {
   MARCA_FILTER_UNASSIGNED,
+  ACCOUNT_L1_GROUP_ORDER,
   cashflowScopeConditions,
   invoiceWhereMarca,
   proformaWhereMarca,
@@ -31,8 +32,12 @@ export type CashflowMonthlyPoint = {
   outflowsTax: number;
   outflows: number;
   net: number;
-  forecastInflows: number;
-  forecastOutflows: number;
+  /** Comprometido (E10, revisión 2026-09-03): suma de proformas activas (no facturadas ni
+   * canceladas). Solo aplica a ingresos — no hay equivalente de "comprometido" en gastos. */
+  committedInflows: number;
+  /** Estimado: solo previsiones manuales (`Forecast`), sin mezclar con proformas. */
+  estimatedInflows: number;
+  estimatedOutflows: number;
   trendInflows: number;
   trendOutflows: number;
 };
@@ -42,8 +47,9 @@ export type CashflowKpis = {
   totalOutflows: number;
   netCashflow: number;
   monthCount: number;
-  totalForecastInflows: number;
-  totalForecastOutflows: number;
+  totalCommittedInflows: number;
+  totalEstimatedInflows: number;
+  totalEstimatedOutflows: number;
 };
 
 type RawMonthlyRow = {
@@ -57,23 +63,36 @@ type ProformaMonthRow = { month: Date; total_eur: unknown };
 type ForecastMonthRow = { month: Date; type: string; pessimistic: unknown; optimistic: unknown };
 type ManualPaymentMonthRow = { month: Date; direction: string; total_eur: unknown };
 
-function resolveDateRange(params: CashflowParams): { gte?: Date; lte?: Date } {
+/**
+ * Resuelve el rango de fechas de un filtro de periodo.
+ *
+ * OJO (E8, revisión 2026-09-03): los casos "last_X_months" solo ponían `gte`, sin
+ * `lte` — así que aunque el selector diga "últimos X meses", los KPIs de previsión
+ * (proformas + previsiones manuales, que sí pueden tener fecha futura) incluían
+ * también meses futuros sin límite. Esto fue el origen real de una confusión de
+ * cifras en la reunión ("¿por qué la previsión de últimos 12 meses incluye 2027?").
+ * Ahora "últimos X meses" es explícitamente [hoy - X meses, fin del mes en curso] —
+ * para ver previsión de meses futuros hay que usar "Personalizado" con una fecha
+ * "Hasta" más adelante.
+ */
+export function resolveDateRange(params: CashflowParams): { gte?: Date; lte?: Date } {
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
+  const endOfCurrentMonth = new Date(y, m + 1, 0, 23, 59, 59, 999);
 
   switch (params.period) {
     case "last_3_months":
-      return { gte: new Date(y, m - 3, 1) };
+      return { gte: new Date(y, m - 3, 1), lte: endOfCurrentMonth };
     case "last_6_months":
-      return { gte: new Date(y, m - 6, 1) };
+      return { gte: new Date(y, m - 6, 1), lte: endOfCurrentMonth };
     case "last_12_months":
-      return { gte: new Date(y, m - 12, 1) };
+      return { gte: new Date(y, m - 12, 1), lte: endOfCurrentMonth };
     case "this_year":
     case "custom":
       return getDateRange(params.period, params.dateFrom, params.dateTo);
     default:
-      return { gte: new Date(y, m - 12, 1) };
+      return { gte: new Date(y, m - 12, 1), lte: endOfCurrentMonth };
   }
 }
 
@@ -198,7 +217,7 @@ export async function getCashflowData(
   // /payments). A diferencia de proformas/forecasts son movimientos de caja reales
   // (ya ocurrieron, no una proyección), así que se calculan siempre, independientemente
   // de `withForecast`, y se suman más abajo a los actuals (inflowsBase/outflowsBase), no
-  // a forecastInflows/forecastOutflows. Los pagos ligados a una factura (invoiceId no
+  // a committedInflows/estimatedInflows/estimatedOutflows. Los pagos ligados a una factura (invoiceId no
   // nulo) no se incluyen aquí: su importe ya se cuenta a través de la propia factura en
   // la consulta `rows` de más arriba — sumarlos también aquí duplicaría el importe.
   const manualPaymentConditions: Prisma.Sql[] = [
@@ -234,8 +253,15 @@ export async function getCashflowData(
           // Operandi apareciendo en la cuenta de la SL. `cashflowScopeConditions` es
           // la misma lógica de marca/entidad que usa el forecast de abajo: compartida
           // a propósito para que no se pueda volver a desincronizar así.
+          //
+          // E10 (revisión 2026-09-03): esta suma es ahora "Comprometido", no una mezcla
+          // de proformas + previsión manual. El filtro de estados incluye 0/1 (Borrador),
+          // 2 (Aprobado) y 4 (Vencida) — antes excluía el 2 "Aprobado" por error, así que
+          // una proforma aprobada no contaba ni como previsión ni como real hasta que se
+          // facturaba. Sigue excluyendo -1 (Cancelada, no cuenta) y 3 (Facturado, ya es
+          // una factura real y se contaría dos veces).
           const conditions: Prisma.Sql[] = [
-            Prisma.sql`"holdedStatus" IN (0, 1, 4)`,
+            Prisma.sql`"holdedStatus" IN (0, 1, 2, 4)`,
             ...cashflowScopeConditions({ marca: params.marca, company: params.company }),
           ];
           if (dateRange.gte) conditions.push(Prisma.sql`date >= ${dateRange.gte}`);
@@ -253,11 +279,13 @@ export async function getCashflowData(
       : Promise.resolve([] as ProformaMonthRow[]),
     withForecast
       ? (() => {
-          // Los forecasts no tienen `companyId` (son previsiones por marca, no por
-          // entidad legal): solo se les pasa `marca`, nunca `company`.
+          // Desde E6 (revisión 2026-09-03) los forecasts sí tienen `companyId`
+          // (entidad legal), además de `marca`: se filtran igual que facturas/proformas.
+          // Las previsiones creadas antes de este cambio tienen companyId null y
+          // seguirán apareciendo salvo que se filtre explícitamente por entidad.
           const conditions: Prisma.Sql[] = [
             Prisma.sql`"isPaused" = false`,
-            ...cashflowScopeConditions({ marca: params.marca }),
+            ...cashflowScopeConditions({ marca: params.marca, company: params.company }),
           ];
           if (dateRange.gte) conditions.push(Prisma.sql`month >= ${dateRange.gte}`);
           if (dateRange.lte) conditions.push(Prisma.sql`month <= ${dateRange.lte}`);
@@ -299,8 +327,9 @@ export async function getCashflowData(
         outflowsTax: 0,
         outflows: 0,
         net: 0,
-        forecastInflows: 0,
-        forecastOutflows: 0,
+        committedInflows: 0,
+        estimatedInflows: 0,
+        estimatedOutflows: 0,
         trendInflows: 0,
         trendOutflows: 0,
       });
@@ -329,7 +358,7 @@ export async function getCashflowData(
   for (const row of proformaRows) {
     const d = new Date(row.month);
     const point = ensurePoint(d);
-    point.forecastInflows += Number(row.total_eur);
+    point.committedInflows += Number(row.total_eur);
   }
 
   for (const row of forecastRows) {
@@ -337,9 +366,9 @@ export async function getCashflowData(
     const point = ensurePoint(d);
     const amount = Number(scenario === "optimistic" ? row.optimistic : row.pessimistic);
     if (row.type === ForecastType.INCOME) {
-      point.forecastInflows += amount;
+      point.estimatedInflows += amount;
     } else {
-      point.forecastOutflows += amount;
+      point.estimatedOutflows += amount;
     }
   }
 
@@ -382,8 +411,8 @@ export async function getCashflowData(
           win.length > 0 ? win.reduce((s, p) => s + p.inflows, 0) / win.length : 0;
         const avgOutflows =
           win.length > 0 ? win.reduce((s, p) => s + p.outflows, 0) / win.length : 0;
-        point.trendInflows = avgInflows + point.forecastInflows;
-        point.trendOutflows = avgOutflows + point.forecastOutflows;
+        point.trendInflows = avgInflows + point.committedInflows + point.estimatedInflows;
+        point.trendOutflows = avgOutflows + point.estimatedOutflows;
       }
     }
   }
@@ -393,8 +422,9 @@ export async function getCashflowData(
     totalOutflows: monthly.reduce((s, p) => s + p.outflows, 0),
     netCashflow: monthly.reduce((s, p) => s + p.net, 0),
     monthCount: monthly.length,
-    totalForecastInflows: monthly.reduce((s, p) => s + p.forecastInflows, 0),
-    totalForecastOutflows: monthly.reduce((s, p) => s + p.forecastOutflows, 0),
+    totalCommittedInflows: monthly.reduce((s, p) => s + p.committedInflows, 0),
+    totalEstimatedInflows: monthly.reduce((s, p) => s + p.estimatedInflows, 0),
+    totalEstimatedOutflows: monthly.reduce((s, p) => s + p.estimatedOutflows, 0),
   };
 
   return { monthly, kpis };
@@ -507,7 +537,20 @@ export async function getCashflowCompanies(): Promise<{ id: string; name: string
   });
 }
 
-export type CashflowAccountOption = { num: string; name: string; l1: string | null };
+export type AccountSystem = "SL" | "OU";
+
+export type CashflowAccountOption = {
+  num: string;
+  name: string;
+  l1: string | null;
+  /**
+   * Entidad legal a la que pertenece este número de cuenta (E7, revisión 2026-09-03):
+   * SL = Gigson Solutions España, OU = entidad estonia. `null` cuando la cuenta no
+   * está en `account_mappings` (p.ej. cuentas históricas sin mapear todavía) y no se
+   * puede saber a qué sistema pertenece.
+   */
+  system: AccountSystem | null;
+};
 
 /**
  * Cuentas contables filtrables en cashflow/forecasts, con su categoría `l1`
@@ -540,9 +583,16 @@ export async function getCashflowAccounts(): Promise<CashflowAccountOption[]> {
   ]);
 
   const l1ByNum = new Map<string, string>();
+  const systemByNum = new Map<string, AccountSystem>();
   for (const m of mappings) {
-    if (m.accountNumSL) l1ByNum.set(m.accountNumSL, m.l1);
-    if (m.accountNumOU) l1ByNum.set(m.accountNumOU, m.l1);
+    if (m.accountNumSL) {
+      l1ByNum.set(m.accountNumSL, m.l1);
+      systemByNum.set(m.accountNumSL, "SL");
+    }
+    if (m.accountNumOU) {
+      l1ByNum.set(m.accountNumOU, m.l1);
+      systemByNum.set(m.accountNumOU, "OU");
+    }
   }
 
   const holdedById = new Map<string, string>();
@@ -563,7 +613,7 @@ export async function getCashflowAccounts(): Promise<CashflowAccountOption[]> {
     const name = r.accountingAccountName ?? holdedById.get(dbKey) ?? holdedByNum.get(dbKey);
     if (name && !seen.has(dbKey)) {
       seen.add(dbKey);
-      result.push({ num: dbKey, name, l1: l1ByNum.get(dbKey) ?? null });
+      result.push({ num: dbKey, name, l1: l1ByNum.get(dbKey) ?? null, system: systemByNum.get(dbKey) ?? null });
     }
   }
   // Cuentas usadas en previsiones manuales (COGS/OPEX/CAPEX) aunque no tengan
@@ -572,11 +622,149 @@ export async function getCashflowAccounts(): Promise<CashflowAccountOption[]> {
   // añade sin que haya al menos una factura detrás.
   for (const m of mappings) {
     if (!["COGS", "OPEX", "CAPEX"].includes(m.l1)) continue;
-    for (const num of [m.accountNumSL, m.accountNumOU]) {
-      if (!num || seen.has(num)) continue;
-      seen.add(num);
-      result.push({ num, name: m.accountNameSL ?? m.accountNameOU ?? m.description, l1: m.l1 });
+    if (m.accountNumSL && !seen.has(m.accountNumSL)) {
+      seen.add(m.accountNumSL);
+      result.push({ num: m.accountNumSL, name: m.accountNameSL ?? m.description, l1: m.l1, system: "SL" });
+    }
+    if (m.accountNumOU && !seen.has(m.accountNumOU)) {
+      seen.add(m.accountNumOU);
+      result.push({ num: m.accountNumOU, name: m.accountNameOU ?? m.description, l1: m.l1, system: "OU" });
     }
   }
   return result;
+}
+
+export type ForecastAccountRow = {
+  accountMappingId: string;
+  description: string;
+  l1: string;
+  marca: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  estimado: number;
+  real: number;
+  pendiente: number;
+};
+
+type EstimadoRow = { accountMappingId: string; marca: string | null; companyId: string | null; estimado: unknown };
+type RealRow = { accountMappingId: string; marca: string | null; companyId: string | null; real: unknown };
+
+/**
+ * Tabla de previsión por cuenta contable (E5, rediseño de /forecasts, revisión
+ * 2026-09-03): para cada cuenta contable (con actividad prevista o real en el
+ * periodo/filtros elegidos), calcula el importe **estimado** (previsiones manuales,
+ * escenario elegido), el **real** ya facturado, y lo **pendiente** (estimado − real).
+ * Respeta los mismos filtros de periodo/marca/entidad/categoría/cuenta que el resto
+ * de /forecasts.
+ */
+export async function getForecastAccountsTable(
+  rawParams: CashflowParams
+): Promise<ForecastAccountRow[]> {
+  const l1List = rawParams.l1?.split(",").filter(Boolean) ?? [];
+  const accountList = rawParams.account?.split(",").filter(Boolean) ?? [];
+
+  const mappings = await prisma.accountMapping.findMany({
+    where: {
+      ...(l1List.length > 0 ? { l1: { in: l1List } } : {}),
+      ...(accountList.length > 0
+        ? { OR: [{ accountNumSL: { in: accountList } }, { accountNumOU: { in: accountList } }] }
+        : {}),
+    },
+    select: { id: true, description: true, l1: true, accountNumSL: true, accountNumOU: true },
+  });
+  if (mappings.length === 0) return [];
+
+  const mappingById = new Map(mappings.map((m) => [m.id, m]));
+  const mappingIds = mappings.map((m) => m.id);
+
+  const dateRange = resolveDateRange(rawParams);
+  const scenario = rawParams.scenario === "optimistic" ? "optimistic" : "pessimistic";
+  const companies = await getCashflowCompanies();
+  const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
+
+  const estimadoConditions: Prisma.Sql[] = [
+    Prisma.sql`"isPaused" = false`,
+    Prisma.sql`"accountMappingId" IN (${Prisma.join(mappingIds.map((id) => Prisma.sql`${id}`))})`,
+    ...cashflowScopeConditions({ marca: rawParams.marca, company: rawParams.company }),
+  ];
+  if (dateRange.gte) estimadoConditions.push(Prisma.sql`month >= ${dateRange.gte}`);
+  if (dateRange.lte) estimadoConditions.push(Prisma.sql`month <= ${dateRange.lte}`);
+
+  const amountCol = scenario === "optimistic" ? Prisma.raw(`"amountOptimistic"`) : Prisma.raw(`"amountPessimistic"`);
+
+  const estimadoRowsPromise = prisma.$queryRaw<EstimadoRow[]>`
+    SELECT "accountMappingId", marca, "companyId", SUM(${amountCol}) AS estimado
+    FROM forecasts
+    WHERE ${Prisma.join(estimadoConditions, " AND ")}
+    GROUP BY "accountMappingId", marca, "companyId"
+  `;
+
+  const realConditions: Prisma.Sql[] = [
+    Prisma.sql`am.id IN (${Prisma.join(mappingIds.map((id) => Prisma.sql`${id}`))})`,
+    ...cashflowScopeConditions({ marca: rawParams.marca, company: rawParams.company, marcaColumn: "i.marca", companyColumn: 'i."companyId"' }),
+  ];
+  if (dateRange.gte) realConditions.push(Prisma.sql`i.date >= ${dateRange.gte}`);
+  if (dateRange.lte) realConditions.push(Prisma.sql`i.date <= ${dateRange.lte}`);
+
+  const realRowsPromise = prisma.$queryRaw<RealRow[]>`
+    SELECT am.id AS "accountMappingId", i.marca AS marca, i."companyId" AS "companyId", SUM(il."totalEur") AS real
+    FROM invoice_lines il
+    JOIN invoices i ON i.id = il."invoiceId"
+    JOIN account_mappings am
+      ON il."accountingAccount" = am."accountNumSL" OR il."accountingAccount" = am."accountNumOU"
+    WHERE ${Prisma.join(realConditions, " AND ")}
+    GROUP BY am.id, i.marca, i."companyId"
+  `;
+
+  const [estimadoRows, realRows] = await Promise.all([estimadoRowsPromise, realRowsPromise]);
+
+  const rowMap = new Map<string, ForecastAccountRow>();
+  const keyOf = (accountMappingId: string, marca: string | null, companyId: string | null): string =>
+    `${accountMappingId}|${marca ?? ""}|${companyId ?? ""}`;
+
+  const ensureRow = (accountMappingId: string, marca: string | null, companyId: string | null): ForecastAccountRow => {
+    const key = keyOf(accountMappingId, marca, companyId);
+    let row = rowMap.get(key);
+    if (!row) {
+      const mapping = mappingById.get(accountMappingId)!;
+      row = {
+        accountMappingId,
+        description: mapping.description,
+        l1: mapping.l1,
+        marca,
+        companyId,
+        companyName: companyId ? (companyNameById.get(companyId) ?? null) : null,
+        estimado: 0,
+        real: 0,
+        pendiente: 0,
+      };
+      rowMap.set(key, row);
+    }
+    return row;
+  };
+
+  for (const r of estimadoRows) {
+    const row = ensureRow(r.accountMappingId, r.marca, r.companyId);
+    row.estimado += Number(r.estimado);
+  }
+  for (const r of realRows) {
+    const row = ensureRow(r.accountMappingId, r.marca, r.companyId);
+    row.real += Number(r.real);
+  }
+
+  const rows = Array.from(rowMap.values());
+  for (const row of rows) {
+    row.pendiente = row.estimado - row.real;
+  }
+
+  // Descarta filas totalmente vacías (puede pasar si una cuenta no tuvo actividad
+  // en el periodo pero coincidía con el filtro de categoría/cuenta).
+  return rows
+    .filter((r) => r.estimado !== 0 || r.real !== 0)
+    .sort((a, b) => {
+      const l1Cmp = ACCOUNT_L1_GROUP_ORDER.indexOf(a.l1 as (typeof ACCOUNT_L1_GROUP_ORDER)[number]) -
+        ACCOUNT_L1_GROUP_ORDER.indexOf(b.l1 as (typeof ACCOUNT_L1_GROUP_ORDER)[number]);
+      if (l1Cmp !== 0) return l1Cmp;
+      return a.description.localeCompare(b.description);
+    });
 }

@@ -3,6 +3,7 @@
 import { useState, useTransition, useMemo } from "react";
 import { Pencil, Trash2, Plus, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatAccountNamePair } from "@/lib/org";
 import { SortThClick } from "@/components/sort-th";
 import {
   createAccountMapping,
@@ -263,6 +264,9 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
             <tr className="bg-gray-50 border-b border-gray-200">
               <SortThClick label="Tag" active={sortKey === "tag"} sortDir={sortDir} onClick={() => handleSort("tag")} className="text-xs" />
               <SortThClick label="Descripción" active={sortKey === "description"} sortDir={sortDir} onClick={() => handleSort("description")} className="text-xs" />
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500" title="Nombre en español (SL) con el equivalente en la otra entidad entre paréntesis (E13)">
+                Nombre (ES / equiv.)
+              </th>
               <SortThClick label="L1" active={sortKey === "l1"} sortDir={sortDir} onClick={() => handleSort("l1")} className="text-xs" />
               <SortThClick label="Num SL" active={sortKey === "accountNumSL"} sortDir={sortDir} onClick={() => handleSort("accountNumSL")} className="text-xs" />
               <SortThClick label="Cuenta SL" active={sortKey === "accountNameSL"} sortDir={sortDir} onClick={() => handleSort("accountNameSL")} className="text-xs" />
@@ -276,6 +280,9 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
               <tr key={m.id} className={cn("hover:bg-gray-50", editingId === m.id && "bg-indigo-50")}>
                 <td className="px-4 py-2.5 font-mono text-xs text-gray-800 whitespace-nowrap">{m.tag}</td>
                 <td className="px-4 py-2.5 text-xs text-gray-600 max-w-[200px] truncate">{m.description}</td>
+                <td className="px-4 py-2.5 text-xs text-gray-600 max-w-[220px] truncate">
+                  {formatAccountNamePair(m.accountNameSL, m.accountNameOU) ?? <span className="text-gray-400">—</span>}
+                </td>
                 <td className="px-4 py-2.5">
                   <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", L1_COLORS[m.l1] ?? "bg-gray-100 text-gray-600")}>
                     {m.l1}
@@ -308,7 +315,7 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
                   No hay entradas{l1Filter ? ` con L1 = ${l1Filter}` : ""}
                 </td>
               </tr>

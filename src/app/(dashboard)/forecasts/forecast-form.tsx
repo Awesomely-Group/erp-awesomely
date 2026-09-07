@@ -14,12 +14,14 @@ import {
 } from "./forecast-classification-fields";
 
 type Project = { id: string; name: string };
+type Company = { id: string; name: string };
 
 type ForecastRow = {
   id: string;
   month: Date;
   type: ForecastType;
   marca: string | null;
+  companyId?: string | null;
   projectId: string | null;
   accountMappingId?: string | null;
   supplierId?: string | null;
@@ -48,6 +50,7 @@ export function ForecastForm({
   projects,
   accountMappings,
   suppliers,
+  companies,
   initialMode = "oneshot",
   onClose,
 }: {
@@ -55,6 +58,7 @@ export function ForecastForm({
   projects: Project[];
   accountMappings: AccountMappingOption[];
   suppliers: SupplierOption[];
+  companies: Company[];
   /** Modo con el que se abre el formulario al crear (se elige antes, en el botón). Ignorado al editar. */
   initialMode?: Mode;
   onClose: () => void;
@@ -91,13 +95,14 @@ export function ForecastForm({
     const fd = new FormData(e.currentTarget);
     const type = fd.get("type") as ForecastType;
     const marca = (fd.get("marca") as string) || null;
+    const companyId = (fd.get("companyId") as string) || null;
     const projectId = (fd.get("projectId") as string) || null;
     const accountMappingId = (fd.get("accountMappingId") as string) || null;
     const supplierId = (fd.get("supplierId") as string) || null;
     const description = (fd.get("description") as string) || null;
 
-    if (!marca || !accountMappingId) {
-      setError("Por favor rellena todos los campos obligatorios (marca y cuenta contable).");
+    if (!marca || !companyId || !accountMappingId) {
+      setError("Por favor rellena todos los campos obligatorios (marca, entidad legal y cuenta contable).");
       return;
     }
 
@@ -115,12 +120,12 @@ export function ForecastForm({
       startTransition(async () => {
         if (forecast) {
           await updateForecast(forecast.id, {
-            month, type, marca, projectId, accountMappingId, supplierId, description,
+            month, type, marca, companyId, projectId, accountMappingId, supplierId, description,
             amountOptimistic, amountPessimistic,
           });
         } else {
           await createForecast({
-            month, type, marca, projectId, accountMappingId, supplierId, description,
+            month, type, marca, companyId, projectId, accountMappingId, supplierId, description,
             amountOptimistic, amountPessimistic,
           });
         }
@@ -153,6 +158,7 @@ export function ForecastForm({
         occurrences: endMode === "occurrences" ? occurrences : null,
         type,
         marca,
+        companyId,
         projectId,
         accountMappingId,
         supplierId,
@@ -188,7 +194,7 @@ export function ForecastForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {mode === "oneshot" ? (
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Mes *</label>
@@ -237,6 +243,20 @@ export function ForecastForm({
                 <option value="">Selecciona…</option>
                 {MARCA_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">Entidad legal *</label>
+              <select
+                name="companyId"
+                required
+                defaultValue={forecast?.companyId ?? ""}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">Selecciona…</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>

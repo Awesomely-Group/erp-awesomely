@@ -9,6 +9,7 @@ type ForecastInput = {
   month: string;
   type: ForecastType;
   marca: string | null;
+  companyId: string | null;
   projectId: string | null;
   accountMappingId: string | null;
   supplierId: string | null;
@@ -27,6 +28,7 @@ export async function createForecast(data: ForecastInput): Promise<void> {
       month: monthDate,
       type: data.type,
       marca: data.marca ?? null,
+      companyId: data.companyId ?? null,
       projectId: data.projectId ?? null,
       accountMappingId: data.accountMappingId ?? null,
       supplierId: data.supplierId ?? null,
@@ -52,6 +54,7 @@ export async function updateForecast(id: string, data: ForecastInput): Promise<v
       month: monthDate,
       type: data.type,
       marca: data.marca ?? null,
+      companyId: data.companyId ?? null,
       projectId: data.projectId ?? null,
       accountMappingId: data.accountMappingId ?? null,
       supplierId: data.supplierId ?? null,

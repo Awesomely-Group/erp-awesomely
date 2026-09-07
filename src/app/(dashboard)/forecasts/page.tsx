@@ -3,12 +3,22 @@ import Link from "next/link";
 import { Table2 } from "lucide-react";
 import { InvoiceType } from "@prisma/client";
 import { formatCurrency, formatDate, holdedInvoiceUrl, holdedProformaUrl } from "@/lib/utils";
-import { getCashflowData, getCashflowCompanies, getCashflowAccounts, getMonthInvoices, getMonthProformas } from "@/lib/cashflow-data";
+import {
+  getCashflowData,
+  getCashflowCompanies,
+  getCashflowAccounts,
+  getMonthInvoices,
+  getMonthProformas,
+  getForecastAccountsTable,
+} from "@/lib/cashflow-data";
 import type { CashflowParams, CashflowMonthlyPoint } from "@/lib/cashflow-data";
 import { getForecastFormOptions } from "./forecasts-data";
 import { ForecastsChartFilters } from "./forecasts-chart-filters";
 import { ForecastCreateButton } from "./forecast-create-button";
+import { ForecastAccountsTable } from "./forecast-accounts-table";
 import { CashflowChart } from "../cashflow/cashflow-chart";
+import { InfoTooltip } from "@/components/info-tooltip";
+import { CollapsibleSection } from "@/components/collapsible-section";
 
 type MonthInvoice = {
   id: string;
@@ -43,7 +53,7 @@ export default async function ForecastsPage({
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
 
-  const [formOptions, { monthly, kpis }, companies, accounts, monthInvoicesRaw, monthProformasRaw] =
+  const [formOptions, { monthly, kpis }, companies, accounts, monthInvoicesRaw, monthProformasRaw, accountRows] =
     await Promise.all([
       getForecastFormOptions(),
       getCashflowData(params, true),
@@ -51,6 +61,7 @@ export default async function ForecastsPage({
       getCashflowAccounts(),
       params.selectedMonth ? getMonthInvoices(params, params.selectedMonth) : Promise.resolve(null),
       params.selectedMonth ? getMonthProformas(params, params.selectedMonth) : Promise.resolve(null),
+      getForecastAccountsTable(params),
     ]);
 
   const monthInvoices = monthInvoicesRaw as MonthInvoice[] | null;
@@ -97,7 +108,9 @@ export default async function ForecastsPage({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Previsiones</h1>
-          <p className="text-sm text-gray-500 mt-1">Estimaciones ERP · en EUR</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Flujo de caja proyectado por cuenta contable · en EUR
+          </p>
         </div>
         <div className="flex items-end gap-3 flex-wrap">
           <Suspense>
@@ -108,6 +121,7 @@ export default async function ForecastsPage({
               projects={formOptions.projects}
               accountMappings={formOptions.accountMappings}
               suppliers={formOptions.suppliers}
+              companies={formOptions.companies}
             />
             <Link
               href="/forecasts/manuales"
@@ -123,155 +137,189 @@ export default async function ForecastsPage({
       {/* KPIs del flujo actual */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Entradas totales</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Entradas totales
+            <InfoTooltip text="Facturas de venta emitidas + cobros manuales sueltos ya cobrados, en el periodo filtrado (IVA incluido)." />
+          </p>
           <p className="mt-2 text-2xl font-bold text-green-600">{formatCurrency(kpis.totalInflows)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Salidas totales</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Salidas totales
+            <InfoTooltip text="Facturas de compra + pagos manuales sueltos ya pagados, en el periodo filtrado (IVA incluido)." />
+          </p>
           <p className="mt-2 text-2xl font-bold text-red-500">{formatCurrency(kpis.totalOutflows)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Flujo neto</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Flujo neto
+            <InfoTooltip text="Entradas totales menos salidas totales del periodo filtrado." />
+          </p>
           <p className={`mt-2 text-2xl font-bold ${netIsPositive ? "text-indigo-600" : "text-red-600"}`}>
             {formatCurrency(kpis.netCashflow)}
           </p>
         </div>
       </div>
 
-      {/* KPIs de previsión */}
-      {(kpis.totalForecastInflows > 0 || kpis.totalForecastOutflows > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
-            <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">
-              Previsión entradas
-              <span className="ml-1.5 font-normal capitalize">({scenarioLabel})</span>
+      {/* KPIs de previsión — E10 (revisión 2026-09-03): "Comprometido" (proformas) separado
+          de "Estimado" (previsión manual), antes mezclados en un único número. */}
+      {(kpis.totalCommittedInflows > 0 || kpis.totalEstimatedInflows > 0 || kpis.totalEstimatedOutflows > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-indigo-50 rounded-xl border border-indigo-200 p-5">
+            <p className="text-xs font-medium text-indigo-600 uppercase tracking-wide">
+              Comprometido (proformas)
+              <InfoTooltip text="Suma de proformas activas (borrador, aprobada o vencida) en el periodo filtrado — no incluye las ya facturadas ni las canceladas. Solo aplica a ingresos, no hay equivalente de gasto. Con 'Últimos N meses' incluye también meses futuros hasta fin del mes en curso." />
             </p>
-            <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(kpis.totalForecastInflows)}</p>
+            <p className="mt-2 text-xl font-bold text-indigo-700">{formatCurrency(kpis.totalCommittedInflows)}</p>
           </div>
           <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
             <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">
-              Previsión salidas
+              Estimado entradas
               <span className="ml-1.5 font-normal capitalize">({scenarioLabel})</span>
+              <InfoTooltip text="Solo previsiones manuales de ingreso del escenario elegido — ya no incluye proformas, que se muestran aparte en 'Comprometido'. Con 'Últimos N meses' incluye también meses futuros hasta fin del mes en curso." />
             </p>
-            <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(kpis.totalForecastOutflows)}</p>
+            <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(kpis.totalEstimatedInflows)}</p>
+          </div>
+          <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
+            <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">
+              Estimado salidas
+              <span className="ml-1.5 font-normal capitalize">({scenarioLabel})</span>
+              <InfoTooltip text="Solo previsiones manuales de gasto del escenario elegido — las proformas nunca cuentan aquí y no hay 'comprometido' de gasto todavía. Con 'Últimos N meses' incluye también meses futuros hasta fin del mes en curso." />
+            </p>
+            <p className="mt-2 text-xl font-bold text-blue-700">{formatCurrency(kpis.totalEstimatedOutflows)}</p>
           </div>
         </div>
       )}
 
-      {/* Gráfico */}
+      {/* Vista principal: previsión por cuenta contable (E5) */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Entradas vs. Salidas por mes · con previsión</h2>
-        <Suspense>
-          <CashflowChart data={monthly} showForecast={true} basePath="/forecasts" />
-        </Suspense>
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Previsión por cuenta contable</h2>
+        <ForecastAccountsTable rows={accountRows} scenarioLabel={scenarioLabel} />
+        {kpis.totalCommittedInflows > 0 && (
+          <p className="mt-3 text-xs text-gray-400">
+            El &ldquo;Comprometido&rdquo; (proformas) se muestra arriba, sin desglose por cuenta —
+            las proformas todavía no tienen una cuenta contable asignada.
+          </p>
+        )}
       </div>
 
-      {/* Detalle mes seleccionado */}
-      {params.selectedMonth && monthDocuments && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-700">
-                Documentos de {selectedMonthPoint?.monthLabel ?? params.selectedMonth}
-              </h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {monthDocuments.length} documento{monthDocuments.length !== 1 ? "s" : ""}
-                {selectedMonthPoint && (
-                  <>
-                    {" · "}
-                    <span className="text-green-600">Entradas {formatCurrency(selectedMonthPoint.inflows)}</span>
-                    {" · "}
-                    <span className="text-red-500">Salidas {formatCurrency(selectedMonthPoint.outflows)}</span>
-                    {" · "}
-                    <span className={selectedMonthPoint.net >= 0 ? "text-indigo-600" : "text-red-600"}>
-                      Neto {formatCurrency(selectedMonthPoint.net)}
-                    </span>
-                  </>
-                )}
-              </p>
-            </div>
-            <Link
-              href={buildUrl({ selectedMonth: undefined })}
-              className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors text-sm leading-none"
-              title="Cerrar"
-            >
-              ✕
-            </Link>
+      {/* Vista secundaria: gráfico mensual y documentos del mes (E5) */}
+      <CollapsibleSection title="Ver gráfico mensual y detalle de documentos" defaultOpen={!!params.selectedMonth}>
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Entradas vs. Salidas por mes · con previsión</h3>
+            <Suspense>
+              <CashflowChart data={monthly} showForecast={true} basePath="/forecasts" />
+            </Suspense>
           </div>
 
-          {monthDocuments.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-gray-400">
-              No hay documentos con los filtros actuales para este mes.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Número</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Tipo</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Contraparte</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Empresa</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Fecha</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Total (EUR)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthDocuments.map((doc) => {
-                  const isProforma = doc.kind === "proforma";
-                  const isInvoiceSale = doc.kind === "invoice" && doc.data.type === InvoiceType.SALE;
-                  const href = isProforma
-                    ? holdedProformaUrl(doc.data.holdedId)
-                    : holdedInvoiceUrl(
-                        doc.data.holdedId,
-                        (doc.data as MonthInvoice).type as InvoiceType
-                      );
-                  const tipoLabel = isProforma ? "Proforma" : isInvoiceSale ? "Venta" : "Compra";
-                  const amountColor = isProforma
-                    ? "text-blue-600"
-                    : isInvoiceSale
-                    ? "text-green-600"
-                    : "text-red-600";
+          {params.selectedMonth && monthDocuments && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    Documentos de {selectedMonthPoint?.monthLabel ?? params.selectedMonth}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {monthDocuments.length} documento{monthDocuments.length !== 1 ? "s" : ""}
+                    {selectedMonthPoint && (
+                      <>
+                        {" · "}
+                        <span className="text-green-600">Entradas {formatCurrency(selectedMonthPoint.inflows)}</span>
+                        {" · "}
+                        <span className="text-red-500">Salidas {formatCurrency(selectedMonthPoint.outflows)}</span>
+                        {" · "}
+                        <span className={selectedMonthPoint.net >= 0 ? "text-indigo-600" : "text-red-600"}>
+                          Neto {formatCurrency(selectedMonthPoint.net)}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <Link
+                  href={buildUrl({ selectedMonth: undefined })}
+                  className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors text-sm leading-none"
+                  title="Cerrar"
+                >
+                  ✕
+                </Link>
+              </div>
 
-                  return (
-                    <tr
-                      key={`${doc.kind}-${doc.data.id}`}
-                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">
-                            {doc.data.number ?? (
-                              <span className="italic text-gray-400 font-normal">Borrador</span>
-                            )}
-                          </span>
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
-                            title="Ver en Holded"
-                          >
-                            ↗
-                          </a>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600">{tipoLabel}</td>
-                      <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">
-                        {doc.data.counterparty ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-500">{doc.data.company.name}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{formatDate(doc.data.date.toISOString())}</td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${amountColor}`}>
-                        {formatCurrency(Number(doc.data.totalEur))}
-                      </td>
+              {monthDocuments.length === 0 ? (
+                <p className="px-4 py-10 text-center text-sm text-gray-400">
+                  No hay documentos con los filtros actuales para este mes.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Número</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Tipo</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Contraparte</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Empresa</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Fecha</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Total (EUR)</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {monthDocuments.map((doc) => {
+                      const isProforma = doc.kind === "proforma";
+                      const isInvoiceSale = doc.kind === "invoice" && doc.data.type === InvoiceType.SALE;
+                      const href = isProforma
+                        ? holdedProformaUrl(doc.data.holdedId)
+                        : holdedInvoiceUrl(
+                            doc.data.holdedId,
+                            (doc.data as MonthInvoice).type as InvoiceType
+                          );
+                      const tipoLabel = isProforma ? "Proforma" : isInvoiceSale ? "Venta" : "Compra";
+                      const amountColor = isProforma
+                        ? "text-blue-600"
+                        : isInvoiceSale
+                        ? "text-green-600"
+                        : "text-red-600";
+
+                      return (
+                        <tr
+                          key={`${doc.kind}-${doc.data.id}`}
+                          className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                        >
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">
+                                {doc.data.number ?? (
+                                  <span className="italic text-gray-400 font-normal">Borrador</span>
+                                )}
+                              </span>
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                                title="Ver en Holded"
+                              >
+                                ↗
+                              </a>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-600">{tipoLabel}</td>
+                          <td className="px-4 py-2.5 text-gray-600 max-w-[200px] truncate">
+                            {doc.data.counterparty ?? "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500">{doc.data.company.name}</td>
+                          <td className="px-4 py-2.5 text-gray-500">{formatDate(doc.data.date.toISOString())}</td>
+                          <td className={`px-4 py-2.5 text-right font-medium ${amountColor}`}>
+                            {formatCurrency(Number(doc.data.totalEur))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </CollapsibleSection>
     </div>
   );
 }

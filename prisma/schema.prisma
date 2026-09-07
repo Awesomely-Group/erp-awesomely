@@ -75,13 +75,15 @@ model Company {
   currency     String  @default("EUR")
   active       Boolean @default(true)
 
-  invoices          Invoice[]
-  suppliers         Supplier[]
-  syncLogs          SyncLog[]
-  proformas         Proforma[]
-  budgets           Budget[]
-  journalEntryLines JournalEntryLine[]
-  manualPayments    InvoicePayment[]
+  invoices            Invoice[]
+  suppliers           Supplier[]
+  syncLogs            SyncLog[]
+  proformas           Proforma[]
+  budgets             Budget[]
+  journalEntryLines   JournalEntryLine[]
+  manualPayments      InvoicePayment[]
+  forecasts           Forecast[]
+  forecastRecurrences ForecastRecurrence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -759,6 +761,8 @@ model ForecastRecurrence {
 
   type             ForecastType
   marca            String?
+  companyId        String?
+  company          Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
   projectId        String?
   project          JiraProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
   accountMappingId String?
@@ -779,6 +783,7 @@ model ForecastRecurrence {
   forecasts Forecast[]
 
   @@index([marca])
+  @@index([companyId])
   @@map("forecast_recurrences")
 }
 
@@ -787,6 +792,8 @@ model Forecast {
   month     DateTime
   type      ForecastType
   marca     String?
+  companyId String?
+  company   Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   projectId String?
   project   JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
@@ -811,6 +818,7 @@ model Forecast {
 
   @@index([month])
   @@index([marca])
+  @@index([companyId])
   @@index([recurrenceId])
   @@index([accountMappingId])
   @@index([supplierId])

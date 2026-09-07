@@ -33,7 +33,7 @@ const L1_OPTIONS = [
 ] as const;
 
 type Company = { id: string; name: string };
-type AccountOption = { num: string; name: string; l1: string | null };
+type AccountOption = { num: string; name: string; l1: string | null; system: "SL" | "OU" | null };
 
 function ChevronIcon({ open }: { open: boolean }): React.JSX.Element {
   return (
@@ -76,8 +76,14 @@ export function ForecastsChartFilters({
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>(
     sp.get("account")?.split(",").filter(Boolean) ?? []
   );
-  const [accountsOpen, setAccountsOpen] = useState(false);
-  const accountsContainerRef = useRef<HTMLDivElement>(null);
+  // E7 (revisión 2026-09-03): "Cuenta contable" pasa de una lista única a dos
+  // selectores separados por entidad (SL/OÜ) — cada número de cuenta pertenece
+  // siempre a una entidad, así que mezclarlos en una sola lista confundía a Irene
+  // (trabaja en la OÜ) sobre a qué entidad pertenecía cada cuenta.
+  const [accountsOpenSL, setAccountsOpenSL] = useState(false);
+  const [accountsOpenOU, setAccountsOpenOU] = useState(false);
+  const accountsContainerRefSL = useRef<HTMLDivElement>(null);
+  const accountsContainerRefOU = useRef<HTMLDivElement>(null);
   const applyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [selectedL1, setSelectedL1] = useState<string[]>(
@@ -98,15 +104,26 @@ export function ForecastsChartFilters({
   }, [marcasOpen]);
 
   useEffect(() => {
-    if (!accountsOpen) return;
+    if (!accountsOpenSL) return;
     function handlePointerDown(e: PointerEvent): void {
-      if (accountsContainerRef.current && !accountsContainerRef.current.contains(e.target as Node)) {
-        setAccountsOpen(false);
+      if (accountsContainerRefSL.current && !accountsContainerRefSL.current.contains(e.target as Node)) {
+        setAccountsOpenSL(false);
       }
     }
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [accountsOpen]);
+  }, [accountsOpenSL]);
+
+  useEffect(() => {
+    if (!accountsOpenOU) return;
+    function handlePointerDown(e: PointerEvent): void {
+      if (accountsContainerRefOU.current && !accountsContainerRefOU.current.contains(e.target as Node)) {
+        setAccountsOpenOU(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [accountsOpenOU]);
 
   useEffect(() => {
     if (!l1Open) return;
@@ -193,7 +210,8 @@ export function ForecastsChartFilters({
     setSelectedMarcas([]);
     setMarcasOpen(false);
     setSelectedAccounts([]);
-    setAccountsOpen(false);
+    setAccountsOpenSL(false);
+    setAccountsOpenOU(false);
     setSelectedL1([]);
     setL1Open(false);
     if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
@@ -207,12 +225,18 @@ export function ForecastsChartFilters({
         ? (MARCA_ALL_OPTIONS.find((o) => o.value === selectedMarcas[0])?.label ?? selectedMarcas[0])
         : `${selectedMarcas.length} seleccionadas`;
 
-  const accountLabel =
-    selectedAccounts.length === 0
-      ? "Todas"
-      : selectedAccounts.length === 1
-        ? (accounts.find((a) => a.num === selectedAccounts[0])?.name ?? selectedAccounts[0])
-        : `${selectedAccounts.length} seleccionadas`;
+  const slAccounts = accounts.filter((a) => a.system === "SL");
+  const ouAccounts = accounts.filter((a) => a.system === "OU");
+
+  function accountLabelFor(list: AccountOption[]): string {
+    const nums = new Set(list.map((a) => a.num));
+    const selectedInList = selectedAccounts.filter((num) => nums.has(num));
+    if (selectedInList.length === 0) return "Todas";
+    if (selectedInList.length === 1) {
+      return list.find((a) => a.num === selectedInList[0])?.name ?? selectedInList[0];
+    }
+    return `${selectedInList.length} seleccionadas`;
+  }
 
   const l1Label =
     selectedL1.length === 0
@@ -355,68 +379,75 @@ export function ForecastsChartFilters({
         </select>
       </div>
 
-      {accounts.length > 0 && (
-        <div className="flex flex-col gap-1" ref={accountsContainerRef}>
-          <label className="text-xs text-gray-500 font-medium">Cuenta contable</label>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setAccountsOpen((o) => !o)}
-              className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[13rem] flex items-center justify-between gap-2 transition-colors ${
-                selectedAccounts.length > 0
-                  ? "border-indigo-500 text-indigo-700"
-                  : "border-gray-300 text-gray-700"
-              }`}
-            >
-              <span className="truncate">{accountLabel}</span>
-              <ChevronIcon open={accountsOpen} />
-            </button>
+      {/* Cuenta contable, separada por entidad legal (E7, revisión 2026-09-03): antes
+          era una única lista que mezclaba cuentas de la SL y de la OÜ sin distinguirlas. */}
+      {[
+        { key: "SL", title: "Cuenta contable (SL)", list: slAccounts, open: accountsOpenSL, setOpen: setAccountsOpenSL, ref: accountsContainerRefSL },
+        { key: "OU", title: "Cuenta contable (OÜ)", list: ouAccounts, open: accountsOpenOU, setOpen: setAccountsOpenOU, ref: accountsContainerRefOU },
+      ].map(({ key, title, list, open, setOpen, ref }) =>
+        list.length > 0 ? (
+          <div className="flex flex-col gap-1" ref={ref} key={key}>
+            <label className="text-xs text-gray-500 font-medium">{title}</label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className={`rounded-lg border px-3 py-2 text-sm bg-white text-left min-w-[13rem] flex items-center justify-between gap-2 transition-colors ${
+                  selectedAccounts.some((num) => list.some((a) => a.num === num))
+                    ? "border-indigo-500 text-indigo-700"
+                    : "border-gray-300 text-gray-700"
+                }`}
+              >
+                <span className="truncate">{accountLabelFor(list)}</span>
+                <ChevronIcon open={open} />
+              </button>
 
-            {accountsOpen && (
-              <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[16rem] max-h-64 overflow-y-auto">
-                {groupAccountsByL1(accounts).map((group) => {
-                  const { allSelected, someSelected } = accountGroupSelectionState(
-                    group.items,
-                    selectedAccounts
-                  );
-                  return (
-                  <div key={group.label}>
-                    <label className="flex items-center gap-2.5 px-3 pt-2 pb-1 sticky top-0 bg-white cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someSelected;
-                        }}
-                        onChange={() => toggleGroup(group.items)}
-                        aria-label={`Seleccionar todas las cuentas de ${group.label}`}
-                        className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                      />
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                        {group.label}
-                      </span>
-                    </label>
-                    {group.items.map((a) => (
-                      <label
-                        key={a.num}
-                        className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAccounts.includes(a.num)}
-                          onChange={() => toggleAccount(a.num)}
-                          className="mt-0.5 rounded border-gray-300 text-indigo-600 flex-shrink-0"
-                        />
-                        <span className="text-sm leading-snug text-gray-800">{a.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  );
-                })}
-              </div>
-            )}
+              {open && (
+                <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[16rem] max-h-64 overflow-y-auto">
+                  {groupAccountsByL1(list).map((group) => {
+                    const { allSelected, someSelected } = accountGroupSelectionState(
+                      group.items,
+                      selectedAccounts
+                    );
+                    return (
+                      <div key={group.label}>
+                        <label className="flex items-center gap-2.5 px-3 pt-2 pb-1 sticky top-0 bg-white cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someSelected;
+                            }}
+                            onChange={() => toggleGroup(group.items)}
+                            aria-label={`Seleccionar todas las cuentas de ${group.label}`}
+                            className="rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                          />
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            {group.label}
+                          </span>
+                        </label>
+                        {group.items.map((a) => (
+                          <label
+                            key={a.num}
+                            className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedAccounts.includes(a.num)}
+                              onChange={() => toggleAccount(a.num)}
+                              className="mt-0.5 rounded border-gray-300 text-indigo-600 flex-shrink-0"
+                            />
+                            <span className="text-sm leading-snug text-gray-800">{a.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        ) : null
       )}
 
       <div className="flex flex-col gap-1">

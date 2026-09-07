@@ -45,8 +45,9 @@ function CustomTooltip({
   const inflowsTax = withTax ? find("inflowsTax") : 0;
   const outflowsBase = find("outflowsBase");
   const outflowsTax = withTax ? find("outflowsTax") : 0;
-  const forecastInflows = find("forecastInflows");
-  const forecastOutflows = find("forecastOutflows");
+  const committedInflows = find("committedInflows");
+  const estimatedInflows = find("estimatedInflows");
+  const estimatedOutflows = find("estimatedOutflows");
   const trendInflows = find("trendInflows");
   const trendOutflows = find("trendOutflows");
   const inflows = inflowsBase + inflowsTax;
@@ -81,13 +82,16 @@ function CustomTooltip({
           )}
         </div>
       )}
-      {(forecastInflows > 0 || forecastOutflows > 0) && (
+      {(committedInflows > 0 || estimatedInflows > 0 || estimatedOutflows > 0) && (
         <div className="mb-1.5">
-          {forecastInflows > 0 && (
-            <p className="text-blue-600 font-medium">Prev. entradas: {formatCurrency(forecastInflows)}</p>
+          {committedInflows > 0 && (
+            <p className="text-indigo-600 font-medium">Comprometido (proformas): {formatCurrency(committedInflows)}</p>
           )}
-          {forecastOutflows > 0 && (
-            <p className="text-blue-500 font-medium">Prev. salidas: {formatCurrency(forecastOutflows)}</p>
+          {estimatedInflows > 0 && (
+            <p className="text-blue-600 font-medium">Estimado entradas: {formatCurrency(estimatedInflows)}</p>
+          )}
+          {estimatedOutflows > 0 && (
+            <p className="text-blue-500 font-medium">Estimado salidas: {formatCurrency(estimatedOutflows)}</p>
           )}
         </div>
       )}
@@ -114,8 +118,9 @@ const LEGEND_LABELS: Record<string, string> = {
   inflowsTax: "Entradas (IVA)",
   outflowsBase: "Salidas (base)",
   outflowsTax: "Salidas (IVA)",
-  forecastInflows: "Previsión entradas",
-  forecastOutflows: "Previsión salidas",
+  committedInflows: "Comprometido (proformas)",
+  estimatedInflows: "Estimado entradas",
+  estimatedOutflows: "Estimado salidas",
   trendInflows: "Prev. ingresos (tendencia)",
   trendOutflows: "Prev. costes (tendencia)",
 };
@@ -253,9 +258,23 @@ export function CashflowChart({
           </Bar>
         )}
 
-        {/* Forecast bars — only shown in preview mode */}
+        {/* Forecast bars — only shown in preview mode. Entradas previstas se apilan en dos
+            sub-barras (E10, revisión 2026-09-03): comprometido (proformas, color más sólido)
+            debajo y estimado (previsión manual) encima — visualmente una sola columna de
+            previsión, con el desglose disponible en tooltip/leyenda. */}
         {showForecast && (
-          <Bar dataKey="forecastInflows" stackId="forecast" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#3b82f6">
+          <Bar dataKey="committedInflows" stackId="forecast" maxBarSize={48} radius={undefined} fill="#4f46e5">
+            {data.map((entry) => (
+              <Cell
+                key={entry.monthKey}
+                fill={selectedMonth === entry.monthKey ? "#4338ca" : "#4f46e5"}
+                opacity={selectedMonth && selectedMonth !== entry.monthKey ? 0.35 : 0.85}
+              />
+            ))}
+          </Bar>
+        )}
+        {showForecast && (
+          <Bar dataKey="estimatedInflows" stackId="forecast" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#3b82f6">
             {data.map((entry) => (
               <Cell
                 key={entry.monthKey}
@@ -266,7 +285,7 @@ export function CashflowChart({
           </Bar>
         )}
         {showForecast && (
-          <Bar dataKey="forecastOutflows" stackId="forecastOut" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#93c5fd">
+          <Bar dataKey="estimatedOutflows" stackId="forecastOut" maxBarSize={48} radius={[4, 4, 0, 0]} fill="#93c5fd">
             {data.map((entry) => (
               <Cell
                 key={entry.monthKey}

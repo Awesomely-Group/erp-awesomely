@@ -6,6 +6,7 @@ import { ForecastForm, type Mode } from "./forecast-form";
 import type { AccountMappingOption, SupplierOption } from "./forecast-classification-fields";
 
 type Project = { id: string; name: string };
+type Company = { id: string; name: string };
 
 const MODE_OPTIONS: { value: Mode; label: string }[] = [
   { value: "oneshot", label: "OneShot" },
@@ -22,10 +23,12 @@ export function ForecastCreateButton({
   projects,
   accountMappings,
   suppliers,
+  companies,
 }: {
   projects: Project[];
   accountMappings: AccountMappingOption[];
   suppliers: SupplierOption[];
+  companies: Company[];
 }): React.JSX.Element {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [creatingMode, setCreatingMode] = useState<Mode | null>(null);
@@ -38,6 +41,7 @@ export function ForecastCreateButton({
           projects={projects}
           accountMappings={accountMappings}
           suppliers={suppliers}
+          companies={companies}
           initialMode={creatingMode}
           onClose={() => setCreatingMode(null)}
         />
