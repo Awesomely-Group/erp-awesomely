@@ -14,6 +14,22 @@ export const MARCA_FILTER_UNASSIGNED = "__unassigned__";
 /** Estado: pendiente o parcial de clasificación (sin terminar de asignar proyecto). */
 export const STATUS_FILTER_UNASSIGNED = "__status_unassigned__";
 
+/**
+ * Formatea el nombre de una cuenta contable como "nombre en español (equivalente
+ * entre paréntesis)" (E13, revisión 2026-09-03): la SL (España) es la entidad de
+ * referencia en español, la OÜ (Estonia) es la equivalente. Si solo hay un nombre,
+ * se muestra ese solo; si no hay ninguno, `null`. Usado en cualquier listado que
+ * muestre el nombre de una cuenta contable sin distinguir ya por columnas separadas
+ * (p.ej. el selector de cuenta al crear una previsión manual).
+ */
+export function formatAccountNamePair(
+  accountNameSL?: string | null,
+  accountNameOU?: string | null
+): string | null {
+  if (accountNameSL && accountNameOU) return `${accountNameSL} (${accountNameOU})`;
+  return accountNameSL ?? accountNameOU ?? null;
+}
+
 const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
 
 /**

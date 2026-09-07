@@ -52,7 +52,8 @@ export default async function ProyeccionesPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Proyecciones</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Estimaciones automáticas basadas en histórico · en EUR
+            Escenarios y runway calculados a partir del histórico — distinto de las
+            previsiones manuales de /forecasts · en EUR
           </p>
         </div>
         <Suspense fallback={null}>

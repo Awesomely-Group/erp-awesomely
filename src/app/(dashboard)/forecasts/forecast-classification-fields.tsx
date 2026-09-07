@@ -1,11 +1,15 @@
 "use client";
 
 import { SearchableSelect } from "@/components/searchable-select";
+import { formatAccountNamePair } from "@/lib/org";
 
 export type AccountMappingOption = {
   id: string;
   description: string;
   l1: string;
+  /** Nombre de la cuenta en la SL (España) y en la OÜ (Estonia), si están mapeadas. */
+  accountNameSL?: string | null;
+  accountNameOU?: string | null;
 };
 
 export type SupplierOption = {
@@ -30,11 +34,14 @@ export function AccountMappingSelect({
   accountMappings: AccountMappingOption[];
   defaultAccountMappingId?: string | null;
 }): React.JSX.Element {
-  const options = accountMappings.map((a) => ({
-    id: a.id,
-    label: a.description,
-    sublabel: L1_LABELS[a.l1] ?? a.l1,
-  }));
+  const options = accountMappings.map((a) => {
+    const accountNames = formatAccountNamePair(a.accountNameSL, a.accountNameOU);
+    return {
+      id: a.id,
+      label: a.description,
+      sublabel: accountNames ? `${L1_LABELS[a.l1] ?? a.l1} · ${accountNames}` : (L1_LABELS[a.l1] ?? a.l1),
+    };
+  });
 
   return (
     <div className="flex flex-col gap-1">

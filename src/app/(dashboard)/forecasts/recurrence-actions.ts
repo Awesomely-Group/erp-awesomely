@@ -13,6 +13,7 @@ type ForecastRecurrenceInput = {
   occurrences: number | null;
   type: ForecastType;
   marca: string | null;
+  companyId: string | null;
   projectId: string | null;
   accountMappingId: string | null;
   supplierId: string | null;
@@ -56,6 +57,7 @@ export async function createForecastRecurrence(
         occurrences: input.occurrences,
         type: input.type,
         marca: input.marca ?? null,
+        companyId: input.companyId ?? null,
         projectId: input.projectId ?? null,
         accountMappingId: input.accountMappingId ?? null,
         supplierId: input.supplierId ?? null,
@@ -72,6 +74,7 @@ export async function createForecastRecurrence(
         month,
         type: input.type,
         marca: input.marca ?? null,
+        companyId: input.companyId ?? null,
         projectId: input.projectId ?? null,
         accountMappingId: input.accountMappingId ?? null,
         supplierId: input.supplierId ?? null,

@@ -6,12 +6,15 @@ import { ForecastsTable } from "./forecasts-table";
 import type { AccountMappingOption, SupplierOption } from "./forecast-classification-fields";
 
 type Project = { id: string; name: string };
+type Company = { id: string; name: string };
 
 type ForecastRow = {
   id: string;
   month: Date;
   type: ForecastType;
   marca: string | null;
+  companyId: string | null;
+  company: { id: string; name: string } | null;
   projectId: string | null;
   project: { id: string; name: string } | null;
   accountMappingId: string | null;
@@ -30,11 +33,13 @@ export function ForecastsClient({
   projects,
   accountMappings,
   suppliers,
+  companies,
 }: {
   forecasts: ForecastRow[];
   projects: Project[];
   accountMappings: AccountMappingOption[];
   suppliers: SupplierOption[];
+  companies: Company[];
 }): React.JSX.Element {
   return (
     <>
@@ -43,6 +48,7 @@ export function ForecastsClient({
           projects={projects}
           accountMappings={accountMappings}
           suppliers={suppliers}
+          companies={companies}
         />
       </div>
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -51,6 +57,7 @@ export function ForecastsClient({
           projects={projects}
           accountMappings={accountMappings}
           suppliers={suppliers}
+          companies={companies}
         />
       </div>
     </>

@@ -32,6 +32,11 @@ export async function buildForecastWhere(params: CashflowParams): Promise<Prisma
     where.accountMappingId = { in: mappings.map((m) => m.id) };
   }
 
+  // Entidad legal (E6, revisión 2026-09-03): las previsiones anteriores a este
+  // cambio tienen companyId null, así que filtrar por entidad las deja fuera —
+  // comportamiento esperado (ya no cuentan como "de esa entidad" hasta que se editen).
+  if (params.company) where.companyId = params.company;
+
   return where;
 }
 
@@ -39,10 +44,11 @@ export async function buildForecastWhere(params: CashflowParams): Promise<Prisma
  * sin traer el listado completo de previsiones — usado en la cabecera del dashboard. */
 export async function getForecastFormOptions(): Promise<{
   projects: { id: string; name: string }[];
-  accountMappings: { id: string; description: string; l1: string }[];
+  accountMappings: { id: string; description: string; l1: string; accountNameSL: string | null; accountNameOU: string | null }[];
   suppliers: { id: string; name: string }[];
+  companies: { id: string; name: string }[];
 }> {
-  const [projects, accountMappings, suppliers] = await Promise.all([
+  const [projects, accountMappings, suppliers, companies] = await Promise.all([
     prisma.jiraProject.findMany({
       where: { active: true },
       select: { id: true, name: true },
@@ -50,7 +56,7 @@ export async function getForecastFormOptions(): Promise<{
     }),
     prisma.accountMapping.findMany({
       where: { l1: { in: ["COGS", "OPEX", "CAPEX"] } },
-      select: { id: true, description: true, l1: true },
+      select: { id: true, description: true, l1: true, accountNameSL: true, accountNameOU: true },
       orderBy: [{ l1: "asc" }, { description: "asc" }],
     }),
     prisma.supplier.findMany({
@@ -58,8 +64,13 @@ export async function getForecastFormOptions(): Promise<{
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.company.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
-  return { projects, accountMappings, suppliers };
+  return { projects, accountMappings, suppliers, companies };
 }
 
 export type ForecastListRow = Prisma.ForecastGetPayload<{
@@ -68,6 +79,8 @@ export type ForecastListRow = Prisma.ForecastGetPayload<{
     month: true;
     type: true;
     marca: true;
+    companyId: true;
+    company: { select: { id: true; name: true } };
     projectId: true;
     project: { select: { id: true; name: true } };
     accountMappingId: true;
@@ -87,8 +100,9 @@ export type ForecastListRow = Prisma.ForecastGetPayload<{
 export async function getForecastsListData(params: CashflowParams): Promise<{
   forecasts: ForecastListRow[];
   projects: { id: string; name: string }[];
-  accountMappings: { id: string; description: string; l1: string }[];
+  accountMappings: { id: string; description: string; l1: string; accountNameSL: string | null; accountNameOU: string | null }[];
   suppliers: { id: string; name: string }[];
+  companies: { id: string; name: string }[];
 }> {
   const forecastWhere = await buildForecastWhere(params);
 
@@ -100,6 +114,8 @@ export async function getForecastsListData(params: CashflowParams): Promise<{
         month: true,
         type: true,
         marca: true,
+        companyId: true,
+        company: { select: { id: true, name: true } },
         projectId: true,
         project: { select: { id: true, name: true } },
         accountMappingId: true,

@@ -12,7 +12,7 @@ export default async function ForecastsManualesPage({
   searchParams: Promise<CashflowParams>;
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
-  const { forecasts, projects, accountMappings, suppliers } = await getForecastsListData(params);
+  const { forecasts, projects, accountMappings, suppliers, companies } = await getForecastsListData(params);
 
   const activeForecasts = forecasts.filter((f) => !f.isPaused);
   const incomeForecasts = activeForecasts.filter((f) => f.type === ForecastType.INCOME);
@@ -63,6 +63,7 @@ export default async function ForecastsManualesPage({
         projects={projects}
         accountMappings={accountMappings}
         suppliers={suppliers}
+        companies={companies}
       />
     </div>
   );

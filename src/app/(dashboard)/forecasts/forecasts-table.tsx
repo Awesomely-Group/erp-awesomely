@@ -10,12 +10,15 @@ import { Pencil, Trash2, ChevronDown, ChevronRight, PauseCircle, PlayCircle } fr
 import type { AccountMappingOption, SupplierOption } from "./forecast-classification-fields";
 
 type Project = { id: string; name: string };
+type Company = { id: string; name: string };
 
 type ForecastRow = {
   id: string;
   month: Date;
   type: ForecastType;
   marca: string | null;
+  companyId: string | null;
+  company: { id: string; name: string } | null;
   projectId: string | null;
   project: { id: string; name: string } | null;
   accountMappingId: string | null;
@@ -170,6 +173,7 @@ function ForecastDataRow({
         )}
       </td>
       <td className="px-4 py-2.5 text-gray-600 text-xs">{f.marca ?? <span className="text-gray-400">—</span>}</td>
+      <td className="px-4 py-2.5 text-gray-600 text-xs">{f.company?.name ?? <span className="text-gray-400">—</span>}</td>
       <td className="px-4 py-2.5 text-gray-600 text-xs max-w-[140px] truncate">
         {f.accountMapping?.description ?? <span className="text-gray-400">—</span>}
       </td>
@@ -208,11 +212,13 @@ export function ForecastsTable({
   projects,
   accountMappings,
   suppliers,
+  companies,
 }: {
   forecasts: ForecastRow[];
   projects: Project[];
   accountMappings: AccountMappingOption[];
   suppliers: SupplierOption[];
+  companies: Company[];
 }): React.JSX.Element {
   const [editing, setEditing] = useState<ForecastRow | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -235,6 +241,7 @@ export function ForecastsTable({
           projects={projects}
           accountMappings={accountMappings}
           suppliers={suppliers}
+          companies={companies}
           onClose={() => setEditing(null)}
         />
       )}
@@ -245,6 +252,7 @@ export function ForecastsTable({
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Mes</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Tipo</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Marca</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Entidad</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Cuenta</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Proveedor</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-600">Descripción</th>
@@ -269,7 +277,7 @@ export function ForecastsTable({
               return (
                 <>
                   <tr key={`${entry.key}-header`} className="bg-indigo-50 border-b border-indigo-100">
-                    <td colSpan={5} className="px-4 py-2">
+                    <td colSpan={6} className="px-4 py-2">
                       <button
                         type="button"
                         onClick={() => setExpanded((prev) => ({ ...prev, [entry.key]: !isOpen }))}

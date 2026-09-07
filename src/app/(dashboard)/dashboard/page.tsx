@@ -90,7 +90,7 @@ async function getDashboardCashflow(
         inflowsBase: 0, inflowsTax: 0, inflows: 0,
         outflowsBase: 0, outflowsTax: 0, outflows: 0,
         net: 0,
-        forecastInflows: 0, forecastOutflows: 0,
+        committedInflows: 0, estimatedInflows: 0, estimatedOutflows: 0,
         trendInflows: 0, trendOutflows: 0,
       });
     }
