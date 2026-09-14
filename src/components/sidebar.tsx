@@ -160,7 +160,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }): React.JSX.
               <button
                 type="button"
                 onClick={() => toggleGroup(group)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 transition-colors"
+                className="flex w-full items-center gap-1 px-3 py-1.5 text-sm font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 transition-colors"
                 aria-expanded={isOpen}
               >
                 {isOpen ? (
@@ -177,7 +177,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }): React.JSX.
                   ))}
                   {group.subsections?.map((sub) => (
                     <div key={sub.label} className="pt-1.5 pl-2 space-y-1">
-                      <p className="px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-300">
+                      <p className="px-3 text-xs font-semibold uppercase tracking-wide text-gray-300">
                         {sub.label}
                       </p>
                       {sub.items.length === 0 ? (
