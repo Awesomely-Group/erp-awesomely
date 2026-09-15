@@ -4,7 +4,11 @@ import { getForecastFormOptions } from "@/app/(dashboard)/forecasts/forecasts-da
 import { PaymentsView } from "./payments-view";
 import { type PaymentInvoice } from "./payment-row";
 
-const L1_LABELS: Record<string, string> = { COGS: "COGS", OPEX: "Opex", CAPEX: "Capex" };
+const L1_LABELS: Record<string, string> = {
+  COGS: "COGS",
+  OPEX: "Opex",
+  CAPEX: "Capex",
+};
 
 // holdedContactId is not populated on invoices (Holded list endpoint omits it),
 // so we match partners by normalized counterparty name + companyId instead.
@@ -12,48 +16,67 @@ const nameKey = (companyId: string, name: string): string =>
   `${companyId}:${name.toLowerCase().trim()}`;
 
 export default async function PaymentsPage(): Promise<React.JSX.Element> {
-  const [invoices, partnerSuppliers, forecastOptions, companies, manualPayments, users] =
-    await Promise.all([
-      prisma.invoice.findMany({
-        where: { type: { in: ["PURCHASE", "SALE"] }, removedFromHoldedAt: null },
-        omit: { status: true },
-        include: {
-          company: true,
-          erpPayments: true,
-          verifications: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { status: true, periodMismatch: true },
-          },
+  const [
+    invoices,
+    partnerSuppliers,
+    forecastOptions,
+    companies,
+    manualPayments,
+    salaryRecords,
+    users,
+  ] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { type: { in: ["PURCHASE", "SALE"] }, removedFromHoldedAt: null },
+      omit: { status: true },
+      include: {
+        company: true,
+        erpPayments: true,
+        verifications: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { status: true, periodMismatch: true },
         },
-        orderBy: { dueDate: "asc" },
-      }),
-      prisma.supplier.findMany({
-        where: { isPartner: true },
-        select: { holdedContactId: true, companyId: true, name: true },
-      }),
-      // accountMappings (COGS/OPEX/CAPEX) para el AccountMappingSelect del modal de pago suelto.
-      getForecastFormOptions(),
-      prisma.company.findMany({
-        where: { active: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      // Pagos manuales sueltos (sin factura asociada) — pendientes (paidAt null) o ya
-      // pagados. Se mezclan más abajo en las mismas listas pendingPayments/pendingCollections
-      // que las facturas, no se muestran aparte.
-      prisma.invoicePayment.findMany({
-        where: { invoiceId: null },
-        include: {
-          company: { select: { name: true } },
-          accountMapping: { select: { description: true, l1: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      // Nombres de usuario para mostrar "Pagado por {nombre}" en vez del email en los
-      // pagos registrados en el ERP.
-      prisma.user.findMany({ select: { email: true, name: true } }),
-    ]);
+      },
+      orderBy: { dueDate: "asc" },
+    }),
+    prisma.supplier.findMany({
+      where: { isPartner: true },
+      select: { holdedContactId: true, companyId: true, name: true },
+    }),
+    // accountMappings (COGS/OPEX/CAPEX) para el AccountMappingSelect del modal de pago suelto.
+    getForecastFormOptions(),
+    prisma.company.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    // Pagos manuales sueltos (sin factura asociada) — pendientes (paidAt null) o ya
+    // pagados. Se mezclan más abajo en las mismas listas pendingPayments/pendingCollections
+    // que las facturas, no se muestran aparte.
+    prisma.invoicePayment.findMany({
+      where: { invoiceId: null },
+      include: {
+        company: { select: { name: true } },
+        accountMapping: { select: { description: true, l1: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    // Nóminas sincronizadas desde el módulo Team de Holded (E15, 2026-09-15) — se
+    // mezclan más abajo en pendingPayments como source: "payroll". Los borradores
+    // (isDraft) no están confirmados en Holded todavía, se excluyen.
+    prisma.salaryRecord.findMany({
+      where: { isDraft: false },
+      include: {
+        company: { select: { name: true } },
+        employee: { select: { iban: true } },
+        erpPayments: true,
+      },
+      orderBy: { date: "asc" },
+    }),
+    // Nombres de usuario para mostrar "Pagado por {nombre}" en vez del email en los
+    // pagos registrados en el ERP.
+    prisma.user.findMany({ select: { email: true, name: true } }),
+  ]);
 
   // Email (normalizado) → nombre, para resolver quién registró cada pago.
   const userNameByEmail = new Map<string, string>(
@@ -75,7 +98,10 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
   );
 
   // Collect unique (companyId → Set<holdedContactId>) for partner PURCHASE invoices
-  const contactsByCompany = new Map<string, { apiKey: string; contactIds: Set<string> }>();
+  const contactsByCompany = new Map<
+    string,
+    { apiKey: string; contactIds: Set<string> }
+  >();
   for (const inv of invoices) {
     if (inv.type !== "PURCHASE" || !inv.counterparty) continue;
     const nk = nameKey(inv.companyId, inv.counterparty);
@@ -123,8 +149,13 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
   const pendingPayments: PaymentInvoice[] = [];
   const pendingCollections: PaymentInvoice[] = [];
   const companyNames = new Set<string>();
-  const invoiceOptionsPurchase: { id: string; label: string; sublabel?: string }[] = [];
-  const invoiceOptionsSale: { id: string; label: string; sublabel?: string }[] = [];
+  const invoiceOptionsPurchase: {
+    id: string;
+    label: string;
+    sublabel?: string;
+  }[] = [];
+  const invoiceOptionsSale: { id: string; label: string; sublabel?: string }[] =
+    [];
 
   for (const inv of invoices) {
     const erpPaid = inv.erpPayments.reduce((s, p) => s + Number(p.amount), 0);
@@ -138,14 +169,17 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     // muestra esos (ver filtro más abajo) — ofrecer el resto en el selector creaba pagos
     // que quedaban invisibles para siempre (bug: pago de prueba contra factura de Todoist,
     // proveedor no-partner, 2026-09-02).
-    const nkForOption = inv.counterparty ? nameKey(inv.companyId, inv.counterparty) : null;
+    const nkForOption = inv.counterparty
+      ? nameKey(inv.companyId, inv.counterparty)
+      : null;
     const option = {
       id: inv.id,
       label: inv.counterparty ?? "Sin nombre",
       sublabel: `${inv.number ?? inv.holdedId.slice(0, 8)} · ${inv.company.name}`,
     };
     if (inv.type === "PURCHASE") {
-      if (nkForOption && partnerNameSet.has(nkForOption)) invoiceOptionsPurchase.push(option);
+      if (nkForOption && partnerNameSet.has(nkForOption))
+        invoiceOptionsPurchase.push(option);
     } else {
       invoiceOptionsSale.push(option);
     }
@@ -170,7 +204,9 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     }));
 
     if (inv.type === "PURCHASE") {
-      const nk = inv.counterparty ? nameKey(inv.companyId, inv.counterparty) : null;
+      const nk = inv.counterparty
+        ? nameKey(inv.companyId, inv.counterparty)
+        : null;
       if (!nk || !partnerNameSet.has(nk)) continue;
 
       const supplierContactId = supplierContactIdByName.get(nk);
@@ -190,7 +226,9 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         companyName: inv.company.name,
         verificationStatus: inv.verifications[0]?.status ?? null,
         erpPayments: erpPaymentsPayload,
-        contactIban: supplierContactId ? (ibanMap.get(supplierContactId) ?? null) : null,
+        contactIban: supplierContactId
+          ? (ibanMap.get(supplierContactId) ?? null)
+          : null,
         contactHoldedUrl: supplierContactId
           ? `https://app.holded.com/contacts/${supplierContactId}`
           : null,
@@ -234,7 +272,8 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       type: isExpense ? "PURCHASE" : "SALE",
       source: "manual",
       number: accountMappingLabel,
-      counterparty: p.notes?.trim() || (isExpense ? "Pago suelto" : "Cobro suelto"),
+      counterparty:
+        p.notes?.trim() || (isExpense ? "Pago suelto" : "Cobro suelto"),
       dueDate: (p.dueDate ?? p.paidAt)?.toISOString() ?? null,
       totalEur: amount,
       paymentsPending: amount,
@@ -245,13 +284,53 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       erpPayments: isPaid
         ? [{ id: p.id, amount, paidAt: p.paidAt!.toISOString(), paidBy: displayPaidBy(p.paidBy), notes: p.notes }]
         : [],
-      contactIban: null,
+      contactIban: p.iban,
       contactHoldedUrl: null,
     };
 
     if (p.company?.name) companyNames.add(p.company.name);
     if (isExpense) pendingPayments.push(row);
     else pendingCollections.push(row);
+  }
+
+  // Nóminas: se mezclan en la lista de "Pagos pendientes" (siempre gasto, nunca
+  // cobro) — mismo criterio que las facturas: si Holded ya no muestra pendiente pero
+  // hay pagos ERP registrados encima, la fila se sigue mostrando.
+  for (const sr of salaryRecords) {
+    const erpPaid = sr.erpPayments.reduce((s, p) => s + Number(p.amount), 0);
+    const holdedPending = Number(sr.paymentPending);
+    const effectivePending = Math.max(0, holdedPending - erpPaid);
+
+    if (holdedPending <= 0.005 && sr.erpPayments.length === 0) continue;
+
+    companyNames.add(sr.company.name);
+
+    const erpPaymentsPayload = sr.erpPayments.map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      paidAt: p.paidAt!.toISOString(),
+      paidBy: displayPaidBy(p.paidBy),
+      notes: p.notes,
+    }));
+
+    pendingPayments.push({
+      id: sr.id,
+      holdedId: sr.holdedSalaryRecordId,
+      type: "PURCHASE",
+      source: "payroll",
+      number: sr.description,
+      counterparty: sr.employeeName,
+      dueDate: sr.date.toISOString(),
+      totalEur: Number(sr.totalPayable),
+      paymentsPending: holdedPending,
+      erpPaid,
+      effectivePending,
+      companyName: sr.company.name,
+      verificationStatus: null,
+      erpPayments: erpPaymentsPayload,
+      contactIban: sr.employee?.iban ?? null,
+      contactHoldedUrl: null,
+    });
   }
 
   const companyNameList = Array.from(companyNames).sort();

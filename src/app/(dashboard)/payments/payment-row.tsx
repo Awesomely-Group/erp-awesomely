@@ -2,11 +2,20 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GripVertical, Trash2 } from "lucide-react";
-import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import {
+  formatCurrency,
+  formatDate,
+  holdedInvoiceUrl,
+  holdedPayrollUrl,
+} from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { registerPayment, markManualPaymentPaid, deletePayment } from "./actions";
+import {
+  registerPayment,
+  markManualPaymentPaid,
+  deletePayment,
+} from "./actions";
 
 export interface PaymentInvoice {
   id: string;
@@ -14,18 +23,26 @@ export interface PaymentInvoice {
   type: "PURCHASE" | "SALE";
   /** "invoice" = factura sincronizada de Holded (comportamiento de siempre). "manual" =
    * pago suelto creado a mano, sin factura — no tiene enlaces a Holded/ERP y "Marcar
-   * pagada" actualiza el propio registro en vez de crear uno nuevo. */
-  source: "invoice" | "manual";
+   * pagada" actualiza el propio registro en vez de crear uno nuevo. "payroll" = nómina
+   * sincronizada desde el módulo Team de Holded (E15, 2026-09-15) — se comporta como
+   * "invoice" (ya llega pendiente desde Holded, "Marcar pagada" registra un pago nuevo). */
+  source: "invoice" | "manual" | "payroll";
   number: string | null;
   counterparty: string | null;
   dueDate: string | null;
   totalEur: number;
   paymentsPending: number; // from Holded
-  erpPaid: number;         // sum of local ERP payments
+  erpPaid: number; // sum of local ERP payments
   effectivePending: number;
   companyName: string;
   verificationStatus?: string | null;
-  erpPayments: { id: string; amount: number; paidAt: string; paidBy: string; notes: string | null }[];
+  erpPayments: {
+    id: string;
+    amount: number;
+    paidAt: string;
+    paidBy: string;
+    notes: string | null;
+  }[];
   contactIban: string | null;
   contactHoldedUrl: string | null;
 }
@@ -40,7 +57,13 @@ function todayIso(): string {
 }
 
 /** Botón de eliminar con confirmación inline (mismo patrón que forecasts-table.tsx). */
-function DeletePaymentButton({ id, onDeleted }: { id: string; onDeleted: () => void }): React.JSX.Element {
+function DeletePaymentButton({
+  id,
+  onDeleted,
+}: {
+  id: string;
+  onDeleted: () => void;
+}): React.JSX.Element {
   const [pending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
 
@@ -49,7 +72,12 @@ function DeletePaymentButton({ id, onDeleted }: { id: string; onDeleted: () => v
       <span className="flex items-center gap-1 shrink-0">
         <button
           type="button"
-          onClick={() => startTransition(async () => { await deletePayment(id); onDeleted(); })}
+          onClick={() =>
+            startTransition(async () => {
+              await deletePayment(id);
+              onDeleted();
+            })
+          }
           disabled={pending}
           className="text-xs text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
         >
@@ -78,17 +106,33 @@ function DeletePaymentButton({ id, onDeleted }: { id: string; onDeleted: () => v
   );
 }
 
-export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Element {
+export function PaymentRow({
+  invoice,
+  dragHandleProps,
+}: Props): React.JSX.Element {
   const [showPayForm, setShowPayForm] = useState(false);
   const [amount, setAmount] = useState(invoice.effectivePending.toFixed(2));
   const [paidAt, setPaidAt] = useState(todayIso());
   const [notes, setNotes] = useState("");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const isPaid = invoice.effectivePending <= 0.005;
 
   const isManual = invoice.source === "manual";
+  const isPayroll = invoice.source === "payroll";
+  // Solo facturas y nóminas tienen un documento/PDF real que previsualizar — un pago
+  // suelto ("manual") no tiene nada detrás salvo lo que el propio usuario escribió.
+  const canPreview = invoice.source === "invoice" || isPayroll;
+
+  function openPreview(): void {
+    if (!canPreview) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("previewId", invoice.id);
+    params.set("previewType", isPayroll ? "payroll" : "invoice");
+    router.push(`?${params.toString()}`, { scroll: false });
+  }
 
   function handleSubmit(): void {
     startTransition(async () => {
@@ -96,6 +140,15 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
         // El registro suelto ES el pago (no hay factura de la que colgar uno nuevo):
         // se actualiza el propio registro pendiente, el importe queda fijo.
         await markManualPaymentPaid({ id: invoice.id, paidAt, notes });
+      } else if (isPayroll) {
+        // La nómina llega pendiente desde Holded (igual que una factura) — "marcar
+        // pagada" registra un pago nuevo ligado a la nómina, no actualiza nada suelto.
+        await registerPayment({
+          salaryRecordId: invoice.id,
+          amount: parseFloat(amount),
+          paidAt,
+          notes,
+        });
       } else {
         await registerPayment({
           invoiceId: invoice.id,
@@ -111,8 +164,21 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
     });
   }
 
+  const totalLabel = isManual
+    ? "Importe"
+    : isPayroll
+      ? "Total nómina"
+      : "Total factura";
+  const pendingLabel =
+    isManual || isPayroll ? "Pendiente" : "Pendiente conciliar";
+
   return (
-    <div className={cn("border-b border-gray-100 last:border-0", isPaid && "opacity-60")}>
+    <div
+      className={cn(
+        "border-b border-gray-100 last:border-0",
+        isPaid && "opacity-60",
+      )}
+    >
       {/* Main row */}
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
         {dragHandleProps && (
@@ -126,41 +192,71 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
             <GripVertical className="h-4 w-4" />
           </button>
         )}
-        <div className="flex-1 min-w-0">
+        <div
+          className={cn(
+            "flex-1 min-w-0",
+            canPreview && "cursor-pointer group/preview",
+          )}
+          onClick={canPreview ? openPreview : undefined}
+          title={canPreview ? "Ver vista previa" : undefined}
+        >
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-gray-900 truncate">
+            <p
+              className={cn(
+                "text-sm font-medium text-gray-900 truncate",
+                canPreview &&
+                  "group-hover/preview:text-indigo-600 group-hover/preview:underline",
+              )}
+            >
               {invoice.counterparty ?? "—"}
             </p>
+            {isPayroll && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 shrink-0">
+                Nómina
+              </span>
+            )}
             {invoice.verificationStatus === "APPROVED" && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 shrink-0">Verificado ✓</span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 shrink-0">
+                Verificado ✓
+              </span>
             )}
             {invoice.verificationStatus === "PERIOD_MISMATCH" && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 shrink-0">Período incorrecto</span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 shrink-0">
+                Período incorrecto
+              </span>
             )}
             {invoice.verificationStatus === "VERIFIED_MISMATCH" && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 shrink-0">Importe incorrecto</span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 shrink-0">
+                Importe incorrecto
+              </span>
             )}
             {invoice.verificationStatus != null &&
               invoice.verificationStatus !== "APPROVED" &&
               invoice.verificationStatus !== "PERIOD_MISMATCH" &&
               invoice.verificationStatus !== "VERIFIED_MISMATCH" && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 shrink-0">Pendiente verificar</span>
-            )}
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 shrink-0">
+                  Pendiente verificar
+                </span>
+              )}
           </div>
           <p className="text-xs text-gray-400">
-            {invoice.number ?? invoice.holdedId.slice(0, 8)} · {invoice.companyName}
+            {invoice.number ?? invoice.holdedId.slice(0, 8)} ·{" "}
+            {invoice.companyName}
             {invoice.dueDate && ` · Vence ${formatDate(invoice.dueDate)}`}
           </p>
           {/* IBAN + contact link */}
           {(invoice.contactIban ?? invoice.contactHoldedUrl) && (
             <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
               {invoice.contactIban && (
-                <span className="font-mono tracking-tight">{invoice.contactIban}</span>
+                <span className="font-mono tracking-tight">
+                  {invoice.contactIban}
+                </span>
               )}
               {invoice.contactHoldedUrl && (
                 <Link
                   href={invoice.contactHoldedUrl}
                   target="_blank"
+                  onClick={(e) => e.stopPropagation()}
                   className="text-indigo-500 hover:text-indigo-700"
                 >
                   Contacto ↗
@@ -171,19 +267,26 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
         </div>
 
         <div className="text-right shrink-0 w-28">
-          <p className="text-xs text-gray-400">{isManual ? "Importe" : "Total factura"}</p>
-          <p className="text-sm font-medium text-gray-700">{formatCurrency(invoice.totalEur)}</p>
+          <p className="text-xs text-gray-400">{totalLabel}</p>
+          <p className="text-sm font-medium text-gray-700">
+            {formatCurrency(invoice.totalEur)}
+          </p>
         </div>
 
         <div className="text-right shrink-0 w-28">
-          <p className="text-xs text-gray-400">{isManual ? "Pendiente" : "Pendiente conciliar"}</p>
-          <p className={cn("text-sm font-semibold", isPaid ? "text-green-600" : "text-red-600")}>
+          <p className="text-xs text-gray-400">{pendingLabel}</p>
+          <p
+            className={cn(
+              "text-sm font-semibold",
+              isPaid ? "text-green-600" : "text-red-600",
+            )}
+          >
             {isPaid ? "Pagado" : formatCurrency(invoice.effectivePending)}
           </p>
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
-          {!isManual && (
+          {!isManual && !isPayroll && (
             <>
               <Link
                 href={`/invoices/${invoice.id}`}
@@ -192,14 +295,20 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
                 ERP
               </Link>
               <span className="text-gray-300">·</span>
-              <Link
-                href={holdedInvoiceUrl(invoice.holdedId, invoice.type)}
-                target="_blank"
-                className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
-              >
-                Holded
-              </Link>
             </>
+          )}
+          {!isManual && (
+            <Link
+              href={
+                isPayroll
+                  ? holdedPayrollUrl(invoice.holdedId)
+                  : holdedInvoiceUrl(invoice.holdedId, invoice.type)
+              }
+              target="_blank"
+              className="text-xs text-indigo-600 hover:text-indigo-700 whitespace-nowrap"
+            >
+              Holded
+            </Link>
           )}
           {!isPaid && (
             <>
@@ -270,10 +379,17 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
       <div className="px-4 pb-3">
         {invoice.erpPayments.length > 0 ? (
           <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 mb-1">Pagos registrados en ERP</p>
+            <p className="text-xs font-medium text-gray-500 mb-1">
+              Pagos registrados en ERP
+            </p>
             {invoice.erpPayments.map((p) => (
-              <div key={p.id} className="flex items-center gap-4 text-xs text-gray-600">
-                <span className="font-medium text-green-700">{formatCurrency(p.amount)}</span>
+              <div
+                key={p.id}
+                className="flex items-center gap-4 text-xs text-gray-600"
+              >
+                <span className="font-medium text-green-700">
+                  {formatCurrency(p.amount)}
+                </span>
                 <span>{formatDate(p.paidAt)}</span>
                 <span className="text-gray-500">Pagado por {p.paidBy}</span>
                 {p.notes && <span className="italic text-gray-400 truncate">{p.notes}</span>}
