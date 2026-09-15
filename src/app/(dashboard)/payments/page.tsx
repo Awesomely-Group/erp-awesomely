@@ -24,6 +24,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     companies,
     manualPayments,
     salaryRecords,
+    users,
   ] = await Promise.all([
     prisma.invoice.findMany({
       where: { type: { in: ["PURCHASE", "SALE"] }, removedFromHoldedAt: null },
@@ -73,7 +74,19 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       },
       orderBy: { date: "asc" },
     }),
+    // Nombres de usuario para mostrar "Pagado por {nombre}" en vez del email en los
+    // pagos registrados en el ERP.
+    prisma.user.findMany({ select: { email: true, name: true } }),
   ]);
+
+  // Email (normalizado) → nombre, para resolver quién registró cada pago.
+  const userNameByEmail = new Map<string, string>(
+    users.flatMap((u) => (u.name ? [[u.email.toLowerCase(), u.name] as [string, string]] : [])),
+  );
+  // Muestra el nombre del usuario si el paidBy es un email conocido; si no, deja el valor
+  // tal cual (email de un usuario ya no existente, o "unknown").
+  const displayPaidBy = (raw: string | null): string =>
+    raw ? (userNameByEmail.get(raw.toLowerCase()) ?? raw) : "—";
 
   const partnerNameSet = new Set(
     partnerSuppliers.map((s) => nameKey(s.companyId ?? "", s.name)),
@@ -215,7 +228,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       id: p.id,
       amount: Number(p.amount),
       paidAt: p.paidAt!.toISOString(),
-      paidBy: p.paidBy!,
+      paidBy: displayPaidBy(p.paidBy),
       notes: p.notes,
     }));
 
@@ -295,15 +308,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       companyName: p.company?.name ?? "Sin empresa",
       verificationStatus: null,
       erpPayments: isPaid
-        ? [
-            {
-              id: p.id,
-              amount,
-              paidAt: p.paidAt!.toISOString(),
-              paidBy: p.paidBy ?? "—",
-              notes: p.notes,
-            },
-          ]
+        ? [{ id: p.id, amount, paidAt: p.paidAt!.toISOString(), paidBy: displayPaidBy(p.paidBy), notes: p.notes }]
         : [],
       contactIban: p.iban,
       contactHoldedUrl: null,
@@ -330,7 +335,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       id: p.id,
       amount: Number(p.amount),
       paidAt: p.paidAt!.toISOString(),
-      paidBy: p.paidBy!,
+      paidBy: displayPaidBy(p.paidBy),
       notes: p.notes,
     }));
 

@@ -391,12 +391,8 @@ export function PaymentRow({
                   {formatCurrency(p.amount)}
                 </span>
                 <span>{formatDate(p.paidAt)}</span>
-                <span className="text-gray-400">{p.paidBy}</span>
-                {p.notes && (
-                  <span className="italic text-gray-400 truncate">
-                    {p.notes}
-                  </span>
-                )}
+                <span className="text-gray-500">Pagado por {p.paidBy}</span>
+                {p.notes && <span className="italic text-gray-400 truncate">{p.notes}</span>}
                 <DeletePaymentButton id={p.id} onDeleted={router.refresh} />
               </div>
             ))}
