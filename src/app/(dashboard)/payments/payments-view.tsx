@@ -317,19 +317,19 @@ interface HalfSectionHeaderProps {
 
 function HalfSectionHeader({ label, count, subtotal, isCurrentBatch }: HalfSectionHeaderProps): React.JSX.Element {
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50/50 text-xs text-gray-500">
-      <span className="flex items-center gap-2 font-semibold uppercase tracking-wide text-[10px] text-gray-400">
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
+      <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-600">
         {label}
-        <span className="font-normal normal-case tracking-normal">
+        <span className="text-xs font-normal normal-case tracking-normal text-gray-500">
           · {count} {count === 1 ? "factura" : "facturas"}
         </span>
         {isCurrentBatch && (
-          <span className="rounded-full bg-indigo-100 text-indigo-600 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal">
+          <span className="rounded-full bg-indigo-100 text-indigo-600 px-2 py-0.5 text-[11px] font-semibold normal-case tracking-normal">
             Lote actual
           </span>
         )}
       </span>
-      <span className="font-medium text-gray-600">{formatCurrency(subtotal)}</span>
+      <span className="text-sm font-semibold text-gray-700">{formatCurrency(subtotal)}</span>
     </div>
   );
 }
