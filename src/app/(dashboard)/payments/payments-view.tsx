@@ -433,6 +433,68 @@ const CURRENT_MONTH = toMonthKey(new Date());
 const CURRENT_BATCH: "first" | "second" =
   new Date().getDate() <= 15 ? "first" : "second";
 
+// ─── Group by recipient (fiscal entity) ───────────────────────────────────────
+
+interface EntityGroup {
+  name: string;
+  items: PaymentInvoice[];
+  subtotal: number;
+}
+
+/** Agrupa las líneas por entidad fiscal destinataria (counterparty). Ordena las facturas
+ *  de cada entidad por vencimiento y las entidades por importe pendiente (mayor primero). */
+function buildEntityGroups(items: PaymentInvoice[]): EntityGroup[] {
+  const map = new Map<string, PaymentInvoice[]>();
+  for (const item of items) {
+    const key = item.counterparty?.trim() || "Sin destinatario";
+    const bucket = map.get(key) ?? [];
+    bucket.push(item);
+    map.set(key, bucket);
+  }
+  return [...map.entries()]
+    .map(([name, groupItems]) => ({
+      name,
+      items: [...groupItems].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")),
+      subtotal: groupItems.reduce((s, i) => s + i.effectivePending, 0),
+    }))
+    .sort((a, b) => b.subtotal - a.subtotal);
+}
+
+function EntityGroupHeader({ name, count, subtotal }: {
+  name: string;
+  count: number;
+  subtotal: number;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-l-4 border-l-indigo-300 border-gray-100 bg-gray-50">
+      <span className="flex items-center gap-2 min-w-0">
+        <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
+        <span className="rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-xs font-medium shrink-0">
+          {count} {count === 1 ? "factura" : "facturas"}
+        </span>
+      </span>
+      <span className="text-sm font-bold text-gray-800 shrink-0 ml-4">{formatCurrency(subtotal)}</span>
+    </div>
+  );
+}
+
+/** Lista de pagos/cobros agrupada por entidad fiscal destinataria (sin drag & drop). */
+function EntityGroupedList({ items }: { items: PaymentInvoice[] }): React.JSX.Element {
+  const groups = buildEntityGroups(items);
+  return (
+    <>
+      {groups.map((g) => (
+        <div key={g.name}>
+          <EntityGroupHeader name={g.name} count={g.items.length} subtotal={g.subtotal} />
+          {g.items.map((row) => (
+            <PaymentRow key={row.id} invoice={row} />
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export function PaymentsView({
@@ -448,6 +510,9 @@ export function PaymentsView({
   const [company, setCompany] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [hidePaid, setHidePaid] = useState(false);
+  // Modo "agrupar por destinatario": sustituye la vista mes/quincena (con drag & drop) por
+  // una lista agrupada por entidad fiscal, para ejecutar los pagos de un mismo proveedor juntos.
+  const [groupByRecipient, setGroupByRecipient] = useState(false);
 
   // ── DnD state ──
   const [batchItemIds, setBatchItemIds] = useState<BatchItemIds>(() =>
@@ -740,6 +805,21 @@ export function PaymentsView({
               {hidePaid ? "Ocultas" : "Visibles"}
             </button>
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Agrupar</label>
+            <button
+              type="button"
+              onClick={() => setGroupByRecipient((v) => !v)}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                groupByRecipient
+                  ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                  : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
+              }`}
+              title="Agrupar las líneas por entidad fiscal destinataria"
+            >
+              {groupByRecipient ? "Por destinatario" : "Por fecha"}
+            </button>
+          </div>
           {hasFilters && (
             <button
               onClick={() => {
@@ -832,6 +912,8 @@ export function PaymentsView({
             <p className="px-4 py-8 text-center text-sm text-gray-400">
               No hay pagos pendientes con los filtros actuales.
             </p>
+          ) : groupByRecipient ? (
+            <EntityGroupedList items={filteredPayments} />
           ) : (
             <DndContext
               sensors={sensors}
@@ -942,6 +1024,8 @@ export function PaymentsView({
             <p className="px-4 py-8 text-center text-sm text-gray-400">
               No hay cobros pendientes con los filtros actuales.
             </p>
+          ) : groupByRecipient ? (
+            <EntityGroupedList items={filteredCollections} />
           ) : (
             collectionsGroups.map((group) => (
               <CollapsibleMonthGroup
