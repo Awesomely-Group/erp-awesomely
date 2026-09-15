@@ -22,7 +22,10 @@ export function formatDate(date: Date | string): string {
 }
 
 // Holded app URLs for invoice deep-links
-export function holdedInvoiceUrl(holdedId: string, type: "SALE" | "PURCHASE"): string {
+export function holdedInvoiceUrl(
+  holdedId: string,
+  type: "SALE" | "PURCHASE",
+): string {
   if (type === "SALE") {
     return `https://app.holded.com/sales/revenue#open:invoice-${holdedId}`;
   }
@@ -37,12 +40,18 @@ export function holdedEstimateUrl(holdedId: string): string {
   return `https://app.holded.com/sales/estimates#open:estimate-${holdedId}`;
 }
 
+// Deep-link a una nómina en el módulo "Team" de Holded (formato confirmado por el
+// usuario: app.holded.com/team/v2/payrolls/salary-record/<id>).
+export function holdedPayrollUrl(holdedSalaryRecordId: string): string {
+  return `https://app.holded.com/team/v2/payrolls/salary-record/${holdedSalaryRecordId}`;
+}
+
 const TAG_TO_BRAND: Record<string, string> = {
-  gsolutions:     "Gigson Solutions",
-  gigson:         "Gigson",
-  awesomely:      "Awesomely",
+  gsolutions: "Gigson Solutions",
+  gigson: "Gigson",
+  awesomely: "Awesomely",
   latroupestudio: "LaTroupe",
-  latroupe:       "LaTroupe",  // variante sin "studio"
+  latroupe: "LaTroupe", // variante sin "studio"
 };
 
 /** Maps the first Holded tag to a human-readable brand name. Returns null if unknown or no tags. */

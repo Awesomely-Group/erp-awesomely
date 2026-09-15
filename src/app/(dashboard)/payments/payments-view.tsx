@@ -24,6 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { formatCurrency } from "@/lib/utils";
 import { PaymentRow, type PaymentInvoice } from "./payment-row";
 import { PaymentCreateButton } from "./payment-create-button";
+import { PaymentPreviewDrawer } from "./payment-preview-drawer";
 import { type AccountMappingOption } from "@/app/(dashboard)/forecasts/forecast-classification-fields";
 
 interface Props {
@@ -51,7 +52,10 @@ function toMonthKey(d: Date): string {
 function monthLabel(key: string): string {
   const [year, month] = key.split("-").map(Number) as [number, number];
   const d = new Date(year, month - 1, 1);
-  const label = d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  const label = d.toLocaleDateString("es-ES", {
+    month: "long",
+    year: "numeric",
+  });
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -64,7 +68,9 @@ function relativeMonthLabel(key: string, currentKey: string): string | null {
   if (diff === -1) return "Mes pasado";
   if (diff < -1) return `Hace ${Math.abs(diff)} meses`;
   if (diff === 1) return "Próximo mes";
-  const daysUntil = Math.round((new Date(ky, km - 1, 1).getTime() - Date.now()) / 86400000);
+  const daysUntil = Math.round(
+    (new Date(ky, km - 1, 1).getTime() - Date.now()) / 86400000,
+  );
   return daysUntil <= 31 ? `En ${daysUntil} días` : `En ${diff} meses`;
 }
 
@@ -80,10 +86,9 @@ interface MonthGroup<T> {
   subtotal: number;
 }
 
-function groupByDueMonth<T extends { dueDate: string | null; effectivePending: number }>(
-  items: T[],
-  currentKey: string,
-): MonthGroup<T>[] {
+function groupByDueMonth<
+  T extends { dueDate: string | null; effectivePending: number },
+>(items: T[], currentKey: string): MonthGroup<T>[] {
   const map = new Map<string, T[]>();
   for (const item of items) {
     const key = item.dueDate ? item.dueDate.slice(0, 7) : "sin-fecha";
@@ -100,8 +105,12 @@ function groupByDueMonth<T extends { dueDate: string | null; effectivePending: n
       label: monthLabel(key),
       isPast: key < currentKey,
       isCurrent: key === currentKey,
-      firstHalf: groupItems.filter((i) => !i.dueDate || dueDayOf(i.dueDate) <= 15),
-      secondHalf: groupItems.filter((i) => !!i.dueDate && dueDayOf(i.dueDate) > 15),
+      firstHalf: groupItems.filter(
+        (i) => !i.dueDate || dueDayOf(i.dueDate) <= 15,
+      ),
+      secondHalf: groupItems.filter(
+        (i) => !!i.dueDate && dueDayOf(i.dueDate) > 15,
+      ),
       subtotal: groupItems.reduce((s, i) => s + i.effectivePending, 0),
     });
   }
@@ -190,7 +199,10 @@ function mergeWithNatural(
   return result;
 }
 
-function findBatchForItem(id: string, batches: BatchItemIds): string | undefined {
+function findBatchForItem(
+  id: string,
+  batches: BatchItemIds,
+): string | undefined {
   for (const [key, ids] of Object.entries(batches)) {
     if (ids.includes(id)) return key;
   }
@@ -227,9 +239,19 @@ function DroppableBatchSection({
 
 // ─── Sortable payment row ─────────────────────────────────────────────────────
 
-function SortablePaymentRow({ invoice }: { invoice: PaymentInvoice }): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: invoice.id });
+function SortablePaymentRow({
+  invoice,
+}: {
+  invoice: PaymentInvoice;
+}): React.JSX.Element {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: invoice.id });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -239,7 +261,11 @@ function SortablePaymentRow({ invoice }: { invoice: PaymentInvoice }): React.JSX
   // When dragging this item, render an invisible placeholder to preserve layout height
   if (isDragging) {
     return (
-      <div ref={setNodeRef} style={style} className="opacity-0 pointer-events-none">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="opacity-0 pointer-events-none"
+      >
         <PaymentRow invoice={invoice} />
       </div>
     );
@@ -247,7 +273,10 @@ function SortablePaymentRow({ invoice }: { invoice: PaymentInvoice }): React.JSX
 
   return (
     <div ref={setNodeRef} style={style}>
-      <PaymentRow invoice={invoice} dragHandleProps={{ ...attributes, ...listeners }} />
+      <PaymentRow
+        invoice={invoice}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
     </div>
   );
 }
@@ -266,13 +295,27 @@ interface MonthSectionHeaderProps {
 }
 
 function MonthSectionHeader({
-  label, count, subtotal, isPast, isCurrent, monthKey, isExpanded, onToggle,
+  label,
+  count,
+  subtotal,
+  isPast,
+  isCurrent,
+  monthKey,
+  isExpanded,
+  onToggle,
 }: MonthSectionHeaderProps): React.JSX.Element {
   let borderColor = "border-l-gray-300";
   let bg = "bg-gray-50";
   let textColor = "text-gray-700";
-  if (isPast) { borderColor = "border-l-red-500"; bg = "bg-red-50"; textColor = "text-red-800"; }
-  else if (isCurrent) { borderColor = "border-l-indigo-500"; bg = "bg-indigo-50"; textColor = "text-indigo-800"; }
+  if (isPast) {
+    borderColor = "border-l-red-500";
+    bg = "bg-red-50";
+    textColor = "text-red-800";
+  } else if (isCurrent) {
+    borderColor = "border-l-indigo-500";
+    bg = "bg-indigo-50";
+    textColor = "text-indigo-800";
+  }
 
   const relTime = relativeMonthLabel(monthKey, CURRENT_MONTH);
   const ChevronIcon = isExpanded ? ChevronDown : ChevronUp;
@@ -297,13 +340,17 @@ function MonthSectionHeader({
           </span>
         )}
         {relTime && (
-          <span className="text-xs opacity-60 font-normal shrink-0">{relTime}</span>
+          <span className="text-xs opacity-60 font-normal shrink-0">
+            {relTime}
+          </span>
         )}
         <span className="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium shrink-0">
           {count} {count === 1 ? "factura" : "facturas"}
         </span>
       </div>
-      <span className="text-base font-bold shrink-0 ml-4">{formatCurrency(subtotal)}</span>
+      <span className="text-base font-bold shrink-0 ml-4">
+        {formatCurrency(subtotal)}
+      </span>
     </button>
   );
 }
@@ -315,7 +362,12 @@ interface HalfSectionHeaderProps {
   isCurrentBatch?: boolean;
 }
 
-function HalfSectionHeader({ label, count, subtotal, isCurrentBatch }: HalfSectionHeaderProps): React.JSX.Element {
+function HalfSectionHeader({
+  label,
+  count,
+  subtotal,
+  isCurrentBatch,
+}: HalfSectionHeaderProps): React.JSX.Element {
   return (
     <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
       <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-600">
@@ -347,7 +399,13 @@ interface CollapsibleMonthGroupProps {
 }
 
 function CollapsibleMonthGroup({
-  groupKey, label, count, subtotal, isPast, isCurrent, children,
+  groupKey,
+  label,
+  count,
+  subtotal,
+  isPast,
+  isCurrent,
+  children,
 }: CollapsibleMonthGroupProps): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(true);
   return (
@@ -370,7 +428,8 @@ function CollapsibleMonthGroup({
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CURRENT_MONTH = toMonthKey(new Date());
-const CURRENT_BATCH: "first" | "second" = new Date().getDate() <= 15 ? "first" : "second";
+const CURRENT_BATCH: "first" | "second" =
+  new Date().getDate() <= 15 ? "first" : "second";
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
@@ -418,7 +477,11 @@ export function PaymentsView({
           // ignore
         }
       }
-      return mergeWithNatural(base, pendingPayments, new Set(pendingPayments.map((p) => p.id)));
+      return mergeWithNatural(
+        base,
+        pendingPayments,
+        new Set(pendingPayments.map((p) => p.id)),
+      );
     });
   }, [pendingPayments]);
 
@@ -427,7 +490,11 @@ export function PaymentsView({
     () =>
       pendingPayments.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
-        if (selectedMonth !== "all" && row.dueDate?.slice(0, 7) !== selectedMonth) return false;
+        if (
+          selectedMonth !== "all" &&
+          row.dueDate?.slice(0, 7) !== selectedMonth
+        )
+          return false;
         if (hidePaid && row.effectivePending <= 0.005) return false;
         return true;
       }),
@@ -438,7 +505,11 @@ export function PaymentsView({
     () =>
       pendingCollections.filter((row) => {
         if (company !== "all" && row.companyName !== company) return false;
-        if (selectedMonth !== "all" && row.dueDate?.slice(0, 7) !== selectedMonth) return false;
+        if (
+          selectedMonth !== "all" &&
+          row.dueDate?.slice(0, 7) !== selectedMonth
+        )
+          return false;
         return true;
       }),
     [pendingCollections, company, selectedMonth],
@@ -497,11 +568,17 @@ export function PaymentsView({
         overId in prev ? overId : findBatchForItem(overId, prev);
 
       // Only act on cross-container moves; same-container reorder is handled in onDragEnd
-      if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      if (
+        !activeContainer ||
+        !overContainer ||
+        activeContainer === overContainer
+      ) {
         return prev;
       }
 
-      const sourceItems = prev[activeContainer].filter((id) => id !== activeItemId);
+      const sourceItems = prev[activeContainer].filter(
+        (id) => id !== activeItemId,
+      );
       const targetItems = [...prev[overContainer]];
       const overIndex = targetItems.indexOf(overId);
       const insertAt = overIndex >= 0 ? overIndex : targetItems.length;
@@ -557,7 +634,10 @@ export function PaymentsView({
         return prev;
       }
 
-      const next = { ...prev, [activeContainer]: arrayMove(items, oldIndex, newIndex) };
+      const next = {
+        ...prev,
+        [activeContainer]: arrayMove(items, oldIndex, newIndex),
+      };
       saveBatches(next);
       return next;
     });
@@ -570,8 +650,14 @@ export function PaymentsView({
   );
 
   // ── Summary totals ──
-  const totalPendingPayments = filteredPayments.reduce((s, r) => s + r.effectivePending, 0);
-  const totalPendingCollections = filteredCollections.reduce((s, r) => s + r.effectivePending, 0);
+  const totalPendingPayments = filteredPayments.reduce(
+    (s, r) => s + r.effectivePending,
+    0,
+  );
+  const totalPendingCollections = filteredCollections.reduce(
+    (s, r) => s + r.effectivePending,
+    0,
+  );
   const balance = totalPendingCollections - totalPendingPayments;
 
   const hasFilters = company !== "all" || selectedMonth !== CURRENT_MONTH;
@@ -595,12 +681,16 @@ export function PaymentsView({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Pagos y Cobros</h1>
-          <p className="text-sm text-gray-500 mt-1">Facturas pendientes de pago y cobro</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Facturas pendientes de pago y cobro
+          </p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">
           <PaymentCreateButton
             direction={tab === "pagos" ? "EXPENSE" : "INCOME"}
-            invoiceOptions={tab === "pagos" ? invoiceOptionsPurchase : invoiceOptionsSale}
+            invoiceOptions={
+              tab === "pagos" ? invoiceOptionsPurchase : invoiceOptionsSale
+            }
             accountMappings={accountMappings}
             companyOptions={companyOptions}
           />
@@ -613,7 +703,9 @@ export function PaymentsView({
             >
               <option value="all">Todas</option>
               {companies.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
           </div>
@@ -626,7 +718,9 @@ export function PaymentsView({
             >
               <option value="all">Todos los meses</option>
               {availableMonths.map((m) => (
-                <option key={m} value={m}>{monthLabel(m)}</option>
+                <option key={m} value={m}>
+                  {monthLabel(m)}
+                </option>
               ))}
             </select>
           </div>
@@ -646,7 +740,10 @@ export function PaymentsView({
           </div>
           {hasFilters && (
             <button
-              onClick={() => { setCompany("all"); setSelectedMonth(CURRENT_MONTH); }}
+              onClick={() => {
+                setCompany("all");
+                setSelectedMonth(CURRENT_MONTH);
+              }}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
             >
               Limpiar
@@ -658,21 +755,39 @@ export function PaymentsView({
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pagos pendientes</p>
-          <p className="mt-1 text-2xl font-bold text-red-600">{formatCurrency(totalPendingPayments)}</p>
-          <p className="text-xs text-gray-400 mt-1">{filteredPayments.length} facturas</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Pagos pendientes
+          </p>
+          <p className="mt-1 text-2xl font-bold text-red-600">
+            {formatCurrency(totalPendingPayments)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            {filteredPayments.length} facturas
+          </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Cobros pendientes</p>
-          <p className="mt-1 text-2xl font-bold text-green-600">{formatCurrency(totalPendingCollections)}</p>
-          <p className="text-xs text-gray-400 mt-1">{filteredCollections.length} facturas</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Cobros pendientes
+          </p>
+          <p className="mt-1 text-2xl font-bold text-green-600">
+            {formatCurrency(totalPendingCollections)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            {filteredCollections.length} facturas
+          </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Balance neto</p>
-          <p className={`mt-1 text-2xl font-bold ${balance >= 0 ? "text-indigo-600" : "text-amber-600"}`}>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Balance neto
+          </p>
+          <p
+            className={`mt-1 text-2xl font-bold ${balance >= 0 ? "text-indigo-600" : "text-amber-600"}`}
+          >
             {formatCurrency(balance)}
           </p>
-          <p className="text-xs text-gray-400 mt-1">{balance >= 0 ? "A favor" : "En contra"}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {balance >= 0 ? "A favor" : "En contra"}
+          </p>
         </div>
       </div>
 
@@ -729,8 +844,10 @@ export function PaymentsView({
                 const firstItems = getItemsForBatch(firstKey);
                 const secondItems = getItemsForBatch(secondKey);
                 const totalCount = firstItems.length + secondItems.length;
-                const totalSubtotal =
-                  [...firstItems, ...secondItems].reduce((s, i) => s + i.effectivePending, 0);
+                const totalSubtotal = [...firstItems, ...secondItems].reduce(
+                  (s, i) => s + i.effectivePending,
+                  0,
+                );
                 const isPast = monthKey < CURRENT_MONTH;
                 const isCurrent = monthKey === CURRENT_MONTH;
 
@@ -748,7 +865,10 @@ export function PaymentsView({
                     <HalfSectionHeader
                       label="Del 1 al 15"
                       count={firstItems.length}
-                      subtotal={firstItems.reduce((s, i) => s + i.effectivePending, 0)}
+                      subtotal={firstItems.reduce(
+                        (s, i) => s + i.effectivePending,
+                        0,
+                      )}
                       isCurrentBatch={isCurrent && CURRENT_BATCH === "first"}
                     />
                     <DroppableBatchSection id={firstKey}>
@@ -763,7 +883,8 @@ export function PaymentsView({
                         </SortableContext>
                       ) : (
                         <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período — arrastra aquí para reasignar
+                          Sin facturas en este período — arrastra aquí para
+                          reasignar
                         </p>
                       )}
                     </DroppableBatchSection>
@@ -772,7 +893,10 @@ export function PaymentsView({
                     <HalfSectionHeader
                       label="Del 16 al fin de mes"
                       count={secondItems.length}
-                      subtotal={secondItems.reduce((s, i) => s + i.effectivePending, 0)}
+                      subtotal={secondItems.reduce(
+                        (s, i) => s + i.effectivePending,
+                        0,
+                      )}
                       isCurrentBatch={isCurrent && CURRENT_BATCH === "second"}
                     />
                     <DroppableBatchSection id={secondKey}>
@@ -787,7 +911,8 @@ export function PaymentsView({
                         </SortableContext>
                       ) : (
                         <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período — arrastra aquí para reasignar
+                          Sin facturas en este período — arrastra aquí para
+                          reasignar
                         </p>
                       )}
                     </DroppableBatchSection>
@@ -826,37 +951,63 @@ export function PaymentsView({
                 isPast={group.isPast}
                 isCurrent={group.isCurrent}
               >
-                {group.key !== "sin-fecha" && (() => (
-                  <>
-                    <HalfSectionHeader
-                      label="Del 1 al 15"
-                      count={group.firstHalf.length}
-                      subtotal={group.firstHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                      isCurrentBatch={group.isCurrent && CURRENT_BATCH === "first"}
-                    />
-                    {group.firstHalf.length > 0
-                      ? group.firstHalf.map((row) => <PaymentRow key={row.id} invoice={row} />)
-                      : <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">Sin facturas en este período</p>}
+                {group.key !== "sin-fecha" &&
+                  (() => (
+                    <>
+                      <HalfSectionHeader
+                        label="Del 1 al 15"
+                        count={group.firstHalf.length}
+                        subtotal={group.firstHalf.reduce(
+                          (s, i) => s + i.effectivePending,
+                          0,
+                        )}
+                        isCurrentBatch={
+                          group.isCurrent && CURRENT_BATCH === "first"
+                        }
+                      />
+                      {group.firstHalf.length > 0 ? (
+                        group.firstHalf.map((row) => (
+                          <PaymentRow key={row.id} invoice={row} />
+                        ))
+                      ) : (
+                        <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
+                          Sin facturas en este período
+                        </p>
+                      )}
 
-                    <HalfSectionHeader
-                      label="Del 16 al fin de mes"
-                      count={group.secondHalf.length}
-                      subtotal={group.secondHalf.reduce((s, i) => s + i.effectivePending, 0)}
-                      isCurrentBatch={group.isCurrent && CURRENT_BATCH === "second"}
-                    />
-                    {group.secondHalf.length > 0
-                      ? group.secondHalf.map((row) => <PaymentRow key={row.id} invoice={row} />)
-                      : <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">Sin facturas en este período</p>}
-                  </>
-                ))()}
-                {group.key === "sin-fecha" && group.firstHalf.map((row) => (
-                  <PaymentRow key={row.id} invoice={row} />
-                ))}
+                      <HalfSectionHeader
+                        label="Del 16 al fin de mes"
+                        count={group.secondHalf.length}
+                        subtotal={group.secondHalf.reduce(
+                          (s, i) => s + i.effectivePending,
+                          0,
+                        )}
+                        isCurrentBatch={
+                          group.isCurrent && CURRENT_BATCH === "second"
+                        }
+                      />
+                      {group.secondHalf.length > 0 ? (
+                        group.secondHalf.map((row) => (
+                          <PaymentRow key={row.id} invoice={row} />
+                        ))
+                      ) : (
+                        <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
+                          Sin facturas en este período
+                        </p>
+                      )}
+                    </>
+                  ))()}
+                {group.key === "sin-fecha" &&
+                  group.firstHalf.map((row) => (
+                    <PaymentRow key={row.id} invoice={row} />
+                  ))}
               </CollapsibleMonthGroup>
             ))
           )}
         </div>
       )}
+
+      <PaymentPreviewDrawer />
     </div>
   );
 }
