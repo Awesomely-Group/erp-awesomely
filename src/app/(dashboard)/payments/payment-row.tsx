@@ -391,7 +391,7 @@ export function PaymentRow({
                   {formatCurrency(p.amount)}
                 </span>
                 <span>{formatDate(p.paidAt)}</span>
-                <span className="text-gray-400">{p.paidBy}</span>
+                <span className="text-gray-500">Pagado por {p.paidBy}</span>
                 {p.notes && (
                   <span className="text-gray-600">
                     <span className="text-gray-400">Nota:</span> {p.notes}

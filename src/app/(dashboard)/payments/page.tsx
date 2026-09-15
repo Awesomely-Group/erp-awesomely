@@ -10,8 +10,9 @@ const L1_LABELS: Record<string, string> = {
   CAPEX: "Capex",
 };
 
-// holdedContactId is not populated on invoices (Holded list endpoint omits it),
-// so we match partners by normalized counterparty name + companyId instead.
+// Emparejamos facturas con proveedores "partner" por holdedContactId (la sync ya lo guarda
+// en la factura, ver src/lib/sync.ts) y, como respaldo para facturas sin contactId, por
+// nombre normalizado + companyId (`nameKey`).
 const nameKey = (companyId: string, name: string): string =>
   `${companyId}:${name.toLowerCase().trim()}`;
 
@@ -23,6 +24,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     companies,
     manualPayments,
     salaryRecords,
+    users,
   ] = await Promise.all([
     prisma.invoice.findMany({
       where: { type: { in: ["PURCHASE", "SALE"] }, removedFromHoldedAt: null },
@@ -72,7 +74,19 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       },
       orderBy: { date: "asc" },
     }),
+    // Nombres de usuario para mostrar "Pagado por {nombre}" en vez del email en los
+    // pagos registrados en el ERP.
+    prisma.user.findMany({ select: { email: true, name: true } }),
   ]);
+
+  // Email (normalizado) → nombre, para resolver quién registró cada pago.
+  const userNameByEmail = new Map<string, string>(
+    users.flatMap((u) => (u.name ? [[u.email.toLowerCase(), u.name] as [string, string]] : [])),
+  );
+  // Muestra el nombre del usuario si el paidBy es un email conocido; si no, deja el valor
+  // tal cual (email de un usuario ya no existente, o "unknown").
+  const displayPaidBy = (raw: string | null): string =>
+    raw ? (userNameByEmail.get(raw.toLowerCase()) ?? raw) : "—";
 
   const partnerNameSet = new Set(
     partnerSuppliers.map((s) => nameKey(s.companyId ?? "", s.name)),
@@ -83,6 +97,39 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       .filter((s) => s.holdedContactId)
       .map((s) => [nameKey(s.companyId ?? "", s.name), s.holdedContactId]),
   );
+  // Emparejamiento robusto por holdedContactId (independiente del nombre) + nombre a mostrar.
+  const partnerContactIds = new Set<string>(
+    partnerSuppliers.flatMap((s) => (s.holdedContactId ? [s.holdedContactId] : [])),
+  );
+  const supplierNameByContactId = new Map<string, string>(
+    partnerSuppliers.flatMap((s) =>
+      s.holdedContactId ? [[s.holdedContactId, s.name] as [string, string]] : [],
+    ),
+  );
+
+  /**
+   * Devuelve el contacto de Holded y el nombre a mostrar de una factura de proveedor
+   * "partner", o null si no lo es. Empareja por holdedContactId y, como respaldo, por
+   * nombre normalizado — así una factura cuyo counterparty difiere de la ficha (p.ej. el
+   * sufijo "(IreneVirtual)") se sigue reconociendo y muestra el nombre del proveedor.
+   */
+  const matchPartner = (inv: {
+    holdedContactId: string | null;
+    counterparty: string | null;
+    companyId: string;
+  }): { contactId: string | null; displayName: string | null } | null => {
+    if (inv.holdedContactId && partnerContactIds.has(inv.holdedContactId)) {
+      return {
+        contactId: inv.holdedContactId,
+        displayName: inv.counterparty ?? supplierNameByContactId.get(inv.holdedContactId) ?? null,
+      };
+    }
+    const nk = inv.counterparty ? nameKey(inv.companyId, inv.counterparty) : null;
+    if (nk && partnerNameSet.has(nk)) {
+      return { contactId: supplierContactIdByName.get(nk) ?? null, displayName: inv.counterparty };
+    }
+    return null;
+  };
 
   // Collect unique (companyId → Set<holdedContactId>) for partner PURCHASE invoices
   const contactsByCompany = new Map<
@@ -90,10 +137,8 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     { apiKey: string; contactIds: Set<string> }
   >();
   for (const inv of invoices) {
-    if (inv.type !== "PURCHASE" || !inv.counterparty) continue;
-    const nk = nameKey(inv.companyId, inv.counterparty);
-    if (!partnerNameSet.has(nk)) continue;
-    const contactId = supplierContactIdByName.get(nk);
+    if (inv.type !== "PURCHASE") continue;
+    const contactId = matchPartner(inv)?.contactId;
     if (!contactId) continue;
 
     const existing = contactsByCompany.get(inv.companyId);
@@ -156,17 +201,14 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     // muestra esos (ver filtro más abajo) — ofrecer el resto en el selector creaba pagos
     // que quedaban invisibles para siempre (bug: pago de prueba contra factura de Todoist,
     // proveedor no-partner, 2026-09-02).
-    const nkForOption = inv.counterparty
-      ? nameKey(inv.companyId, inv.counterparty)
-      : null;
+    const partnerMatch = inv.type === "PURCHASE" ? matchPartner(inv) : null;
     const option = {
       id: inv.id,
-      label: inv.counterparty ?? "Sin nombre",
+      label: inv.counterparty ?? partnerMatch?.displayName ?? "Sin nombre",
       sublabel: `${inv.number ?? inv.holdedId.slice(0, 8)} · ${inv.company.name}`,
     };
     if (inv.type === "PURCHASE") {
-      if (nkForOption && partnerNameSet.has(nkForOption))
-        invoiceOptionsPurchase.push(option);
+      if (partnerMatch) invoiceOptionsPurchase.push(option);
     } else {
       invoiceOptionsSale.push(option);
     }
@@ -186,17 +228,14 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       id: p.id,
       amount: Number(p.amount),
       paidAt: p.paidAt!.toISOString(),
-      paidBy: p.paidBy!,
+      paidBy: displayPaidBy(p.paidBy),
       notes: p.notes,
     }));
 
     if (inv.type === "PURCHASE") {
-      const nk = inv.counterparty
-        ? nameKey(inv.companyId, inv.counterparty)
-        : null;
-      if (!nk || !partnerNameSet.has(nk)) continue;
+      if (!partnerMatch) continue;
 
-      const supplierContactId = supplierContactIdByName.get(nk);
+      const supplierContactId = partnerMatch.contactId;
 
       pendingPayments.push({
         id: inv.id,
@@ -204,7 +243,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         type: inv.type,
         source: "invoice",
         number: inv.number,
-        counterparty: inv.counterparty,
+        counterparty: partnerMatch.displayName,
         dueDate: inv.dueDate ? inv.dueDate.toISOString() : null,
         totalEur: Number(inv.totalEur),
         paymentsPending: holdedPending,
@@ -269,15 +308,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       companyName: p.company?.name ?? "Sin empresa",
       verificationStatus: null,
       erpPayments: isPaid
-        ? [
-            {
-              id: p.id,
-              amount,
-              paidAt: p.paidAt!.toISOString(),
-              paidBy: p.paidBy ?? "—",
-              notes: p.notes,
-            },
-          ]
+        ? [{ id: p.id, amount, paidAt: p.paidAt!.toISOString(), paidBy: displayPaidBy(p.paidBy), notes: p.notes }]
         : [],
       contactIban: p.iban,
       contactHoldedUrl: null,
@@ -304,7 +335,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       id: p.id,
       amount: Number(p.amount),
       paidAt: p.paidAt!.toISOString(),
-      paidBy: p.paidBy!,
+      paidBy: displayPaidBy(p.paidBy),
       notes: p.notes,
     }));
 

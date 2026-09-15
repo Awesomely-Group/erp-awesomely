@@ -114,6 +114,10 @@ export async function InvoiceLinePanel({
             <span className="font-semibold text-gray-700">{formatCurrency(Number(invoice.totalEur))}</span>
           </p>
           <p className="flex items-center gap-1">
+            <span className="text-gray-400">Vencimiento:</span>
+            <span>{invoice.dueDate ? formatDate(invoice.dueDate) : "—"}</span>
+          </p>
+          <p className="flex items-center gap-1">
             <span className="text-gray-400">Mes de referencia:</span>
             <AccountingMonthEditor
               invoiceId={invoice.id}
