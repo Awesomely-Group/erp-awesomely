@@ -1,5 +1,9 @@
 import { prisma } from "./prisma";
-import { HoldedClient, HOLDED_SYNC_FROM_YEAR, type HoldedJournalEntry } from "./holded";
+import {
+  HoldedClient,
+  HOLDED_SYNC_FROM_YEAR,
+  type HoldedJournalEntry,
+} from "./holded";
 import { JiraClient } from "./jira";
 import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
@@ -7,7 +11,10 @@ import { inferInvoiceRecurrence } from "./invoice-recurrence";
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
 
-export async function syncJiraWorkspace(workspaceId: string, triggeredBy?: string): Promise<void> {
+export async function syncJiraWorkspace(
+  workspaceId: string,
+  triggeredBy?: string,
+): Promise<void> {
   const workspace = await prisma.jiraWorkspace.findUniqueOrThrow({
     where: { id: workspaceId },
   });
@@ -17,13 +24,21 @@ export async function syncJiraWorkspace(workspaceId: string, triggeredBy?: strin
   let errorMessage: string | undefined;
 
   try {
-    const client = new JiraClient(workspace.domain, workspace.email, workspace.apiToken);
+    const client = new JiraClient(
+      workspace.domain,
+      workspace.email,
+      workspace.apiToken,
+    );
     const projects = await client.getAllProjects();
 
     for (const project of projects) {
       await prisma.jiraProject.upsert({
         where: { jiraId_workspaceId: { jiraId: project.id, workspaceId } },
-        update: { jiraKey: project.key, name: project.name, active: !project.archived },
+        update: {
+          jiraKey: project.key,
+          name: project.name,
+          active: !project.archived,
+        },
         create: {
           jiraId: project.id,
           jiraKey: project.key,
@@ -38,7 +53,11 @@ export async function syncJiraWorkspace(workspaceId: string, triggeredBy?: strin
     // Deactivate projects that no longer exist in Jira (deleted, not just archived)
     const returnedJiraIds = new Set(projects.map((p) => p.id));
     await prisma.jiraProject.updateMany({
-      where: { workspaceId, jiraId: { notIn: [...returnedJiraIds] }, active: true },
+      where: {
+        workspaceId,
+        jiraId: { notIn: [...returnedJiraIds] },
+        active: true,
+      },
       data: { active: false },
     });
   } catch (err) {
@@ -64,7 +83,9 @@ export async function syncJiraWorkspace(workspaceId: string, triggeredBy?: strin
 // ─── Supplier Sync ─────────────────────────────────────────────────────────────
 
 export async function syncSuppliers(companyId: string): Promise<void> {
-  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const company = await prisma.company.findUniqueOrThrow({
+    where: { id: companyId },
+  });
   const client = new HoldedClient(company.holdedApiKey);
   const contacts = await client.getSupplierContacts();
 
@@ -72,7 +93,9 @@ export async function syncSuppliers(companyId: string): Promise<void> {
 
   for (const contact of contacts) {
     await prisma.supplier.upsert({
-      where: { holdedContactId_companyId: { holdedContactId: contact.id, companyId } },
+      where: {
+        holdedContactId_companyId: { holdedContactId: contact.id, companyId },
+      },
       create: { holdedContactId: contact.id, companyId, name: contact.name },
       update: { name: contact.name, active: true },
     });
@@ -80,14 +103,21 @@ export async function syncSuppliers(companyId: string): Promise<void> {
 
   // Deactivate suppliers no longer classified as supplier-type in Holded
   await prisma.supplier.updateMany({
-    where: { companyId, holdedContactId: { notIn: [...activeHoldedIds] }, active: true },
+    where: {
+      companyId,
+      holdedContactId: { notIn: [...activeHoldedIds] },
+      active: true,
+    },
     data: { active: false },
   });
 }
 
 // ─── Holded Sync ───────────────────────────────────────────────────────────────
 
-export async function syncHoldedCompany(companyId: string, triggeredBy?: string): Promise<void> {
+export async function syncHoldedCompany(
+  companyId: string,
+  triggeredBy?: string,
+): Promise<void> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
@@ -99,7 +129,12 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   // Process a list of invoices in parallel batches to reduce total sync time
   type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
 
-  type UpsertError = { type: string; holdedId: string; docNumber: string; error: string };
+  type UpsertError = {
+    type: string;
+    holdedId: string;
+    docNumber: string;
+    error: string;
+  };
   const upsertErrors: UpsertError[] = [];
   let fetchedIds: string[] = [];
 
@@ -107,20 +142,30 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
     type: InvoiceType,
     accountMaps: AccountMaps,
-    batchSize = 20
+    batchSize = 20,
   ): Promise<void> {
     for (let i = 0; i < invoices.length; i += batchSize) {
       const chunk = invoices.slice(i, i + batchSize);
       await Promise.all(
         chunk.map((inv) =>
           upsertInvoice(inv, companyId, type, accountMaps)
-            .then(() => { invoicesSynced++; })
+            .then(() => {
+              invoicesSynced++;
+            })
             .catch((err: unknown) => {
               const errMsg = err instanceof Error ? err.message : String(err);
-              console.error(`[sync] upsertInvoice failed: ${type} ${inv.id} (${inv.docNumber}):`, errMsg);
-              upsertErrors.push({ type: String(type), holdedId: inv.id, docNumber: inv.docNumber, error: errMsg });
-            })
-        )
+              console.error(
+                `[sync] upsertInvoice failed: ${type} ${inv.id} (${inv.docNumber}):`,
+                errMsg,
+              );
+              upsertErrors.push({
+                type: String(type),
+                holdedId: inv.id,
+                docNumber: inv.docNumber,
+                error: errMsg,
+              });
+            }),
+        ),
       );
     }
   }
@@ -184,17 +229,23 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
           data: { invoiceId: null },
         });
         await prisma.invoice.deleteMany({ where: { id: { in: safeIds } } });
-        console.log(`[sync] Deleted ${safeIds.length} invoice(s) removed from Holded for company ${companyId}`);
+        console.log(
+          `[sync] Deleted ${safeIds.length} invoice(s) removed from Holded for company ${companyId}`,
+        );
       }
 
       const keptIds = orphanedIds.filter((id) => !safeIds.includes(id));
       if (keptIds.length > 0) {
-        console.warn(`[sync] ${keptIds.length} invoice(s) no longer in Holded but kept because they have classifications or payments`);
+        console.warn(
+          `[sync] ${keptIds.length} invoice(s) no longer in Holded but kept because they have classifications or payments`,
+        );
         await prisma.invoice.updateMany({
           where: { id: { in: keptIds }, removedFromHoldedAt: null },
           data: { removedFromHoldedAt: new Date() },
         });
-        console.log(`[sync] Marked ${keptIds.length} invoice(s) as removed from Holded (kept for classifications)`);
+        console.log(
+          `[sync] Marked ${keptIds.length} invoice(s) as removed from Holded (kept for classifications)`,
+        );
       }
     }
   } catch (err) {
@@ -205,25 +256,45 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
   // (covers initial backfill and any that slipped through)
   try {
     const unclassified = await prisma.invoice.findMany({
-      where: { companyId, type: InvoiceType.PURCHASE, recurrence: null, removedFromHoldedAt: null },
+      where: {
+        companyId,
+        type: InvoiceType.PURCHASE,
+        recurrence: null,
+        removedFromHoldedAt: null,
+      },
       select: {
-        id: true, type: true, companyId: true, holdedContactId: true,
-        counterparty: true, date: true, totalEur: true,
-        lines: { select: { name: true }, orderBy: { sortOrder: "asc" }, take: 1 },
+        id: true,
+        type: true,
+        companyId: true,
+        holdedContactId: true,
+        counterparty: true,
+        date: true,
+        totalEur: true,
+        lines: {
+          select: { name: true },
+          orderBy: { sortOrder: "asc" },
+          take: 1,
+        },
       },
     });
     for (const inv of unclassified) {
       const inferred = await inferInvoiceRecurrence(prisma, inv);
       if (inferred !== null) {
-        await prisma.invoice.update({ where: { id: inv.id }, data: { recurrence: inferred } });
+        await prisma.invoice.update({
+          where: { id: inv.id },
+          data: { recurrence: inferred },
+        });
       }
     }
   } catch (err) {
     console.error("[sync] Error in recurrence backfill sweep:", err);
   }
 
-  const combinedError = errorMessage
-    ?? (upsertErrors.length > 0 ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0].error}` : undefined);
+  const combinedError =
+    errorMessage ??
+    (upsertErrors.length > 0
+      ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0].error}`
+      : undefined);
 
   await prisma.syncLog.create({
     data: {
@@ -232,9 +303,10 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
       companyId,
       invoicesSynced,
       errorMessage: combinedError ?? null,
-      details: fetchedIds.length > 0 || upsertErrors.length > 0
-        ? { fetchedIds, upsertErrors }
-        : undefined,
+      details:
+        fetchedIds.length > 0 || upsertErrors.length > 0
+          ? { fetchedIds, upsertErrors }
+          : undefined,
       triggeredBy: triggeredBy ?? null,
       startedAt,
       finishedAt: new Date(),
@@ -274,6 +346,10 @@ export async function syncHoldedCompany(companyId: string, triggeredBy?: string)
     console.error("[sync] Error syncing journal entries:", err);
   });
 
+  await syncEmployeesAndSalaryRecords(companyId).catch((err: unknown) => {
+    console.error("[sync] Error syncing employees/salary records:", err);
+  });
+
   if (errorMessage) throw new Error(errorMessage);
 }
 
@@ -281,7 +357,7 @@ type AccountMaps = Awaited<ReturnType<HoldedClient["getAccountMaps"]>>;
 
 function resolveAccount(
   raw: string | { id?: string; num?: string; name?: string } | undefined,
-  maps: AccountMaps
+  maps: AccountMaps,
 ): { num: string | null; name: string | null } {
   if (!raw) return { num: null, name: null };
 
@@ -306,7 +382,7 @@ async function upsertInvoice(
   inv: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>[number],
   companyId: string,
   type: InvoiceType,
-  accountMaps: AccountMaps = { byNum: new Map(), byId: new Map() }
+  accountMaps: AccountMaps = { byNum: new Map(), byId: new Map() },
 ): Promise<void> {
   const date = new Date(inv.date * 1000);
   const currency = (inv.currency ?? "EUR").toUpperCase();
@@ -360,14 +436,16 @@ async function upsertInvoice(
   }
 
   const rawPayTotal = (inv.paymentsTotal ?? 0) * toForeign;
-  const rawPayPending = (inv.paymentsPending ?? (inv.total ?? 0)) * toForeign;
+  const rawPayPending = (inv.paymentsPending ?? inv.total ?? 0) * toForeign;
   if (!Number.isFinite(rawPayTotal) || !Number.isFinite(rawPayPending)) {
     console.error(
-      `[sync] NaN payments for ${type} ${inv.id}: paymentsTotal=${inv.paymentsTotal}, paymentsPending=${inv.paymentsPending}, toForeign=${toForeign}, status=${inv.status}, currency=${currency}, currencyChange=${inv.currencyChange}`
+      `[sync] NaN payments for ${type} ${inv.id}: paymentsTotal=${inv.paymentsTotal}, paymentsPending=${inv.paymentsPending}, toForeign=${toForeign}, status=${inv.status}, currency=${currency}, currencyChange=${inv.currencyChange}`,
     );
   }
   const safePayTotal = Number.isFinite(rawPayTotal) ? rawPayTotal : 0;
-  const safePayPending = Number.isFinite(rawPayPending) ? rawPayPending : (invTotalForeign ?? 0);
+  const safePayPending = Number.isFinite(rawPayPending)
+    ? rawPayPending
+    : (invTotalForeign ?? 0);
 
   // Holded keeps status=1 even after full payment; derive from paymentsPending instead.
   const effectiveHoldedStatus =
@@ -427,20 +505,21 @@ async function upsertInvoice(
 
     // Count how many times each name appears (to detect ambiguous names)
     const nameCount = new Map<string, number>();
-    for (const l of existingLines) nameCount.set(l.name, (nameCount.get(l.name) ?? 0) + 1);
+    for (const l of existingLines)
+      nameCount.set(l.name, (nameCount.get(l.name) ?? 0) + 1);
 
     // Name → classification (only for lines with a unique name that has a classification)
     const classificationByName = new Map(
       existingLines
         .filter((l) => l.classification !== null && nameCount.get(l.name) === 1)
-        .map((l) => [l.name, l.classification!])
+        .map((l) => [l.name, l.classification!]),
     );
 
     // SortOrder → classification (fallback for duplicate names)
     const classificationBySortOrder = new Map(
       existingLines
         .filter((l) => l.classification !== null)
-        .map((l) => [l.sortOrder, l.classification!])
+        .map((l) => [l.sortOrder, l.classification!]),
     );
 
     await prisma.invoiceLine.deleteMany({ where: { invoiceId: invoice.id } });
@@ -504,7 +583,8 @@ async function upsertInvoice(
 
       // Restore classification: prefer name-match (order-change safe), fall back to position
       const prevClassification =
-        classificationByName.get(product.name) ?? classificationBySortOrder.get(i);
+        classificationByName.get(product.name) ??
+        classificationBySortOrder.get(i);
       if (prevClassification) {
         await prisma.classification.create({
           data: {
@@ -561,9 +641,15 @@ export async function deriveMarcaFromLines(invoiceId: string): Promise<void> {
 
   const marcas = [
     ...new Set([
-      ...classifications.filter((c) => c.project).map((c) => c.project!.workspace.name),
-      ...classifications.filter((c) => !c.project && c.marca).map((c) => c.marca!),
-      ...classifications.filter((c) => !c.project && !c.marca).map(() => "Awesomely"),
+      ...classifications
+        .filter((c) => c.project)
+        .map((c) => c.project!.workspace.name),
+      ...classifications
+        .filter((c) => !c.project && c.marca)
+        .map((c) => c.marca!),
+      ...classifications
+        .filter((c) => !c.project && !c.marca)
+        .map(() => "Awesomely"),
     ]),
   ].sort();
 
@@ -577,8 +663,14 @@ const AUTO_CLASSIFIED_MARCAS = new Set(["Awesomely", "Gigson"]);
 
 export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
   const [invoice, lines] = await Promise.all([
-    prisma.invoice.findUnique({ where: { id: invoiceId }, select: { marca: true } }),
-    prisma.invoiceLine.findMany({ where: { invoiceId }, include: { classification: true } }),
+    prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { marca: true },
+    }),
+    prisma.invoiceLine.findMany({
+      where: { invoiceId },
+      include: { classification: true },
+    }),
   ]);
 
   if (lines.length === 0) return;
@@ -589,7 +681,8 @@ export async function updateInvoiceStatus(invoiceId: string): Promise<void> {
 
   const marcaValues = (invoice?.marca ?? "").split(",").filter(Boolean);
   const isAutoClassifiedMarca =
-    marcaValues.length > 0 && marcaValues.every((m) => AUTO_CLASSIFIED_MARCAS.has(m));
+    marcaValues.length > 0 &&
+    marcaValues.every((m) => AUTO_CLASSIFIED_MARCAS.has(m));
 
   if (marcaValues.length === 0 && !isAutoClassifiedMarca) {
     status = "SIN_MARCA";
@@ -627,7 +720,7 @@ async function markConvertedProformas(companyId: string): Promise<void> {
   // Window: invoices issued up to 15 days BEFORE the proforma (handles cases where the
   // invoice is dated slightly earlier than the proforma) or up to 45 days AFTER.
   const WINDOW_BEFORE_DAYS = 15;
-  const WINDOW_AFTER_DAYS  = 45;
+  const WINDOW_AFTER_DAYS = 45;
 
   // Fetch all pending proformas and all sale invoices in two queries, then match in memory.
   const [pendingProformas, saleInvoices] = await Promise.all([
@@ -638,7 +731,14 @@ async function markConvertedProformas(companyId: string): Promise<void> {
         invoiceId: null,
         holdedContactId: { not: null },
       },
-      select: { holdedId: true, holdedContactId: true, currency: true, total: true, totalEur: true, date: true },
+      select: {
+        holdedId: true,
+        holdedContactId: true,
+        currency: true,
+        total: true,
+        totalEur: true,
+        date: true,
+      },
     }),
     prisma.invoice.findMany({
       where: {
@@ -647,7 +747,13 @@ async function markConvertedProformas(companyId: string): Promise<void> {
         holdedStatus: { not: -1 },
         holdedContactId: { not: null },
       },
-      select: { holdedContactId: true, currency: true, total: true, totalEur: true, date: true },
+      select: {
+        holdedContactId: true,
+        currency: true,
+        total: true,
+        totalEur: true,
+        date: true,
+      },
     }),
   ]);
 
@@ -686,7 +792,7 @@ async function markConvertedProformas(companyId: string): Promise<void> {
     // 1️⃣ Primary: exact currency + amount match
     const exactKey = `${pf.holdedContactId}|${pf.currency}|${toFixed2(pf.total)}`;
     const exactDates = exactLookup.get(exactKey);
-    if (exactDates?.some(d => d >= windowStart && d <= windowEnd)) {
+    if (exactDates?.some((d) => d >= windowStart && d <= windowEnd)) {
       toMarkConverted.push(pf.holdedId);
       continue;
     }
@@ -716,7 +822,9 @@ async function markConvertedProformas(companyId: string): Promise<void> {
     data: { holdedStatus: 3, invoiceLinkConfidence: "amount_match" },
   });
 
-  console.log(`[sync] Marked ${toMarkConverted.length} proforma(s) as converted (contact+amount+date match, no Holded-native link found)`);
+  console.log(
+    `[sync] Marked ${toMarkConverted.length} proforma(s) as converted (contact+amount+date match, no Holded-native link found)`,
+  );
 }
 
 // ─── Invoice source-document resolution ────────────────────────────────────────
@@ -727,7 +835,9 @@ async function markConvertedProformas(companyId: string): Promise<void> {
 // locally (sourceDocumentChecked) so subsequent syncs don't re-fetch it.
 
 async function resolveInvoiceSourceDocuments(companyId: string): Promise<void> {
-  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const company = await prisma.company.findUniqueOrThrow({
+    where: { id: companyId },
+  });
   const client = new HoldedClient(company.holdedApiKey);
 
   const unresolvedInvoices = await prisma.invoice.findMany({
@@ -756,13 +866,18 @@ async function resolveInvoiceSourceDocuments(companyId: string): Promise<void> {
           });
           if (detail?.from) resolvedCount++;
         } catch (err) {
-          console.error(`[sync] Error resolving source document for invoice ${inv.holdedId}:`, err);
+          console.error(
+            `[sync] Error resolving source document for invoice ${inv.holdedId}:`,
+            err,
+          );
         }
-      })
+      }),
     );
   }
 
-  console.log(`[sync] Resolved source documents for ${unresolvedInvoices.length} invoice(s), ${resolvedCount} had a source document`);
+  console.log(
+    `[sync] Resolved source documents for ${unresolvedInvoices.length} invoice(s), ${resolvedCount} had a source document`,
+  );
 }
 
 // ─── Proforma↔invoice linking via Holded's native relation ────────────────────
@@ -801,14 +916,18 @@ async function linkProformasByHoldedRelation(companyId: string): Promise<void> {
   }
 
   if (linkedCount > 0) {
-    console.log(`[sync] Linked ${linkedCount} proforma(s) to their invoice via Holded's native relation`);
+    console.log(
+      `[sync] Linked ${linkedCount} proforma(s) to their invoice via Holded's native relation`,
+    );
   }
 }
 
 // ─── Proforma Sync ─────────────────────────────────────────────────────────────
 
 export async function syncProformas(companyId: string): Promise<void> {
-  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const company = await prisma.company.findUniqueOrThrow({
+    where: { id: companyId },
+  });
   const client = new HoldedClient(company.holdedApiKey);
   const proformas = await client.getAllProformasPaginated();
 
@@ -819,7 +938,8 @@ export async function syncProformas(companyId: string): Promise<void> {
     const date = new Date(pf.date * 1000);
     const currency = (pf.currency ?? "EUR").toUpperCase();
 
-    const holdedRate = pf.currencyChange && pf.currencyChange !== 0 ? pf.currencyChange : null;
+    const holdedRate =
+      pf.currencyChange && pf.currencyChange !== 0 ? pf.currencyChange : null;
 
     let fxRateToEur: number;
     let totalEur: number;
@@ -860,8 +980,13 @@ export async function syncProformas(companyId: string): Promise<void> {
     const existing = await prisma.proforma.findUnique({
       where: { holdedId_companyId: { holdedId: pf.id, companyId } },
       select: {
-        marca: true, projectId: true, notes: true, holdedStatus: true,
-        invoiceId: true, invoiceLinkedManually: true, invoiceLinkConfidence: true,
+        marca: true,
+        projectId: true,
+        notes: true,
+        holdedStatus: true,
+        invoiceId: true,
+        invoiceLinkedManually: true,
+        invoiceLinkConfidence: true,
       },
     });
     const marcaFromTags = tagToBrand(tags);
@@ -887,15 +1012,19 @@ export async function syncProformas(companyId: string): Promise<void> {
         description,
         tags,
         // Preserve manual marca; update auto-mapped marca only if never manually set
-        ...(existing?.marca == null && marcaFromTags ? { marca: marcaFromTags } : {}),
+        ...(existing?.marca == null && marcaFromTags
+          ? { marca: marcaFromTags }
+          : {}),
         // Never let a resync clobber an already-established proforma→invoice link
         // (automatic or manual) — linkProformasByHoldedRelation/markConvertedProformas/the
         // manual linking action are the only things allowed to change these.
-        ...(existing?.invoiceId ? {
-          invoiceId: existing.invoiceId,
-          invoiceLinkedManually: existing.invoiceLinkedManually,
-          invoiceLinkConfidence: existing.invoiceLinkConfidence,
-        } : {}),
+        ...(existing?.invoiceId
+          ? {
+              invoiceId: existing.invoiceId,
+              invoiceLinkedManually: existing.invoiceLinkedManually,
+              invoiceLinkConfidence: existing.invoiceLinkConfidence,
+            }
+          : {}),
       },
       create: {
         holdedId: pf.id,
@@ -963,10 +1092,10 @@ export async function syncProformas(companyId: string): Promise<void> {
 //   - payroll, entry, expense, payment, creditnote, amortization, y cualquier
 //     otro tipo que Holded pueda añadir en el futuro.
 const HOLDED_INVOICE_DOC_TYPES = new Set([
-  "invoice",  // facturas de venta → revenueRows
+  "invoice", // facturas de venta → revenueRows
   "purchase", // facturas de compra → expenseRows
-  "opening",  // asiento de apertura → balance, no P&L
-  "reg",      // cierre anual → no debe sumarse a las líneas del período
+  "opening", // asiento de apertura → balance, no P&L
+  "reg", // cierre anual → no debe sumarse a las líneas del período
   "vat_regularization", // regularización IVA → cuenta 47x (balance)
 ]);
 
@@ -976,14 +1105,16 @@ const HOLDED_INVOICE_DOC_TYPES = new Set([
 // El resto de cuentas de balance (1xx-5xx, 8xx-9xx sin mapear) se descartan.
 function isPlAccount(account: string, mappedAccounts: Set<string>): boolean {
   const digits = account.replace(/\D/g, "");
-  const first  = digits[0];
+  const first = digits[0];
   if (first === "6" || first === "7") return true;
   return mappedAccounts.has(digits);
 }
 
 export async function syncJournalEntries(companyId: string): Promise<number> {
-  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
-  const client  = new HoldedClient(company.holdedApiKey);
+  const company = await prisma.company.findUniqueOrThrow({
+    where: { id: companyId },
+  });
+  const client = new HoldedClient(company.holdedApiKey);
 
   // Cuentas OU↔SL mapeadas explícitamente (account_mappings), cargadas una única vez
   // por sync — permiten que isPlAccount reconozca cuentas del plan contable estonio
@@ -997,8 +1128,8 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
     if (m.accountNumSL) mappedAccounts.add(m.accountNumSL);
   }
 
-  const currentYear         = new Date().getFullYear();
-  let   totalSynced         = 0;
+  const currentYear = new Date().getFullYear();
+  let totalSynced = 0;
   const allReturnedEntryIds = new Set<string>();
 
   for (let year = HOLDED_SYNC_FROM_YEAR; year <= currentYear; year++) {
@@ -1006,7 +1137,10 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
     try {
       entries = await client.getJournalEntries(year);
     } catch (err) {
-      console.error(`[sync] Journal entries year=${year} company=${companyId}:`, err);
+      console.error(
+        `[sync] Journal entries year=${year} company=${companyId}:`,
+        err,
+      );
       continue;
     }
 
@@ -1019,10 +1153,12 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
       const date = new Date(entry.date);
 
       // Solo líneas de cuentas P&L (6xx / 7xx, o cuentas OU mapeadas explícitamente)
-      const plLines = entry.lines.filter((l) => isPlAccount(l.account, mappedAccounts));
+      const plLines = entry.lines.filter((l) =>
+        isPlAccount(l.account, mappedAccounts),
+      );
 
       for (let idx = 0; idx < plLines.length; idx++) {
-        const line      = plLines[idx];
+        const line = plLines[idx];
         const amountEur = line.credit - line.debit;
 
         if (amountEur === 0) continue;
@@ -1039,9 +1175,9 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
             update: {
               date,
               description: entry.description ?? line.description ?? null,
-              account:     line.account,
+              account: line.account,
               amountEur,
-              originType:  entry.documentType ?? null,
+              originType: entry.documentType ?? null,
             },
             create: {
               companyId,
@@ -1049,15 +1185,16 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
               holdedLineIdx: idx,
               date,
               description: entry.description ?? line.description ?? null,
-              account:     line.account,
+              account: line.account,
               amountEur,
-              originType:  entry.documentType ?? null,
+              originType: entry.documentType ?? null,
             },
           });
           totalSynced++;
         } catch (err) {
           console.error(
-            `[sync] JournalEntryLine upsert error entry=${entry.id} idx=${idx}:`, err
+            `[sync] JournalEntryLine upsert error entry=${entry.id} idx=${idx}:`,
+            err,
           );
         }
       }
@@ -1068,21 +1205,160 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
   // (los journal entries no tienen datos de usuario, se pueden borrar sin riesgo)
   if (allReturnedEntryIds.size > 0) {
     const dbLines = await prisma.journalEntryLine.findMany({
-      where:  { companyId },
+      where: { companyId },
       select: { id: true, holdedEntryId: true },
     });
     const orphanIds = dbLines
       .filter((l) => !allReturnedEntryIds.has(l.holdedEntryId))
       .map((l) => l.id);
     if (orphanIds.length > 0) {
-      await prisma.journalEntryLine.deleteMany({ where: { id: { in: orphanIds } } });
+      await prisma.journalEntryLine.deleteMany({
+        where: { id: { in: orphanIds } },
+      });
       console.log(
-        `[sync] Eliminados ${orphanIds.length} journal entry lines huérfanos (company=${companyId})`
+        `[sync] Eliminados ${orphanIds.length} journal entry lines huérfanos (company=${companyId})`,
       );
     }
   }
 
-  console.log(`[sync] Journal entries company=${companyId}: ${totalSynced} líneas P&L sincronizadas`);
+  console.log(
+    `[sync] Journal entries company=${companyId}: ${totalSynced} líneas P&L sincronizadas`,
+  );
+  return totalSynced;
+}
+
+// ─── RRHH — Empleados y Nóminas (Holded Team API) ──────────────────────────────
+//
+// Las nóminas se generan en la gestoría y se meten en Holded pasándolas por su
+// OCR de nóminas (módulo "Team", app.holded.com/team/v2/payrolls/salary-record/…)
+// — NO son facturas de compra, viven en /api/v2/employees y /api/v2/salary-records,
+// separado de invoices/purchases (E15, 2026-09-15). Requiere que la API key tenga
+// los scopes team:employees.read y accounting:payrolls.read habilitados en Holded
+// — si no, Holded devuelve 403 y esta función no sincroniza nada (no bloqueante,
+// ver el .catch() en syncHoldedCompany).
+
+function mapHoldedSalaryStatus(
+  status: string,
+): "PENDING" | "PAID" | "PARTIALLY_PAID" {
+  if (status === "PAID" || status === "PARTIALLY_PAID") return status;
+  return "PENDING";
+}
+
+export async function syncEmployeesAndSalaryRecords(
+  companyId: string,
+): Promise<number> {
+  const company = await prisma.company.findUniqueOrThrow({
+    where: { id: companyId },
+  });
+  const client = new HoldedClient(company.holdedApiKey);
+
+  // ── Empleados ──────────────────────────────────────────────────────────────
+  const employees = await client.getEmployees();
+  const employeeIdByHoldedId = new Map<string, string>();
+
+  for (const emp of employees) {
+    const row = await prisma.employee.upsert({
+      where: {
+        companyId_holdedEmployeeId: { companyId, holdedEmployeeId: emp.id },
+      },
+      update: { fullName: emp.fullName, iban: emp.iban },
+      create: {
+        companyId,
+        holdedEmployeeId: emp.id,
+        fullName: emp.fullName,
+        iban: emp.iban,
+      },
+      select: { id: true },
+    });
+    employeeIdByHoldedId.set(emp.id, row.id);
+  }
+
+  // ── Nóminas ────────────────────────────────────────────────────────────────
+  // Desde HOLDED_SYNC_FROM_YEAR (o el año que corresponda) hasta hoy — cubre
+  // sobradamente "desde febrero" sin tener que hardcodear esa fecha.
+  const startDate = `${HOLDED_SYNC_FROM_YEAR}-01-01`;
+  const summaries = await client.getSalaryRecords({ startDate });
+
+  let totalSynced = 0;
+  for (const summary of summaries) {
+    let detail;
+    try {
+      detail = await client.getSalaryRecordDetail(summary.id);
+    } catch (err) {
+      console.error(
+        `[sync] getSalaryRecordDetail id=${summary.id} company=${companyId}:`,
+        err,
+      );
+      continue;
+    }
+
+    try {
+      const salaryRecord = await prisma.salaryRecord.upsert({
+        where: {
+          companyId_holdedSalaryRecordId: {
+            companyId,
+            holdedSalaryRecordId: summary.id,
+          },
+        },
+        update: {
+          employeeId: summary.employeeId
+            ? (employeeIdByHoldedId.get(summary.employeeId) ?? null)
+            : null,
+          employeeName: summary.employeeName,
+          date: new Date(summary.date),
+          description: summary.description ?? null,
+          isDraft: summary.isDraft,
+          totalPayable: summary.totalPayable,
+          paymentTotal: summary.paymentTotal,
+          paymentPending: summary.paymentPending,
+          paymentStatus: mapHoldedSalaryStatus(summary.paymentStatus),
+        },
+        create: {
+          companyId,
+          holdedSalaryRecordId: summary.id,
+          employeeId: summary.employeeId
+            ? (employeeIdByHoldedId.get(summary.employeeId) ?? null)
+            : null,
+          employeeName: summary.employeeName,
+          date: new Date(summary.date),
+          description: summary.description ?? null,
+          isDraft: summary.isDraft,
+          totalPayable: summary.totalPayable,
+          paymentTotal: summary.paymentTotal,
+          paymentPending: summary.paymentPending,
+          paymentStatus: mapHoldedSalaryStatus(summary.paymentStatus),
+        },
+        select: { id: true },
+      });
+
+      // Las líneas se recrean en cada sync (igual de "barato" que journal_entry_lines
+      // — no tienen datos de usuario, solo lo que devuelve Holded).
+      await prisma.salaryRecordLine.deleteMany({
+        where: { salaryRecordId: salaryRecord.id },
+      });
+      if (detail.lines.length > 0) {
+        await prisma.salaryRecordLine.createMany({
+          data: detail.lines.map((l) => ({
+            salaryRecordId: salaryRecord.id,
+            type: l.type,
+            amount: l.amount,
+            description: l.description ?? null,
+          })),
+        });
+      }
+
+      totalSynced++;
+    } catch (err) {
+      console.error(
+        `[sync] upsert SalaryRecord id=${summary.id} company=${companyId}:`,
+        err,
+      );
+    }
+  }
+
+  console.log(
+    `[sync] Nóminas company=${companyId}: ${employees.length} empleados, ${totalSynced}/${summaries.length} nóminas sincronizadas`,
+  );
   return totalSynced;
 }
 
@@ -1096,9 +1372,11 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
 export async function syncDocumentById(
   companyId: string,
   holdedId: string,
-  type: "invoice" | "purchase"
+  type: "invoice" | "purchase",
 ): Promise<{ found: boolean; invoiceId: string | null }> {
-  const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+  const company = await prisma.company.findUniqueOrThrow({
+    where: { id: companyId },
+  });
   const client = new HoldedClient(company.holdedApiKey);
 
   const doc = await client.getDocumentById(type, holdedId);
@@ -1120,14 +1398,32 @@ export async function syncDocumentById(
 // ─── Full sync ─────────────────────────────────────────────────────────────────
 
 export type SyncProgressEvent =
-  | { type: "init"; items: Array<{ source: "HOLDED" | "JIRA"; entityId: string; entityName: string }> }
-  | { type: "update"; source: "HOLDED" | "JIRA"; entityId: string; status: "done" | "error"; error?: string }
-  | { type: "complete"; companies: number; workspaces: number; errors: string[] }
+  | {
+      type: "init";
+      items: Array<{
+        source: "HOLDED" | "JIRA";
+        entityId: string;
+        entityName: string;
+      }>;
+    }
+  | {
+      type: "update";
+      source: "HOLDED" | "JIRA";
+      entityId: string;
+      status: "done" | "error";
+      error?: string;
+    }
+  | {
+      type: "complete";
+      companies: number;
+      workspaces: number;
+      errors: string[];
+    }
   | { type: "fatal"; error: string };
 
 export async function syncAll(
   triggeredBy?: string,
-  onProgress?: (event: SyncProgressEvent) => void
+  onProgress?: (event: SyncProgressEvent) => void,
 ): Promise<{
   companies: number;
   workspaces: number;
@@ -1142,8 +1438,16 @@ export async function syncAll(
   onProgress?.({
     type: "init",
     items: [
-      ...companies.map((c) => ({ source: "HOLDED" as const, entityId: c.id, entityName: c.name })),
-      ...workspaces.map((w) => ({ source: "JIRA" as const, entityId: w.id, entityName: w.name })),
+      ...companies.map((c) => ({
+        source: "HOLDED" as const,
+        entityId: c.id,
+        entityName: c.name,
+      })),
+      ...workspaces.map((w) => ({
+        source: "JIRA" as const,
+        entityId: w.id,
+        entityName: w.name,
+      })),
     ],
   });
 
@@ -1153,24 +1457,46 @@ export async function syncAll(
     ...companies.map((c) =>
       syncHoldedCompany(c.id, triggeredBy)
         .then(() => {
-          onProgress?.({ type: "update", source: "HOLDED", entityId: c.id, status: "done" });
+          onProgress?.({
+            type: "update",
+            source: "HOLDED",
+            entityId: c.id,
+            status: "done",
+          });
         })
         .catch((e: unknown) => {
           const msg = e instanceof Error ? e.message : String(e);
           errors.push(`Holded ${c.name}: ${msg}`);
-          onProgress?.({ type: "update", source: "HOLDED", entityId: c.id, status: "error", error: msg });
-        })
+          onProgress?.({
+            type: "update",
+            source: "HOLDED",
+            entityId: c.id,
+            status: "error",
+            error: msg,
+          });
+        }),
     ),
     ...workspaces.map((w) =>
       syncJiraWorkspace(w.id, triggeredBy)
         .then(() => {
-          onProgress?.({ type: "update", source: "JIRA", entityId: w.id, status: "done" });
+          onProgress?.({
+            type: "update",
+            source: "JIRA",
+            entityId: w.id,
+            status: "done",
+          });
         })
         .catch((e: unknown) => {
           const msg = e instanceof Error ? e.message : String(e);
           errors.push(`Jira ${w.name}: ${msg}`);
-          onProgress?.({ type: "update", source: "JIRA", entityId: w.id, status: "error", error: msg });
-        })
+          onProgress?.({
+            type: "update",
+            source: "JIRA",
+            entityId: w.id,
+            status: "error",
+            error: msg,
+          });
+        }),
     ),
   ]);
 

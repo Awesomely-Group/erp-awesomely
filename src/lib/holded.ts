@@ -32,8 +32,8 @@ export interface HoldedInvoiceProduct {
   units: number;
   price: number;
   subtotal?: number; // not returned by Holded API — calculated in sync
-  tax: number;       // tax RATE in percent (e.g. 21), not the amount
-  total?: number;    // not returned by Holded API — calculated in sync
+  tax: number; // tax RATE in percent (e.g. 21), not the amount
+  total?: number; // not returned by Holded API — calculated in sync
   discount?: number; // discount percent
   sku?: string;
   account?: string | { id?: string; num?: string; name?: string }; // cuenta contable
@@ -72,8 +72,8 @@ interface HoldedInvoiceLineV2Raw {
   name: string;
   type?: string;
   description?: string;
-  price?: string;     // "3750,00"
-  units?: string;     // "1,00"
+  price?: string; // "3750,00"
+  units?: string; // "1,00"
   discount?: string;
   tax?: string;
   account?: string;
@@ -84,13 +84,13 @@ export interface HoldedInvoiceV2Raw {
   document_number?: string | null;
   contact_id?: string;
   contact_name?: string;
-  date: string;       // "2026-06-01"
+  date: string; // "2026-06-01"
   due_date?: string;
   subtotal?: string;
   total?: string;
   tax?: string;
   currency?: string;
-  status?: string;    // "pending" | "paid" | "draft" | "overdue" | "void"
+  status?: string; // "pending" | "paid" | "draft" | "overdue" | "void"
   draft?: boolean;
   tags?: string[];
   lines?: HoldedInvoiceLineV2Raw[];
@@ -105,15 +105,22 @@ export function parseCommaNum(s: string | undefined | null): number {
   return parseFloat(s.replace(",", ".")) || 0;
 }
 
-export function v2StatusToNum(status: string | undefined, draft?: boolean): number {
+export function v2StatusToNum(
+  status: string | undefined,
+  draft?: boolean,
+): number {
   if (draft) return 0;
   switch (status) {
-    case "paid":      return 2;
+    case "paid":
+      return 2;
     case "overdue":
-    case "late":      return 3;
+    case "late":
+      return 3;
     case "void":
-    case "cancelled": return -1;
-    default:          return 1; // "pending" and unknown
+    case "cancelled":
+      return -1;
+    default:
+      return 1; // "pending" and unknown
   }
 }
 
@@ -123,21 +130,31 @@ export function v2StatusToNum(status: string | undefined, draft?: boolean): numb
 // status for a proforma must NOT collide with that locally-synthesized code, so it's mapped
 // to a distinct code `4` ("Vencida") here instead of the `3` that v2StatusToNum uses for
 // real invoices.
-export function v2ProformaStatusToNum(status: string | undefined, draft?: boolean): number {
+export function v2ProformaStatusToNum(
+  status: string | undefined,
+  draft?: boolean,
+): number {
   if (draft) return 0;
   switch (status) {
-    case "paid":      return 2;
+    case "paid":
+      return 2;
     case "overdue":
-    case "late":      return 4;
+    case "late":
+      return 4;
     case "void":
-    case "cancelled": return -1;
-    default:          return 1; // "pending" and unknown
+    case "cancelled":
+      return -1;
+    default:
+      return 1; // "pending" and unknown
   }
 }
 
 export function normalizeV2Invoice(
   raw: HoldedInvoiceV2Raw,
-  statusMapper: (status: string | undefined, draft?: boolean) => number = v2StatusToNum
+  statusMapper: (
+    status: string | undefined,
+    draft?: boolean,
+  ) => number = v2StatusToNum,
 ): HoldedInvoice {
   const parseIsoToUnix = (s?: string): number | undefined =>
     s ? Math.floor(new Date(s).getTime() / 1000) : undefined;
@@ -154,7 +171,10 @@ export function normalizeV2Invoice(
     date: Math.floor(new Date(raw.date).getTime() / 1000),
     dueDate: parseIsoToUnix(raw.due_date),
     currency: raw.currency ?? "EUR",
-    currencyChange: raw.currency_change != null ? parseCommaNum(String(raw.currency_change)) : 0,
+    currencyChange:
+      raw.currency_change != null
+        ? parseCommaNum(String(raw.currency_change))
+        : 0,
     subtotal: parseCommaNum(raw.subtotal),
     tax: parseCommaNum(raw.tax),
     total,
@@ -169,11 +189,24 @@ export function normalizeV2Invoice(
     })),
     type: "income",
     status: statusNum,
-    paymentsTotal: raw.payments_total != null ? parseCommaNum(String(raw.payments_total)) : (isPaid ? total : 0),
-    paymentsPending: raw.payments_pending != null ? parseCommaNum(String(raw.payments_pending)) : (isPaid ? 0 : total),
+    paymentsTotal:
+      raw.payments_total != null
+        ? parseCommaNum(String(raw.payments_total))
+        : isPaid
+          ? total
+          : 0,
+    paymentsPending:
+      raw.payments_pending != null
+        ? parseCommaNum(String(raw.payments_pending))
+        : isPaid
+          ? 0
+          : total,
     tags: raw.tags,
     from: raw.from
-      ? { id: raw.from.id, docType: raw.from.doc_type ?? raw.from.docType ?? "" }
+      ? {
+          id: raw.from.id,
+          docType: raw.from.doc_type ?? raw.from.docType ?? "",
+        }
       : undefined,
   };
 }
@@ -258,7 +291,9 @@ export interface HoldedCreateDocumentPayload {
 }
 
 /** Transforms a v1-style payload to snake_case for the Holded v2 API. */
-function toV2DocumentPayload(payload: HoldedCreateDocumentPayload): Record<string, unknown> {
+function toV2DocumentPayload(
+  payload: HoldedCreateDocumentPayload,
+): Record<string, unknown> {
   const isoDate = new Date(payload.date * 1000).toISOString().split("T")[0];
 
   const base: Record<string, unknown> = {
@@ -287,7 +322,10 @@ function toV2DocumentPayload(payload: HoldedCreateDocumentPayload): Record<strin
  *  can distinguish "not found" (404 — safe to treat as absent) from transient/server errors
  *  (which should be retried on a later sync, not treated as a confirmed negative result). */
 export class HoldedApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
     super(message);
     this.name = "HoldedApiError";
   }
@@ -313,7 +351,11 @@ export class HoldedClient {
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
+    if (!res.ok)
+      throw new HoldedApiError(
+        res.status,
+        `Holded API error ${res.status}: ${await res.text()}`,
+      );
     return res.json() as Promise<T>;
   }
 
@@ -324,21 +366,31 @@ export class HoldedClient {
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
+    if (!res.ok)
+      throw new HoldedApiError(
+        res.status,
+        `Holded API error ${res.status}: ${await res.text()}`,
+      );
     return res.json() as Promise<T>;
   }
 
   private v2DocPath(docType: string): string {
-    const map: Record<string, string> = { estimate: "estimates", proform: "proformas" };
+    const map: Record<string, string> = {
+      estimate: "estimates",
+      proform: "proformas",
+    };
     return map[docType] ?? `${docType}s`;
   }
 
   async createDocument(
     docType: string,
-    payload: HoldedCreateDocumentPayload
+    payload: HoldedCreateDocumentPayload,
   ): Promise<{ id: string; docNumber?: string }> {
     if (IS_V2) {
-      return this.post(`/${this.v2DocPath(docType)}`, toV2DocumentPayload(payload));
+      return this.post(
+        `/${this.v2DocPath(docType)}`,
+        toV2DocumentPayload(payload),
+      );
     }
     return this.post(`/documents/${docType}`, payload);
   }
@@ -346,15 +398,22 @@ export class HoldedClient {
   async updateDocument(
     docType: string,
     docId: string,
-    payload: HoldedCreateDocumentPayload
+    payload: HoldedCreateDocumentPayload,
   ): Promise<{ id: string }> {
     if (IS_V2) {
-      return this.put(`/${this.v2DocPath(docType)}/${docId}`, toV2DocumentPayload(payload));
+      return this.put(
+        `/${this.v2DocPath(docType)}/${docId}`,
+        toV2DocumentPayload(payload),
+      );
     }
     return this.put(`/documents/${docType}/${docId}`, payload);
   }
 
-  private async fetchFromBase<T>(baseUrl: string, path: string, params?: Record<string, string>): Promise<T> {
+  private async fetchFromBase<T>(
+    baseUrl: string,
+    path: string,
+    params?: Record<string, string>,
+  ): Promise<T> {
     const url = new URL(`${baseUrl}${path}`);
     if (params) {
       Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -369,13 +428,19 @@ export class HoldedClient {
     });
 
     if (!res.ok) {
-      throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
+      throw new HoldedApiError(
+        res.status,
+        `Holded API error ${res.status}: ${await res.text()}`,
+      );
     }
 
     return res.json() as Promise<T>;
   }
 
-  private async fetch<T>(path: string, params?: Record<string, string>): Promise<T> {
+  private async fetch<T>(
+    path: string,
+    params?: Record<string, string>,
+  ): Promise<T> {
     return this.fetchFromBase<T>(HOLDED_BASE_URL, path, params);
   }
 
@@ -425,7 +490,10 @@ export class HoldedClient {
         next: { revalidate: 0 },
       });
       if (!res.ok) {
-        throw new HoldedApiError(res.status, `Holded API error ${res.status}: ${await res.text()}`);
+        throw new HoldedApiError(
+          res.status,
+          `Holded API error ${res.status}: ${await res.text()}`,
+        );
       }
       return this.normalizeChartList(await res.json());
     };
@@ -551,11 +619,13 @@ export class HoldedClient {
           const num = this.chartRowNum(a);
           const name = (a.name ?? "").trim();
           if (!num || !name) return null;
-          const cuenta = (nameCounts.get(name) ?? 0) > 1 ? `${num} - ${name}` : name;
+          const cuenta =
+            (nameCounts.get(name) ?? 0) > 1 ? `${num} - ${name}` : name;
           return {
             cuenta,
             num,
-            ...(a.group !== undefined && typeof a.group === "string" && { group: a.group }),
+            ...(a.group !== undefined &&
+              typeof a.group === "string" && { group: a.group }),
             ...(typeof a.debit === "number" && { debit: a.debit }),
             ...(typeof a.credit === "number" && { credit: a.credit }),
             ...(typeof a.balance === "number" && { balance: a.balance }),
@@ -585,16 +655,23 @@ export class HoldedClient {
       // v2: standard offset pagination — /contacts returns { items: [...] }
       let offset = 0;
       while (true) {
-        const raw = await this.fetch<RawContact[] | { items?: RawContact[] }>("/contacts", {
-          limit: String(PAGE_SIZE),
-          offset: String(offset),
-        });
+        const raw = await this.fetch<RawContact[] | { items?: RawContact[] }>(
+          "/contacts",
+          {
+            limit: String(PAGE_SIZE),
+            offset: String(offset),
+          },
+        );
         const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
         if (batch.length === 0) break;
         for (const c of batch) {
           if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
             const pm = c.defaults?.paymentMethod;
-            all.set(c.id, { id: c.id, name: c.name, paymentMethod: typeof pm === "string" && pm ? pm : undefined });
+            all.set(c.id, {
+              id: c.id,
+              name: c.name,
+              paymentMethod: typeof pm === "string" && pm ? pm : undefined,
+            });
           }
         }
         if (batch.length < PAGE_SIZE) break;
@@ -608,10 +685,10 @@ export class HoldedClient {
     let prevFirstId: string | undefined;
 
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const batch = await this.fetch<RawContact[]>(
-        "/contacts",
-        { page: String(page), limit: String(PAGE_SIZE) }
-      );
+      const batch = await this.fetch<RawContact[]>("/contacts", {
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
 
       if (batch.length === 0) break;
 
@@ -622,7 +699,11 @@ export class HoldedClient {
       for (const c of batch) {
         if ((c.type === "supplier" || c.type === "both") && !all.has(c.id)) {
           const pm = c.defaults?.paymentMethod;
-          all.set(c.id, { id: c.id, name: c.name, paymentMethod: typeof pm === "string" && pm ? pm : undefined });
+          all.set(c.id, {
+            id: c.id,
+            name: c.name,
+            paymentMethod: typeof pm === "string" && pm ? pm : undefined,
+          });
         }
       }
 
@@ -632,25 +713,248 @@ export class HoldedClient {
     return [...all.values()];
   }
 
-  async getContactWithBankData(id: string): Promise<{ iban: string | null; paymentMethod: string | null }> {
+  /** Descarga binaria (PDF/adjuntos) — igual que fetchFromBase pero sin asumir JSON.
+   *  Solo se usa para endpoints v2 (facturas, compras, nóminas) que devuelven
+   *  application/pdf u octet-stream directamente. */
+  private async fetchBinaryFromBase(
+    baseUrl: string,
+    path: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const res = await fetch(`${baseUrl}${path}`, {
+      headers: this.authHeaders(),
+      next: { revalidate: 0 },
+    });
+    if (!res.ok) {
+      throw new HoldedApiError(
+        res.status,
+        `Holded API error ${res.status}: ${await res.text()}`,
+      );
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      contentType: res.headers.get("content-type") ?? "application/pdf",
+    };
+  }
+
+  /** PDF de una factura de venta (v2 genera el documento; no existe en v1). */
+  async getInvoicePdf(
+    holdedInvoiceId: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    if (!IS_V2)
+      throw new HoldedApiError(
+        501,
+        "getInvoicePdf solo está disponible en la API v2 de Holded",
+      );
+    return this.fetchBinaryFromBase(
+      HOLDED_BASE_URL,
+      `/invoices/${holdedInvoiceId}/pdf`,
+    );
+  }
+
+  /** Lista de adjuntos de una factura de compra — las compras no tienen un PDF
+   *  generado por Holded (`/purchases/{id}/pdf` no existe): el documento real es
+   *  el fichero subido/escaneado (p.ej. el adjunto que creó el OCR de gastos). */
+  async getPurchaseAttachments(
+    holdedPurchaseId: string,
+  ): Promise<Array<{ id: string; filename?: string }>> {
+    if (!IS_V2) return [];
+    interface AttachmentsPage {
+      items?: Array<{ id: string; filename?: string }>;
+    }
+    const page = await this.fetchFromBase<AttachmentsPage>(
+      HOLDED_BASE_URL,
+      `/purchases/${holdedPurchaseId}/attachments`,
+    );
+    return page.items ?? [];
+  }
+
+  /** Bytes del adjunto de una factura de compra (ver getPurchaseAttachments). */
+  async getPurchaseAttachment(
+    holdedPurchaseId: string,
+    attachmentId: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    if (!IS_V2)
+      throw new HoldedApiError(
+        501,
+        "getPurchaseAttachment solo está disponible en la API v2 de Holded",
+      );
+    return this.fetchBinaryFromBase(
+      HOLDED_BASE_URL,
+      `/purchases/${holdedPurchaseId}/attachments/${attachmentId}`,
+    );
+  }
+
+  // ─── RRHH — Empleados y Nóminas (Holded Team API, solo v2) ────────────────────
+  // /api/v2/employees y /api/v2/salary-records: módulo separado de invoices/
+  // purchases (E15, 2026-09-15) — las nóminas se generan fuera de Holded y se
+  // pasan por su OCR (app.holded.com/team/v2/payrolls/salary-record/...), no son
+  // facturas de compra. Requiere scopes de API key team:employees.read y
+  // accounting:payrolls.read — si la key no los tiene, Holded devuelve 403 y el
+  // sync deja el paso en no-op (ver syncEmployeesAndSalaryRecords en sync.ts).
+
+  async getEmployees(): Promise<HoldedEmployee[]> {
+    if (!IS_V2) return [];
+
+    interface EmployeesPage {
+      items?: HoldedEmployeeRaw[];
+      cursor?: string | null;
+      has_more?: boolean;
+    }
+
+    const all: HoldedEmployeeRaw[] = [];
+    let cursor: string | undefined;
+    let pageCount = 0;
+    const MAX_PAGES = 100;
+
+    do {
+      const params: Record<string, string> = { limit: "200" };
+      if (cursor) params.cursor = cursor;
+
+      let page: EmployeesPage;
+      try {
+        page = await this.fetchFromBase<EmployeesPage>(
+          HOLDED_BASE_URL,
+          "/employees",
+          params,
+        );
+      } catch (err) {
+        console.error(
+          `[holded] getEmployees cursor=${cursor ?? "(none)"}:`,
+          err,
+        );
+        break;
+      }
+
+      all.push(...(page.items ?? []));
+      pageCount++;
+      cursor = page.has_more && page.cursor ? page.cursor : undefined;
+      if (pageCount >= MAX_PAGES) break;
+    } while (cursor);
+
+    return all.map((e) => ({
+      id: e.id,
+      fullName:
+        e.full_name || [e.name, e.last_name].filter(Boolean).join(" ") || "—",
+      iban: e.iban || null,
+    }));
+  }
+
+  /** Lista resumida de nóminas (para sync masivo) — sin el desglose de líneas. */
+  async getSalaryRecords(
+    params: { startDate?: string; endDate?: string } = {},
+  ): Promise<HoldedSalaryRecordSummary[]> {
+    if (!IS_V2) return [];
+
+    interface SalaryRecordsPage {
+      items?: HoldedSalaryRecordSummaryRaw[];
+      cursor?: string | null;
+      has_more?: boolean;
+    }
+
+    const all: HoldedSalaryRecordSummaryRaw[] = [];
+    let cursor: string | undefined;
+    let pageCount = 0;
+    const MAX_PAGES = 200;
+
+    do {
+      const query: Record<string, string> = { limit: "200" };
+      if (params.startDate) query.start_date = params.startDate;
+      if (params.endDate) query.end_date = params.endDate;
+      if (cursor) query.cursor = cursor;
+
+      let page: SalaryRecordsPage;
+      try {
+        page = await this.fetchFromBase<SalaryRecordsPage>(
+          HOLDED_BASE_URL,
+          "/salary-records",
+          query,
+        );
+      } catch (err) {
+        console.error(
+          `[holded] getSalaryRecords cursor=${cursor ?? "(none)"}:`,
+          err,
+        );
+        break;
+      }
+
+      all.push(...(page.items ?? []));
+      pageCount++;
+      cursor = page.has_more && page.cursor ? page.cursor : undefined;
+      if (pageCount >= MAX_PAGES) break;
+    } while (cursor);
+
+    return all.map(normalizeSalaryRecordSummary);
+  }
+
+  /** Detalle de una nómina, con el desglose de líneas por concepto (salary/tax/
+   *  companytax/retention/...) que captura el OCR de Holded. */
+  async getSalaryRecordDetail(id: string): Promise<HoldedSalaryRecordDetail> {
+    const raw = await this.fetchFromBase<HoldedSalaryRecordDetailRaw>(
+      HOLDED_BASE_URL,
+      `/salary-records/${id}`,
+    );
+    return {
+      ...normalizeSalaryRecordSummary(raw),
+      lines: raw.lines.map((l) => ({
+        type: l.type,
+        amount: parseCommaNum(l.amount),
+        description: l.description ?? null,
+      })),
+    };
+  }
+
+  async getSalaryRecordPdf(
+    id: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    if (!IS_V2)
+      throw new HoldedApiError(
+        501,
+        "getSalaryRecordPdf solo está disponible en la API v2 de Holded",
+      );
+    return this.fetchBinaryFromBase(
+      HOLDED_BASE_URL,
+      `/salary-records/${id}/pdf`,
+    );
+  }
+
+  async getContactWithBankData(
+    id: string,
+  ): Promise<{ iban: string | null; paymentMethod: string | null }> {
     const data = await this.fetch<Record<string, unknown>>(`/contacts/${id}`);
     const bankData = data["bankData"] as Record<string, unknown> | undefined;
     const payment = data["payment"] as Record<string, unknown> | undefined;
     const iban =
-      (typeof data["iban"] === "string" && data["iban"] ? data["iban"] : null) ??
-      (typeof data["bankAccount"] === "string" && data["bankAccount"] ? data["bankAccount"] as string : null) ??
-      (typeof bankData?.["iban"] === "string" && bankData["iban"] ? bankData["iban"] as string : null) ??
-      (typeof bankData?.["bankAccount"] === "string" && bankData["bankAccount"] ? bankData["bankAccount"] as string : null) ??
-      (typeof payment?.["iban"] === "string" && payment["iban"] ? payment["iban"] as string : null) ??
+      (typeof data["iban"] === "string" && data["iban"]
+        ? data["iban"]
+        : null) ??
+      (typeof data["bankAccount"] === "string" && data["bankAccount"]
+        ? (data["bankAccount"] as string)
+        : null) ??
+      (typeof bankData?.["iban"] === "string" && bankData["iban"]
+        ? (bankData["iban"] as string)
+        : null) ??
+      (typeof bankData?.["bankAccount"] === "string" && bankData["bankAccount"]
+        ? (bankData["bankAccount"] as string)
+        : null) ??
+      (typeof payment?.["iban"] === "string" && payment["iban"]
+        ? (payment["iban"] as string)
+        : null) ??
       null;
     const paymentObj = data["payment"] as Record<string, unknown> | undefined;
     const paymentMethod =
-      (typeof data["payment_method"] === "string" ? data["payment_method"] : null) ??
-      (typeof paymentObj?.["method"] === "string" ? (paymentObj["method"] as string) : null);
+      (typeof data["payment_method"] === "string"
+        ? data["payment_method"]
+        : null) ??
+      (typeof paymentObj?.["method"] === "string"
+        ? (paymentObj["method"] as string)
+        : null);
     return { iban, paymentMethod };
   }
 
-  async getClientContacts(query?: string): Promise<Array<{ id: string; name: string }>> {
+  async getClientContacts(
+    query?: string,
+  ): Promise<Array<{ id: string; name: string }>> {
     const PAGE_SIZE = 500;
     const all = new Map<string, string>();
 
@@ -660,10 +964,13 @@ export class HoldedClient {
       // v2: standard offset pagination — /contacts returns { items: [...] }
       let offset = 0;
       while (true) {
-        const raw = await this.fetch<RawContact[] | { items?: RawContact[] }>("/contacts", {
-          limit: String(PAGE_SIZE),
-          offset: String(offset),
-        });
+        const raw = await this.fetch<RawContact[] | { items?: RawContact[] }>(
+          "/contacts",
+          {
+            limit: String(PAGE_SIZE),
+            offset: String(offset),
+          },
+        );
         const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
         if (batch.length === 0) break;
         for (const c of batch) {
@@ -680,10 +987,10 @@ export class HoldedClient {
       let prevFirstId: string | undefined;
 
       for (let page = 1; page <= MAX_PAGES; page++) {
-        const batch = await this.fetch<RawContact[]>(
-          "/contacts",
-          { page: String(page), limit: String(PAGE_SIZE) }
-        );
+        const batch = await this.fetch<RawContact[]>("/contacts", {
+          page: String(page),
+          limit: String(PAGE_SIZE),
+        });
 
         if (batch.length === 0) break;
 
@@ -717,7 +1024,9 @@ export class HoldedClient {
    * requires, but this integration always sends `vatNumber` too since it's required to
    * later issue a proforma/invoice.
    */
-  async createContact(payload: HoldedCreateContactPayload): Promise<{ id: string; name: string }> {
+  async createContact(
+    payload: HoldedCreateContactPayload,
+  ): Promise<{ id: string; name: string }> {
     const type = payload.type ?? "client";
 
     if (IS_V2) {
@@ -746,7 +1055,8 @@ export class HoldedClient {
     // in the same reference page; verify against a real v1 account before relying on this).
     const body: Record<string, unknown> = { name: payload.name, type };
     if (payload.vatNumber) body.code = payload.vatNumber;
-    if (payload.isPerson !== undefined) body.isperson = payload.isPerson ? 1 : 0;
+    if (payload.isPerson !== undefined)
+      body.isperson = payload.isPerson ? 1 : 0;
     if (payload.tradeName) body.tradeName = payload.tradeName;
     if (payload.email) body.email = payload.email;
     if (payload.phone) body.phone = payload.phone;
@@ -774,9 +1084,12 @@ export class HoldedClient {
   async listServices(): Promise<HoldedService[]> {
     try {
       type RawService = { id: string; name: string; price?: number | string };
-      const raw = await this.fetch<RawService[] | { items?: RawService[] }>("/services", {
-        limit: "500",
-      });
+      const raw = await this.fetch<RawService[] | { items?: RawService[] }>(
+        "/services",
+        {
+          limit: "500",
+        },
+      );
       const batch = Array.isArray(raw) ? raw : (raw.items ?? []);
       return batch.map((s) => ({
         id: s.id,
@@ -791,7 +1104,9 @@ export class HoldedClient {
   async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
     if (IS_V2) {
       // v2: offset/page/starttmp are all ignored — single request with large limit
-      const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>("/proformas", {
+      const raw = await this.fetch<
+        { items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]
+      >("/proformas", {
         limit: "5000",
       });
       const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
@@ -812,11 +1127,11 @@ export class HoldedClient {
 
         const windowEnd = new Date(year, (quarter + 1) * 3, 1);
         const starttmp = Math.floor(windowStart.getTime() / 1000);
-        const endtmp   = Math.floor(windowEnd.getTime()   / 1000);
+        const endtmp = Math.floor(windowEnd.getTime() / 1000);
 
         const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
           `/documents/proform`,
-          { starttmp: starttmp.toString(), endtmp: endtmp.toString() }
+          { starttmp: starttmp.toString(), endtmp: endtmp.toString() },
         );
 
         const batch: HoldedInvoice[] = Array.isArray(raw)
@@ -835,11 +1150,15 @@ export class HoldedClient {
     return all;
   }
 
-  async getAllInvoicesPaginated(type: "invoice" | "purchase"): Promise<HoldedInvoice[]> {
+  async getAllInvoicesPaginated(
+    type: "invoice" | "purchase",
+  ): Promise<HoldedInvoice[]> {
     if (IS_V2) {
       if (type === "invoice") {
         // /invoices: no hard cap observed — single request is sufficient
-        const raw = await this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>("/invoices", {
+        const raw = await this.fetch<
+          { items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]
+        >("/invoices", {
           limit: "5000",
         });
         const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
@@ -858,7 +1177,10 @@ export class HoldedClient {
         for (let month = 1; month <= endMonth; month++) {
           const mm = String(month).padStart(2, "0");
           const lastDay = new Date(year, month, 0).getDate();
-          windows.push({ start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` });
+          windows.push({
+            start: `${year}-${mm}-01`,
+            end: `${year}-${mm}-${lastDay}`,
+          });
         }
       }
 
@@ -867,9 +1189,9 @@ export class HoldedClient {
         windows.map(({ start, end }) =>
           this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>(
             "/purchases",
-            { limit: "500", start_date: start, end_date: end }
-          ).then((raw) => (Array.isArray(raw) ? raw : (raw.items ?? [])))
-        )
+            { limit: "500", start_date: start, end_date: end },
+          ).then((raw) => (Array.isArray(raw) ? raw : (raw.items ?? []))),
+        ),
       );
 
       const seenIds = new Set<string>();
@@ -899,11 +1221,11 @@ export class HoldedClient {
 
         const windowEnd = new Date(year, (quarter + 1) * 3, 1);
         const starttmp = Math.floor(windowStart.getTime() / 1000);
-        const endtmp   = Math.floor(windowEnd.getTime()   / 1000);
+        const endtmp = Math.floor(windowEnd.getTime() / 1000);
 
         const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
           `/documents/${type}`,
-          { starttmp: starttmp.toString(), endtmp: endtmp.toString() }
+          { starttmp: starttmp.toString(), endtmp: endtmp.toString() },
         );
 
         const batch: HoldedInvoice[] = Array.isArray(raw)
@@ -929,7 +1251,7 @@ export class HoldedClient {
    */
   async getDocumentById(
     type: "invoice" | "purchase",
-    holdedId: string
+    holdedId: string,
   ): Promise<HoldedInvoice | null> {
     const path = IS_V2
       ? `/${type === "invoice" ? "invoices" : "purchases"}/${holdedId}`
@@ -968,11 +1290,11 @@ export class HoldedClient {
     if (!IS_V2) return [];
 
     const startDate = `${year}-01-01`;
-    const endDate   = `${year}-12-31`;
+    const endDate = `${year}-12-31`;
 
     interface LedgerEntriesPage {
-      items?:    HoldedLedgerLineRaw[];
-      cursor?:   string | null;
+      items?: HoldedLedgerLineRaw[];
+      cursor?: string | null;
       has_more?: boolean;
     }
 
@@ -982,14 +1304,25 @@ export class HoldedClient {
     const MAX_PAGES = 500; // salvaguarda ante un bug de paginación infinita (~100k líneas)
 
     do {
-      const params: Record<string, string> = { start_date: startDate, end_date: endDate, limit: "200" };
+      const params: Record<string, string> = {
+        start_date: startDate,
+        end_date: endDate,
+        limit: "200",
+      };
       if (cursor) params.cursor = cursor;
 
       let page: LedgerEntriesPage;
       try {
-        page = await this.fetchFromBase<LedgerEntriesPage>(HOLDED_BASE_URL, "/ledger-entries", params);
+        page = await this.fetchFromBase<LedgerEntriesPage>(
+          HOLDED_BASE_URL,
+          "/ledger-entries",
+          params,
+        );
       } catch (err) {
-        console.error(`[holded] getJournalEntries year=${year} cursor=${cursor ?? "(none)"}:`, err);
+        console.error(
+          `[holded] getJournalEntries year=${year} cursor=${cursor ?? "(none)"}:`,
+          err,
+        );
         break;
       }
 
@@ -999,7 +1332,9 @@ export class HoldedClient {
       cursor = page.has_more && page.cursor ? page.cursor : undefined;
 
       if (pageCount >= MAX_PAGES) {
-        console.error(`[holded] getJournalEntries year=${year}: alcanzado MAX_PAGES=${MAX_PAGES}, deteniendo paginación (posible bug de cursor)`);
+        console.error(
+          `[holded] getJournalEntries year=${year}: alcanzado MAX_PAGES=${MAX_PAGES}, deteniendo paginación (posible bug de cursor)`,
+        );
         break;
       }
     } while (cursor);
@@ -1019,21 +1354,21 @@ export class HoldedClient {
     // Convierte a HoldedJournalEntry[]
     const entries: HoldedJournalEntry[] = [];
     for (const [entryNum, lines] of entryMap) {
-      const first    = lines[0];
+      const first = lines[0];
       // Fecha: "DD/MM/YYYY" → "YYYY-MM-DD"
       const [dd, mm, yyyy] = first.date.split("/");
-      const dateISO  = `${yyyy}-${mm}-${dd}`;
+      const dateISO = `${yyyy}-${mm}-${dd}`;
 
       entries.push({
-        id:           String(entryNum),
-        date:         dateISO,
-        description:  first.description || undefined,
-        documentType: first.type        || undefined,
-        lines:        lines
+        id: String(entryNum),
+        date: dateISO,
+        description: first.description || undefined,
+        documentType: first.type || undefined,
+        lines: lines
           .map((l): HoldedJournalEntryLine => ({
-            account:     String(l.account),
-            debit:       parseCommaNum(String(l.debit  ?? 0)),
-            credit:      parseCommaNum(String(l.credit ?? 0)),
+            account: String(l.account),
+            debit: parseCommaNum(String(l.debit ?? 0)),
+            credit: parseCommaNum(String(l.credit ?? 0)),
             description: l.description || undefined,
           }))
           .filter((l) => l.account && l.account !== "0"),
@@ -1052,30 +1387,125 @@ export class HoldedClient {
 
 /** Línea plana devuelta por /api/v2/ledger-entries */
 interface HoldedLedgerLineRaw {
-  entry_number:    number;
-  line:            number;
-  date:            string;   // "DD/MM/YYYY"
-  type:            string;   // "payroll" | "purchase" | "invoice" | "entry" | …
-  description:     string;
+  entry_number: number;
+  line: number;
+  date: string; // "DD/MM/YYYY"
+  type: string; // "payroll" | "purchase" | "invoice" | "entry" | …
+  description: string;
   doc_description: string;
-  account:         number;   // código PGC numérico, e.g. 62300000
-  debit:           string;   // "188.91"
-  credit:          string;   // "0.00"
-  tags:            string[];
-  checked:         boolean;
+  account: number; // código PGC numérico, e.g. 62300000
+  debit: string; // "188.91"
+  credit: string; // "0.00"
+  tags: string[];
+  checked: boolean;
 }
 
 export interface HoldedJournalEntryLine {
-  account:      string;  // código PGC como string, solo dígitos (e.g. "62300000")
-  debit:        number;
-  credit:       number;
+  account: string; // código PGC como string, solo dígitos (e.g. "62300000")
+  debit: number;
+  credit: number;
   description?: string;
 }
 
 export interface HoldedJournalEntry {
-  id:            string;  // string del entry_number, e.g. "10"
-  date:          string;  // ISO "YYYY-MM-DD"
-  description?:  string;
-  documentType?: string;  // type del primer apunte: "payroll" | "entry" | …
-  lines:         HoldedJournalEntryLine[];
+  id: string; // string del entry_number, e.g. "10"
+  date: string; // ISO "YYYY-MM-DD"
+  description?: string;
+  documentType?: string; // type del primer apunte: "payroll" | "entry" | …
+  lines: HoldedJournalEntryLine[];
+}
+
+// ─── RRHH — Empleados y Nóminas (Holded Team API v2) ───────────────────────────
+// GET /api/v2/employees y /api/v2/salary-records — ver openapi.json público de
+// Holded. `employee_id`/`employee_name` usan snake_case tal cual los devuelve la
+// API (no es un capricho, es el payload real).
+
+/** Forma cruda de un item de GET /api/v2/employees (solo los campos que usamos). */
+interface HoldedEmployeeRaw {
+  id: string;
+  name?: string;
+  last_name?: string;
+  full_name?: string;
+  iban?: string;
+}
+
+export interface HoldedEmployee {
+  id: string;
+  fullName: string;
+  iban: string | null;
+}
+
+export type HoldedSalaryPaymentStatus = "PENDING" | "PAID" | "PARTIALLY_PAID";
+
+/** Forma cruda de GET /api/v2/salary-records (listado, sin líneas) — OJO: los
+ *  importes vienen con coma decimal ("470,65"), no con punto, igual que en
+ *  facturas/ledger-entries (confirmado contra la API real, 2026-09-15) —
+ *  necesitan parseCommaNum, no se pueden pasar tal cual a un Decimal de Prisma. */
+interface HoldedSalaryRecordSummaryRaw {
+  id: string;
+  employee_id: string | null;
+  employee_name: string;
+  date: string; // "YYYY-MM-DD", fecha de devengo
+  description?: string;
+  is_draft: boolean;
+  total_payable: string;
+  payment_total: string;
+  payment_pending: string;
+  payment_status: HoldedSalaryPaymentStatus;
+}
+
+/** Item de GET /api/v2/salary-records ya normalizado (importes como number). */
+export interface HoldedSalaryRecordSummary {
+  id: string;
+  employeeId: string | null;
+  employeeName: string;
+  date: string; // "YYYY-MM-DD", fecha de devengo
+  description?: string;
+  isDraft: boolean;
+  totalPayable: number;
+  paymentTotal: number;
+  paymentPending: number;
+  paymentStatus: HoldedSalaryPaymentStatus;
+}
+
+function normalizeSalaryRecordSummary(
+  raw: HoldedSalaryRecordSummaryRaw,
+): HoldedSalaryRecordSummary {
+  return {
+    id: raw.id,
+    employeeId: raw.employee_id,
+    employeeName: raw.employee_name,
+    date: raw.date,
+    description: raw.description,
+    isDraft: raw.is_draft,
+    totalPayable: parseCommaNum(raw.total_payable),
+    paymentTotal: parseCommaNum(raw.payment_total),
+    paymentPending: parseCommaNum(raw.payment_pending),
+    paymentStatus: raw.payment_status,
+  };
+}
+
+/** Línea cruda de detalle — amount confirmado con punto decimal en la API real,
+ *  pero se pasa por parseCommaNum igualmente por si algún importe llega con coma
+ *  (mismo criterio defensivo que el resto del cliente). */
+interface HoldedSalaryRecordLineRaw {
+  type: string;
+  amount: string;
+  description?: string | null;
+}
+
+/** Línea de detalle de una nómina — el desglose por concepto que captura el OCR. */
+export interface HoldedSalaryRecordLine {
+  type: string; // salary | tax | companytax | retention | extra | result | advance | wage_garnishment | pago_delegado_it | salary_in_kind…
+  amount: number; // con signo — deducciones negativas
+  description?: string | null;
+}
+
+interface HoldedSalaryRecordDetailRaw extends HoldedSalaryRecordSummaryRaw {
+  lines: HoldedSalaryRecordLineRaw[];
+}
+
+/** GET /api/v2/salary-records/{id} — detalle con líneas, ya normalizado. */
+export interface HoldedSalaryRecordDetail extends HoldedSalaryRecordSummary {
+  lines: HoldedSalaryRecordLine[];
 }

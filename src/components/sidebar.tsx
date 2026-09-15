@@ -22,13 +22,18 @@ import {
   Scale,
   ChevronDown,
   ChevronRight,
+  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
 
 type NavItem = { name: string; href: string; icon: typeof LayoutDashboard };
 type NavSubsection = { label: string; items: NavItem[] };
-type NavGroup = { label: string; items: NavItem[]; subsections?: NavSubsection[] };
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+  subsections?: NavSubsection[];
+};
 
 /**
  * Sidebar agrupada por bloques (E12, revisión 2026-09-03): antes era una lista plana
@@ -54,6 +59,16 @@ const NAVIGATION_GROUPS: NavGroup[] = [
   {
     label: "Operaciones",
     items: [{ name: "Proyectos", href: "/projects", icon: FolderKanban }],
+  },
+  {
+    label: "RRHH",
+    items: [],
+    subsections: [
+      {
+        label: "Nóminas",
+        items: [{ name: "Nóminas", href: "/payroll", icon: Banknote }],
+      },
+    ],
   },
   {
     label: "Facturación",
@@ -85,24 +100,37 @@ const NAVIGATION_GROUPS: NavGroup[] = [
 ];
 
 function isItemActive(pathname: string, href: string): boolean {
-  return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+  return (
+    pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
+  );
 }
 
 function groupHasActiveItem(group: NavGroup, pathname: string): boolean {
   return (
     group.items.some((item) => isItemActive(pathname, item.href)) ||
-    (group.subsections?.some((sub) => sub.items.some((item) => isItemActive(pathname, item.href))) ?? false)
+    (group.subsections?.some((sub) =>
+      sub.items.some((item) => isItemActive(pathname, item.href)),
+    ) ??
+      false)
   );
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }): React.JSX.Element {
+function NavLink({
+  item,
+  pathname,
+}: {
+  item: NavItem;
+  pathname: string;
+}): React.JSX.Element {
   const isActive = isItemActive(pathname, item.href);
   return (
     <Link
       href={item.href}
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-        isActive ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+        isActive
+          ? "bg-indigo-50 text-indigo-700"
+          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
       )}
     >
       <item.icon className="h-5 w-5 shrink-0" />
@@ -111,7 +139,11 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }): React
   );
 }
 
-export function Sidebar({ onCollapse }: { onCollapse?: () => void }): React.JSX.Element {
+export function Sidebar({
+  onCollapse,
+}: {
+  onCollapse?: () => void;
+}): React.JSX.Element {
   const pathname = usePathname();
 
   // Secciones como acordeón: por defecto, una sección está abierta si contiene la
@@ -119,14 +151,19 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }): React.JSX.
   // el usuario la pliega/despliega a mano, lo que prevalece sobre ese valor por
   // defecto (guardado por separado en `manualOverrides`, solo para las secciones que
   // el usuario ha tocado).
-  const [manualOverrides, setManualOverrides] = useState<Record<string, boolean>>({});
+  const [manualOverrides, setManualOverrides] = useState<
+    Record<string, boolean>
+  >({});
 
   function isGroupOpen(group: NavGroup): boolean {
     return manualOverrides[group.label] ?? groupHasActiveItem(group, pathname);
   }
 
   function toggleGroup(group: NavGroup): void {
-    setManualOverrides((prev) => ({ ...prev, [group.label]: !isGroupOpen(group) }));
+    setManualOverrides((prev) => ({
+      ...prev,
+      [group.label]: !isGroupOpen(group),
+    }));
   }
 
   return (
@@ -181,10 +218,16 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }): React.JSX.
                         {sub.label}
                       </p>
                       {sub.items.length === 0 ? (
-                        <p className="px-3 text-xs italic text-gray-300">Próximamente</p>
+                        <p className="px-3 text-xs italic text-gray-300">
+                          Próximamente
+                        </p>
                       ) : (
                         sub.items.map((item) => (
-                          <NavLink key={item.name} item={item} pathname={pathname} />
+                          <NavLink
+                            key={item.name}
+                            item={item}
+                            pathname={pathname}
+                          />
                         ))
                       )}
                     </div>
