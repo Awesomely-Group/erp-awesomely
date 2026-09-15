@@ -5,13 +5,23 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
+/**
+ * Registra un pago ligado a un documento ya existente — una factura (`invoiceId`) o una
+ * nómina (`salaryRecordId`), mutuamente excluyentes. Se crea siempre como ya pagado, igual
+ * comportamiento para ambos casos — una nómina en Holded llega "pendiente" desde el sync
+ * (igual que una factura), así que "marcar pagada" es simplemente registrar el pago aquí,
+ * no crear un registro pendiente nuevo (eso solo aplica a los pagos sueltos, ver
+ * `createManualPayment`).
+ */
 export async function registerPayment({
   invoiceId,
+  salaryRecordId,
   amount,
   paidAt,
   notes,
 }: {
-  invoiceId: string;
+  invoiceId?: string;
+  salaryRecordId?: string;
   amount: number;
   paidAt: string; // ISO date string
   notes: string;
@@ -19,9 +29,17 @@ export async function registerPayment({
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
+  if (!invoiceId && !salaryRecordId)
+    throw new Error("Falta invoiceId o salaryRecordId");
+  if (invoiceId && salaryRecordId)
+    throw new Error(
+      "Un pago no puede ir ligado a una factura y a una nómina a la vez",
+    );
+
   await prisma.invoicePayment.create({
     data: {
-      invoiceId,
+      invoiceId: invoiceId ?? null,
+      salaryRecordId: salaryRecordId ?? null,
       amount,
       paidAt: new Date(paidAt),
       paidBy: session.user.email ?? session.user.id ?? "unknown",
@@ -30,6 +48,7 @@ export async function registerPayment({
   });
 
   revalidatePath("/payments");
+  if (salaryRecordId) revalidatePath("/payroll");
 }
 
 export type ManualPaymentInput = {
@@ -46,6 +65,9 @@ export type ManualPaymentInput = {
   companyId: string | null;
   marca: string | null;
   accountMappingId: string | null;
+  /** IBAN del beneficiario/contraparte del pago — texto libre, solo relevante (y
+   * persistido) cuando invoiceId es null (E14, 2026-09-15). */
+  iban: string | null;
 };
 
 /**
@@ -58,14 +80,18 @@ export type ManualPaymentInput = {
  * `markManualPaymentPaid`. Los pagos ligados a factura no afectan a cashflow — su importe
  * ya se cuenta a través de la propia factura.
  */
-export async function createManualPayment(input: ManualPaymentInput): Promise<void> {
+export async function createManualPayment(
+  input: ManualPaymentInput,
+): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
   const isUnlinked = input.invoiceId === null;
 
   if (isUnlinked && !input.accountMappingId) {
-    throw new Error("La cuenta contable es obligatoria para pagos sin factura asociada");
+    throw new Error(
+      "La cuenta contable es obligatoria para pagos sin factura asociada",
+    );
   }
 
   await prisma.invoicePayment.create({
@@ -73,7 +99,9 @@ export async function createManualPayment(input: ManualPaymentInput): Promise<vo
       invoiceId: input.invoiceId,
       amount: input.amount,
       paidAt: isUnlinked ? null : new Date(input.date),
-      paidBy: isUnlinked ? null : (session.user.email ?? session.user.id ?? "unknown"),
+      paidBy: isUnlinked
+        ? null
+        : (session.user.email ?? session.user.id ?? "unknown"),
       dueDate: isUnlinked ? new Date(input.date) : null,
       notes: input.notes || null,
       // Campos de clasificación: solo se persisten en la rama suelta — guarda de
@@ -82,6 +110,7 @@ export async function createManualPayment(input: ManualPaymentInput): Promise<vo
       companyId: isUnlinked ? input.companyId : null,
       marca: isUnlinked ? input.marca : null,
       accountMappingId: isUnlinked ? input.accountMappingId : null,
+      iban: isUnlinked ? input.iban || null : null,
     },
   });
 

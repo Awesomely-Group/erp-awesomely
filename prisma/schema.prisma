@@ -84,6 +84,8 @@ model Company {
   manualPayments      InvoicePayment[]
   forecasts           Forecast[]
   forecastRecurrences ForecastRecurrence[]
+  employees           Employee[]
+  salaryRecords       SalaryRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -329,20 +331,30 @@ model Invoice {
 }
 
 model InvoicePayment {
-  id        String    @id @default(cuid())
-  invoiceId String?
-  invoice   Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  amount    Decimal
+  id             String        @id @default(cuid())
+  invoiceId      String?
+  invoice        Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  // Pago ligado a una nómina (SalaryRecord) en vez de a una factura — mutuamente
+  // excluyente con invoiceId en la práctica, mismo mecanismo (registerPayment /
+  // markManualPaymentPaid generalizados para aceptar uno u otro).
+  salaryRecordId String?
+  salaryRecord   SalaryRecord? @relation(fields: [salaryRecordId], references: [id], onDelete: Cascade)
+  amount         Decimal
   // Ligado a factura: siempre se rellena al crearse (pago ya realizado, igual que
   // antes). Suelto (invoiceId null): queda en null hasta que se marca como pagado
   // (markManualPaymentPaid) — mientras tanto es un pago PENDIENTE, visible en la
   // misma lista de Pagos/Cobros pendientes que las facturas.
-  paidAt    DateTime?
-  paidBy    String?
+  paidAt         DateTime?
+  paidBy         String?
   // Solo se usa en la rama suelta y pendiente: fecha prevista de pago/cobro,
   // equivalente al "Vencimiento" de una factura mientras no se marca pagado.
-  dueDate   DateTime?
-  notes     String?
+  dueDate        DateTime?
+  notes          String?
+  // IBAN del beneficiario/contraparte del pago — solo se pide (y persiste) en la
+  // rama suelta del formulario ("Sin factura asociada"), texto libre (E14,
+  // 2026-09-15): no hay contacto Holded del que sacarlo como sí pasa con las
+  // facturas (ver contactIban en payments/page.tsx).
+  iban           String?
 
   // Solo se rellenan cuando invoiceId es null (pago suelto, sin factura asociada).
   // Replican a propósito la forma de clasificación de Forecast, para que
@@ -360,6 +372,7 @@ model InvoicePayment {
   createdAt DateTime @default(now())
 
   @@index([invoiceId])
+  @@index([salaryRecordId])
   @@index([paidAt])
   @@index([dueDate])
   @@index([direction])
@@ -1075,4 +1088,89 @@ model JournalEntryLine {
   @@index([companyId, date])
   @@index([companyId, accountingMonth])
   @@map("journal_entry_lines")
+}
+
+// ─── RRHH — Nóminas (Holded Team API: /v2/employees, /v2/salary-records) ───────
+//
+// Las nóminas las genera la gestoría fuera de Holded y se pasan por el OCR del
+// módulo "Team" de Holded (app.holded.com/team/v2/payrolls/salary-record/...),
+// NO son facturas de compra — viven en un módulo separado de la API de Holded
+// (accounting:payrolls.read / team:employees.read), sincronizado aparte de
+// invoices/purchases (E15, 2026-09-15). Se muestran mezcladas con las facturas
+// en la lista de "Pagos pendientes" (PaymentInvoice.source === "payroll").
+
+enum SalaryPaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_PAID
+
+  @@map("salary_payment_status")
+}
+
+model Employee {
+  id               String  @id @default(cuid())
+  companyId        String
+  company          Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  holdedEmployeeId String
+  fullName         String
+  // IBAN del empleado, sincronizado desde Holded — se usa como IBAN del
+  // beneficiario en la fila de Pagos, igual que contactIban para facturas.
+  iban             String?
+  isExEmployee     Boolean @default(false)
+
+  salaryRecords SalaryRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, holdedEmployeeId])
+  @@map("employees")
+}
+
+model SalaryRecord {
+  id                   String    @id @default(cuid())
+  companyId            String
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  holdedSalaryRecordId String
+  employeeId           String?
+  employee             Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  // Snapshot del nombre del empleado en el momento de la nómina (igual que hace
+  // Holded) — sobrevive aunque se borre el Employee.
+  employeeName         String
+  // Fecha de devengo — no existe fecha de vencimiento en el API de Holded, se
+  // usa esta como equivalente al "Vencimiento" de una factura en Pagos.
+  date                 DateTime
+  description          String?
+  isDraft              Boolean   @default(false)
+
+  totalPayable   Decimal
+  paymentTotal   Decimal             @default(0)
+  paymentPending Decimal             @default(0)
+  paymentStatus  SalaryPaymentStatus
+
+  lines       SalaryRecordLine[]
+  erpPayments InvoicePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, holdedSalaryRecordId])
+  @@index([companyId, date])
+  @@index([paymentStatus])
+  @@map("salary_records")
+}
+
+/// Desglose por concepto de cada nómina, tal cual lo captura el OCR de Holded:
+/// salary, tax, companytax, retention, extra, result, advance,
+/// wage_garnishment, pago_delegado_it, salary_in_kind(...).
+model SalaryRecordLine {
+  id             String       @id @default(cuid())
+  salaryRecordId String
+  salaryRecord   SalaryRecord @relation(fields: [salaryRecordId], references: [id], onDelete: Cascade)
+  type           String
+  amount         Decimal
+  description    String?
+
+  @@index([salaryRecordId])
+  @@map("salary_record_lines")
 }
