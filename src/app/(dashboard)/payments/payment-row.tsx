@@ -275,7 +275,7 @@ export function PaymentRow({ invoice, dragHandleProps }: Props): React.JSX.Eleme
               <div key={p.id} className="flex items-center gap-4 text-xs text-gray-600">
                 <span className="font-medium text-green-700">{formatCurrency(p.amount)}</span>
                 <span>{formatDate(p.paidAt)}</span>
-                <span className="text-gray-400">{p.paidBy}</span>
+                <span className="text-gray-500">Pagado por {p.paidBy}</span>
                 {p.notes && <span className="italic text-gray-400 truncate">{p.notes}</span>}
                 <DeletePaymentButton id={p.id} onDeleted={router.refresh} />
               </div>
