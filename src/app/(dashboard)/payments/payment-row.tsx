@@ -392,7 +392,11 @@ export function PaymentRow({
                 </span>
                 <span>{formatDate(p.paidAt)}</span>
                 <span className="text-gray-500">Pagado por {p.paidBy}</span>
-                {p.notes && <span className="italic text-gray-400 truncate">{p.notes}</span>}
+                {p.notes && (
+                  <span className="text-gray-600">
+                    <span className="text-gray-400">Nota:</span> {p.notes}
+                  </span>
+                )}
                 <DeletePaymentButton id={p.id} onDeleted={router.refresh} />
               </div>
             ))}
