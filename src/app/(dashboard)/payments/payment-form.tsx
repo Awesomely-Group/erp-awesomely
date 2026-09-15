@@ -54,6 +54,7 @@ export function PaymentForm({
     const accountMappingId = (fd.get("accountMappingId") as string) || null;
     const marca = (fd.get("marca") as string) || null;
     const companyId = (fd.get("companyId") as string) || null;
+    const iban = (fd.get("iban") as string) || null;
     const amount = parseFloat(fd.get("amount") as string);
     const date = fd.get("date") as string;
     const notes = (fd.get("notes") as string) || "";
@@ -63,7 +64,9 @@ export function PaymentForm({
       return;
     }
     if (unlinked && !accountMappingId) {
-      setError("La cuenta contable es obligatoria para pagos sin factura asociada.");
+      setError(
+        "La cuenta contable es obligatoria para pagos sin factura asociada.",
+      );
       return;
     }
     if (isNaN(amount) || !date) {
@@ -82,6 +85,7 @@ export function PaymentForm({
         companyId: unlinked ? companyId : null,
         marca: unlinked ? marca : null,
         accountMappingId: unlinked ? accountMappingId : null,
+        iban: unlinked ? iban : null,
       });
       router.refresh();
       onClose();
@@ -115,7 +119,9 @@ export function PaymentForm({
 
           {!unlinked ? (
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Factura *</label>
+              <label className="text-xs font-medium text-gray-600">
+                Factura *
+              </label>
               <SearchableSelect
                 name="invoiceId"
                 options={invoiceOptions}
@@ -129,7 +135,9 @@ export function PaymentForm({
                 <AccountMappingSelect accountMappings={accountMappings} />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Marca</label>
+                <label className="text-xs font-medium text-gray-600">
+                  Marca
+                </label>
                 <select
                   name="marca"
                   defaultValue=""
@@ -137,12 +145,16 @@ export function PaymentForm({
                 >
                   <option value="">Sin marca</option>
                   {MARCA_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Empresa</label>
+                <label className="text-xs font-medium text-gray-600">
+                  Empresa
+                </label>
                 <select
                   name="companyId"
                   defaultValue=""
@@ -150,16 +162,31 @@ export function PaymentForm({
                 >
                   <option value="">Sin empresa</option>
                   {companyOptions.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
+              </div>
+              <div className="col-span-2 flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">
+                  IBAN del beneficiario (opcional)
+                </label>
+                <input
+                  type="text"
+                  name="iban"
+                  placeholder="ES00 0000 0000 0000 0000 0000"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white font-mono tracking-tight"
+                />
               </div>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Importe (EUR) *</label>
+              <label className="text-xs font-medium text-gray-600">
+                Importe (EUR) *
+              </label>
               <input
                 type="number"
                 name="amount"
@@ -183,7 +210,9 @@ export function PaymentForm({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-600">Notas (opcional)</label>
+            <label className="text-xs font-medium text-gray-600">
+              Notas (opcional)
+            </label>
             <input
               type="text"
               name="notes"
@@ -193,7 +222,9 @@ export function PaymentForm({
           </div>
 
           {error && (
-            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+              {error}
+            </p>
           )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
