@@ -43,8 +43,14 @@ export function incrementalLookbackDays(): number {
 /**
  * Calcula el ámbito de una sincronización.
  *
- * En incremental nunca se retrocede más allá del 1 de enero de `fromYear`: si
- * el lookback se configura muy grande, el resultado converge al modo full.
+ * En incremental se lee, como mínimo, **el ejercicio en curso entero**: una
+ * compra de febrero puede corregirse o borrarse en septiembre, y hasta que no se
+ * relee no hay forma de enterarse. El lookback manda cuando va más atrás que el
+ * 1 de enero, que es lo que pasa en enero y febrero: ahí hay que seguir mirando
+ * el cierre del ejercicio anterior.
+ *
+ * Nunca se retrocede más allá del 1 de enero de `fromYear`: si el lookback se
+ * configura muy grande, el resultado converge al modo full.
  */
 export function resolveSyncScope(
   mode: SyncMode,
@@ -61,13 +67,18 @@ export function resolveSyncScope(
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - lookbackDays);
 
-  // Alineado a principio de mes: las ventanas de /purchases son mensuales, así
-  // que empezar a mitad de mes dejaría fuera documentos del propio mes.
+  // Alineado a principio de mes: la ventana de /purchases se construye por meses
+  // completos, así que empezar a mitad de mes dejaría fuera documentos del propio mes.
   const monthStart = new Date(cutoff.getFullYear(), cutoff.getMonth(), 1);
+
+  // El más antiguo de los dos: el ejercicio en curso siempre entra entero, y el
+  // lookback lo amplía hacia atrás cuando toca (enero y febrero).
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const fromDate = monthStart < yearStart ? monthStart : yearStart;
 
   return {
     mode,
-    fromDate: monthStart < historyStart ? historyStart : monthStart,
+    fromDate: fromDate < historyStart ? historyStart : fromDate,
   };
 }
 

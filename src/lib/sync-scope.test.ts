@@ -20,15 +20,35 @@ describe("resolveSyncScope", () => {
     expect(scope.fromDate).toEqual(new Date(2020, 0, 1));
   });
 
-  it("en incremental arranca a principio del mes del corte", () => {
-    // 16-sep menos 60 días = 18-jul → se alinea al 1 de julio porque las
-    // ventanas de /purchases son mensuales.
+  it("en incremental arranca el 1 de enero del ejercicio en curso", () => {
+    // El lookback de 60 días llegaría solo al 1 de julio, pero un documento de
+    // febrero puede haberse corregido o borrado hoy: el año entero se relee.
     const scope = resolveSyncScope("incremental", {
       fromYear: 2020,
       now: NOW,
       lookbackDays: 60,
     });
-    expect(scope.fromDate).toEqual(new Date(2026, 6, 1));
+    expect(scope.fromDate).toEqual(new Date(2026, 0, 1));
+  });
+
+  it("en enero el lookback sigue alcanzando el cierre del año anterior", () => {
+    // 5-ene-2027 menos 60 días = 6-nov-2026 → 1 de noviembre. Quedarse en el
+    // 1 de enero dejaría fuera diciembre justo cuando más se retoca.
+    const scope = resolveSyncScope("incremental", {
+      fromYear: 2020,
+      now: new Date(2027, 0, 5),
+      lookbackDays: 60,
+    });
+    expect(scope.fromDate).toEqual(new Date(2026, 10, 1));
+  });
+
+  it("un lookback corto no recorta el ejercicio en curso", () => {
+    const scope = resolveSyncScope("incremental", {
+      fromYear: 2020,
+      now: NOW,
+      lookbackDays: 1,
+    });
+    expect(scope.fromDate).toEqual(new Date(2026, 0, 1));
   });
 
   it("nunca retrocede más allá del inicio de la historia configurada", () => {
