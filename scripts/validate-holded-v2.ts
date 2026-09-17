@@ -192,9 +192,9 @@ async function main(): Promise<void> {
     // getAllInvoicesPaginated returns HoldedInvoice[] (already normalized).
     // We validate the normalized values directly.
     const tasks: Array<[string, () => Promise<ReturnType<typeof normalizeV2Invoice>[]>]> = [
-      ["SALE",     () => client.getAllInvoicesPaginated("invoice")],
-      ["PURCHASE", () => client.getAllInvoicesPaginated("purchase")],
-      ["PROFORMA", () => client.getAllProformasPaginated()],
+      ["SALE",     () => client.getAllInvoicesPaginated("invoice").then((r) => r.documents)],
+      ["PURCHASE", () => client.getAllInvoicesPaginated("purchase").then((r) => r.documents)],
+      ["PROFORMA", () => client.getAllProformasPaginated().then((r) => r.documents)],
     ];
 
     for (const [label, fetchFn] of tasks) {

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { syncAll, type SyncProgressEvent } from "@/lib/sync";
+import { parseSyncMode } from "@/lib/sync-scope";
 
 // Holded sync can take a while — give it up to 5 minutes
 export const maxDuration = 300;
@@ -20,6 +21,9 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const triggeredBy = isCron ? "cron" : (session?.user?.email ?? undefined);
+  // El botón de sincronizar del dashboard es incremental; `?mode=full` fuerza
+  // la relectura completa cuando de verdad hace falta.
+  const mode = parseSyncMode(new URL(req.url).searchParams.get("mode"));
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -33,7 +37,7 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       try {
-        const result = await syncAll(triggeredBy, send);
+        const result = await syncAll(triggeredBy, send, mode);
         send({ type: "complete", ...result });
       } catch (err) {
         send({ type: "fatal", error: err instanceof Error ? err.message : String(err) });

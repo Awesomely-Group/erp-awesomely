@@ -28,9 +28,20 @@ async function main(): Promise<void> {
       client.getAllInvoicesPaginated("purchase"),
     ]);
 
+    if (!sales.complete || !purchases.complete) {
+      // Marcar a partir de una lista truncada etiquetaría como eliminadas
+      // facturas que sí existen en Holded. Mejor no tocar nada.
+      console.log(
+        `  ⚠ Listado incompleto, se omite esta empresa: ${
+          sales.incompleteReason ?? purchases.incompleteReason ?? "motivo desconocido"
+        }`,
+      );
+      continue;
+    }
+
     const returnedHoldedIds = new Set([
-      ...sales.map((i) => i.id),
-      ...purchases.map((i) => i.id),
+      ...sales.documents.map((i) => i.id),
+      ...purchases.documents.map((i) => i.id),
     ]);
     console.log(`  Holded returned: ${returnedHoldedIds.size} invoices`);
 
