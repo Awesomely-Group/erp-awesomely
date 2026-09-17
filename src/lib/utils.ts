@@ -6,11 +6,26 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 export function formatCurrency(amount: number, currency = "EUR"): string {
+  // `es-ES` define minimumGroupingDigits = 2 en CLDR, así que con el
+  // `useGrouping: "auto"` por defecto los importes de cuatro cifras salían sin
+  // punto de millar ("1234,50 €") y solo se agrupaba a partir de 10.000. Es la
+  // franja más frecuente del ERP, de ahí que el separador pareciera aplicarse
+  // "solo en algunos importes".
+  //
+  // `maximumFractionDigits` no cambia la salida de EUR/USD/GBP/CHF (las monedas
+  // que usamos, todas de 2 decimales); se fija para que la moneda no dependa de
+  // los defaults de cada una.
+  //
+  // Un importe negativo despreciable se normaliza a 0 para no renderizar el
+  // "-0,00 €" fantasma que aparecía en subtotales de P&L y cashflow.
+  const normalized = Math.abs(amount) < 0.005 ? 0 : amount;
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
-  }).format(amount);
+    maximumFractionDigits: 2,
+    useGrouping: "always",
+  }).format(normalized);
 }
 
 export function formatDate(date: Date | string): string {
