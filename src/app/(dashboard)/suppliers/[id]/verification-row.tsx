@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatHourlyRate } from "@/lib/utils";
 import {
   captureTempoHours,
   linkInvoice,
@@ -135,7 +135,7 @@ export function VerificationRow({ verification: v, availableInvoices }: Props): 
           {period}
           {v.role && (
             <span className="block text-gray-400 mt-0.5">
-              {v.role.name} · {v.role.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+              {v.role.name} · {formatHourlyRate(v.role.ratePerHour)}
             </span>
           )}
         </span>

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import type { ProjectUserRoleEntry } from "@/app/api/projects/[projectId]/user-roles/route";
 import { setProjectUserRole } from "../actions";
+import { formatHourlyRate } from "@/lib/utils";
 
 interface Props {
   projectId: string;
@@ -120,7 +121,7 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
                       >
                         <option value="">
                           {e.defaultRoleName != null && e.supplierRate != null
-                            ? `${e.defaultRoleName} · ${e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h`
+                            ? `${e.defaultRoleName} · ${formatHourlyRate(e.supplierRate)}`
                             : e.defaultRoleName != null
                               ? e.defaultRoleName
                               : "— Sin bolsa —"}
@@ -157,7 +158,7 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
                 </div>
                 {e.effectiveRoleId && e.supplierRate != null && (e.projectRate == null || e.projectRate !== e.supplierRate) && (
                   <p className="text-[10px] text-gray-400 mt-0.5 ml-10">
-                    Coste proveedor: {e.supplierRate.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+                    Coste proveedor: {formatHourlyRate(e.supplierRate)}
   				      </p>
                 )}
               </li>

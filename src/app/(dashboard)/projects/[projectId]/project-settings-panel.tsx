@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useRef, useEffect } from "react";
 import { updateProjectTypes, upsertHourBucket, deleteHourBucket, toggleHourBucketActive, upsertRegularFeeEntry, deleteRegularFeeEntry } from "../actions";
 import { InvoiceCombobox } from "@/components/invoice-combobox";
+import { formatHourlyRate } from "@/lib/utils";
 
 interface RoleOption {
   id: string;
@@ -578,7 +579,7 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
                               {b.active ? "Activa" : "Inactiva"}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-400">{b.ratePerHour}€/h · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
+                          <p className="text-xs text-gray-400">{formatHourlyRate(b.ratePerHour)} · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
                         </div>
                         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                           <button

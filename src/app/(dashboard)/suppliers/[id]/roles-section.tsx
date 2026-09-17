@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createRole, updateRole, deleteRole } from "./actions";
 import { setDefaultRole } from "../actions";
+import { formatHourlyRate } from "@/lib/utils";
 
 type Role = { id: string; name: string; ratePerHour: number };
 type Template = { id: string; name: string; color: string };
@@ -101,7 +102,7 @@ function RoleRow({
         {isDefault && <span className="ml-1.5 text-xs text-indigo-400 font-normal">por defecto</span>}
       </span>
       <span className="text-sm text-gray-600 tabular-nums">
-        {role.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/h
+        {formatHourlyRate(role.ratePerHour)}
       </span>
       <button
         onClick={() => setEditing(true)}

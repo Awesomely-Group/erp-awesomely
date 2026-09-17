@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HourBucketEntry, HourBucketsResponse, UnassignedUser } from "@/app/api/projects/[projectId]/hour-buckets/route";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
+import { formatHourlyRate } from "@/lib/utils";
 
 interface Props {
   projectId: string;
@@ -53,7 +54,7 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400">{bucket.ratePerHour}€/h</p>
+          <p className="text-xs text-gray-400">{formatHourlyRate(bucket.ratePerHour)}</p>
           {(bucket.startDate ?? bucket.endDate) && (
             <p className="text-xs text-gray-400 mt-0.5">
               {bucket.startDate ? fmtDate(bucket.startDate) : "—"} → {bucket.endDate ? fmtDate(bucket.endDate) : "—"}

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createVerification } from "./actions";
+import { formatHourlyRate } from "@/lib/utils";
 
 interface Role {
   id: string;
@@ -71,7 +72,7 @@ export function NewVerificationForm({ supplierId, roles }: Props): React.JSX.Ele
           <option value="">Sin rol (tarifa general)</option>
           {roles.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.name} — {r.ratePerHour.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/h
+              {r.name} — {formatHourlyRate(r.ratePerHour)}
             </option>
           ))}
         </select>
