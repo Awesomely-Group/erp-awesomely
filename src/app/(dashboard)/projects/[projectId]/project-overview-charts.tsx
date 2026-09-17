@@ -12,7 +12,7 @@ import {
   ReferenceLine,
   Legend,
 } from "recharts";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatThousandsTick } from "@/lib/utils";
 
 interface MonthCostData {
   months: Array<{ month: string; totalHours: number; totalCost: number }>;
@@ -319,7 +319,7 @@ export function ProjectOverviewCharts({
                 tickLine={false}
               />
               <YAxis
-                tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`}
+                tickFormatter={formatThousandsTick}
                 tick={{ fontSize: 11, fill: "#6b7280" }}
                 axisLine={false}
                 tickLine={false}
