@@ -345,11 +345,15 @@ function MonthSectionHeader({
           </span>
         )}
         <span className="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium shrink-0">
-          {count} {count === 1 ? "factura" : "facturas"}
+          {count} {count === 1 ? "línea" : "líneas"}
         </span>
       </div>
-      <span className="text-base font-bold shrink-0 ml-4">
-        {formatCurrency(subtotal)}
+      <span
+        className="flex items-baseline gap-1.5 shrink-0 ml-4"
+        title="Suma de lo pendiente; las líneas ya pagadas cuentan 0"
+      >
+        <span className="text-xs font-normal opacity-60">pendiente</span>
+        <span className="text-base font-bold">{formatCurrency(subtotal)}</span>
       </span>
     </button>
   );
@@ -373,7 +377,7 @@ function HalfSectionHeader({
       <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-600">
         {label}
         <span className="text-xs font-normal normal-case tracking-normal text-gray-500">
-          · {count} {count === 1 ? "factura" : "facturas"}
+          · {count} {count === 1 ? "línea" : "líneas"}
         </span>
         {isCurrentBatch && (
           <span className="rounded-full bg-indigo-100 text-indigo-600 px-2 py-0.5 text-[11px] font-semibold normal-case tracking-normal">
@@ -381,7 +385,10 @@ function HalfSectionHeader({
           </span>
         )}
       </span>
-      <span className="text-sm font-semibold text-gray-700">{formatCurrency(subtotal)}</span>
+      <span className="flex items-baseline gap-1.5 shrink-0" title="Suma de lo pendiente; las líneas ya pagadas cuentan 0">
+        <span className="text-xs font-normal text-gray-400">pendiente</span>
+        <span className="text-sm font-semibold text-gray-700">{formatCurrency(subtotal)}</span>
+      </span>
     </div>
   );
 }
@@ -468,10 +475,13 @@ function EntityGroupHeader({ name, count, subtotal }: {
       <span className="flex items-center gap-2 min-w-0">
         <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
         <span className="rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-xs font-medium shrink-0">
-          {count} {count === 1 ? "factura" : "facturas"}
+          {count} {count === 1 ? "línea" : "líneas"}
         </span>
       </span>
-      <span className="text-sm font-bold text-gray-800 shrink-0 ml-4">{formatCurrency(subtotal)}</span>
+      <span className="flex items-baseline gap-1.5 shrink-0 ml-4" title="Suma de lo pendiente; las líneas ya pagadas cuentan 0">
+        <span className="text-xs font-normal text-gray-400">pendiente</span>
+        <span className="text-sm font-bold text-gray-800">{formatCurrency(subtotal)}</span>
+      </span>
     </div>
   );
 }
