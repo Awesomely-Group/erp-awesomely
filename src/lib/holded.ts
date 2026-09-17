@@ -331,6 +331,32 @@ export class HoldedApiError extends Error {
   }
 }
 
+/**
+ * Traduce un fallo de Holded al status que debe ver el cliente. Solo un 404 real
+ * significa "no existe"; el resto son problemas de la integración y deben
+ * distinguirse para no confundirlos con un documento ausente.
+ */
+export function holdedErrorResponse(
+  err: unknown,
+): { status: number; message: string } {
+  if (err instanceof HoldedApiError) {
+    if (err.status === 404) {
+      return { status: 404, message: "Holded no encuentra el documento" };
+    }
+    if (err.status === 401 || err.status === 403) {
+      return { status: 502, message: "Holded rechazó las credenciales" };
+    }
+    if (err.status === 429) {
+      return { status: 503, message: "Holded está limitando las peticiones" };
+    }
+    return {
+      status: 502,
+      message: `Holded no está disponible ahora mismo (${err.status})`,
+    };
+  }
+  return { status: 502, message: "No se pudo conectar con Holded" };
+}
+
 export class HoldedClient {
   private readonly apiKey: string;
 
