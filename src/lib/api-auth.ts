@@ -30,6 +30,18 @@ export function notFound(message = "Not found"): Response {
   });
 }
 
+/**
+ * Fallo de un servicio externo (Holded), no del recurso pedido. Se distingue de
+ * `notFound` para que la UI pueda decir "no se pudo conectar" en vez de dar a
+ * entender que el documento no existe.
+ */
+export function upstreamError(message: string, status = 502): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
