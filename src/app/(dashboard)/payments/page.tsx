@@ -139,8 +139,16 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
   const bankRequests: ContactBankRequest[] = [];
   const seenContacts = new Set<string>();
   for (const inv of invoices) {
-    if (inv.type !== "PURCHASE") continue;
-    const contactId = matchPartner(inv)?.contactId;
+    // En compras el contacto sale del emparejamiento con el proveedor partner;
+    // en ventas no hay filtro equivalente, así que se usa el contacto de la
+    // propia factura. Solo se piden las que siguen pendientes de cobro, para no
+    // consultar a Holded por clientes que ya pagaron.
+    const contactId =
+      inv.type === "PURCHASE"
+        ? matchPartner(inv)?.contactId
+        : Number(inv.paymentsPending) > 0.005
+          ? inv.holdedContactId
+          : null;
     if (!contactId) continue;
     const key = `${inv.companyId}:${contactId}`;
     if (seenContacts.has(key)) continue;
@@ -269,8 +277,10 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         companyName: inv.company.name,
         verificationStatus: null,
         erpPayments: erpPaymentsPayload,
-        contactBank: null,
-        contactHoldedUrl: null,
+        contactBank: bankInfoFor(inv.companyId, inv.holdedContactId),
+        contactHoldedUrl: inv.holdedContactId
+          ? `https://app.holded.com/contacts/${inv.holdedContactId}`
+          : null,
       });
     }
   }
