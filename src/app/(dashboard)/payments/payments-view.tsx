@@ -852,7 +852,7 @@ export function PaymentsView({
             {formatCurrency(totalPendingPayments)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            {filteredPayments.length} facturas
+            {filteredPayments.length} líneas
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
@@ -863,7 +863,7 @@ export function PaymentsView({
             {formatCurrency(totalPendingCollections)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            {filteredCollections.length} facturas
+            {filteredCollections.length} líneas
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
@@ -975,7 +975,7 @@ export function PaymentsView({
                         </SortableContext>
                       ) : (
                         <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período — arrastra aquí para
+                          Sin líneas en este período — arrastra aquí para
                           reasignar
                         </p>
                       )}
@@ -1003,7 +1003,7 @@ export function PaymentsView({
                         </SortableContext>
                       ) : (
                         <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período — arrastra aquí para
+                          Sin líneas en este período — arrastra aquí para
                           reasignar
                         </p>
                       )}
@@ -1065,7 +1065,7 @@ export function PaymentsView({
                         ))
                       ) : (
                         <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período
+                          Sin líneas en este período
                         </p>
                       )}
 
@@ -1086,7 +1086,7 @@ export function PaymentsView({
                         ))
                       ) : (
                         <p className="px-6 py-4 text-xs text-gray-400 italic border-b border-gray-100">
-                          Sin facturas en este período
+                          Sin líneas en este período
                         </p>
                       )}
                     </>
