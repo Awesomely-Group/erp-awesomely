@@ -5,6 +5,22 @@ import { buildQuarterlyWindows, buildScopeWindow } from "./sync-scope";
 
 const IS_V2 = process.env.HOLDED_API_VERSION === "v2";
 
+// Cualquier valor que no sea "v2" cae a la v1, que manda la clave en otra
+// cabecera (`key` en vez de `Authorization: Bearer`) y contra otra URL base. El
+// resultado es un "Invalid key" de Holded que parece un problema de
+// credenciales cuando en realidad es de configuración — pasa, por ejemplo, con
+// un .env traído de Vercel donde la variable llega como marcador de secreto.
+if (
+  process.env.HOLDED_API_VERSION &&
+  process.env.HOLDED_API_VERSION !== "v1" &&
+  process.env.HOLDED_API_VERSION !== "v2"
+) {
+  console.warn(
+    `[holded] HOLDED_API_VERSION="${process.env.HOLDED_API_VERSION}" no es "v1" ni "v2": ` +
+      `se usará la v1 y Holded responderá "Invalid key" si la cuenta es v2.`,
+  );
+}
+
 const HOLDED_BASE_URL = IS_V2
   ? "https://api.holded.com/api/v2"
   : "https://api.holded.com/api/invoicing/v1";
