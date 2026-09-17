@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { HoldedClient } from "@/lib/holded";
+import {
+  getContactsBankData,
+  type ContactBankRequest,
+} from "@/lib/holded-contacts";
 import { getForecastFormOptions } from "@/app/(dashboard)/forecasts/forecasts-data";
 import { PaymentsView } from "./payments-view";
-import { type PaymentInvoice } from "./payment-row";
+import { type ContactBankInfo, type PaymentInvoice } from "./payment-row";
 
 const L1_LABELS: Record<string, string> = {
   COGS: "COGS",
@@ -131,52 +134,45 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
     return null;
   };
 
-  // Collect unique (companyId → Set<holdedContactId>) for partner PURCHASE invoices
-  const contactsByCompany = new Map<
-    string,
-    { apiKey: string; contactIds: Set<string> }
-  >();
+  // Contactos a resolver en Holded, deduplicados por (empresa, contacto). Solo
+  // las compras de proveedores partner tienen contacto que consultar.
+  const bankRequests: ContactBankRequest[] = [];
+  const seenContacts = new Set<string>();
   for (const inv of invoices) {
     if (inv.type !== "PURCHASE") continue;
     const contactId = matchPartner(inv)?.contactId;
     if (!contactId) continue;
-
-    const existing = contactsByCompany.get(inv.companyId);
-    if (existing) {
-      existing.contactIds.add(contactId);
-    } else {
-      contactsByCompany.set(inv.companyId, {
-        apiKey: inv.company.holdedApiKey,
-        contactIds: new Set([contactId]),
-      });
-    }
+    const key = `${inv.companyId}:${contactId}`;
+    if (seenContacts.has(key)) continue;
+    seenContacts.add(key);
+    bankRequests.push({
+      companyId: inv.companyId,
+      apiKey: inv.company.holdedApiKey,
+      contactId,
+    });
   }
 
-  // Batch-fetch IBAN for each unique contact (parallel per company)
-  const ibanMap = new Map<string, string | null>();
-  try {
-    await Promise.all(
-      [...contactsByCompany.values()].map(async ({ apiKey, contactIds }) => {
-        const client = new HoldedClient(apiKey);
-        try {
-          await Promise.all(
-            [...contactIds].map(async (contactId) => {
-              try {
-                const { iban } = await client.getContactWithBankData(contactId);
-                ibanMap.set(contactId, iban);
-              } catch {
-                ibanMap.set(contactId, null);
-              }
-            }),
-          );
-        } catch {
-          for (const id of contactIds) ibanMap.set(id, null);
-        }
-      }),
-    );
-  } catch {
-    // Holded unavailable — page renders without IBAN data
+  // Nunca lanza: los fallos vuelven como `status: "unavailable"`, con caché y
+  // concurrencia acotada dentro del módulo.
+  const bankData = await getContactsBankData(bankRequests);
+
+  function bankInfoFor(
+    companyId: string,
+    contactId: string | null | undefined,
+  ): ContactBankInfo | null {
+    if (!contactId) return null;
+    const result = bankData.get(`${companyId}:${contactId}`);
+    if (!result) return null;
+    if (result.status === "unavailable") return { status: "unavailable" };
+    return {
+      status: "ok",
+      iban: result.data.iban,
+      holder: result.data.holder,
+      bic: result.data.bic,
+      bankName: result.data.bankName,
+    };
   }
+
 
   const pendingPayments: PaymentInvoice[] = [];
   const pendingCollections: PaymentInvoice[] = [];
@@ -252,9 +248,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         companyName: inv.company.name,
         verificationStatus: inv.verifications[0]?.status ?? null,
         erpPayments: erpPaymentsPayload,
-        contactIban: supplierContactId
-          ? (ibanMap.get(supplierContactId) ?? null)
-          : null,
+        contactBank: bankInfoFor(inv.companyId, supplierContactId),
         contactHoldedUrl: supplierContactId
           ? `https://app.holded.com/contacts/${supplierContactId}`
           : null,
@@ -275,7 +269,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
         companyName: inv.company.name,
         verificationStatus: null,
         erpPayments: erpPaymentsPayload,
-        contactIban: null,
+        contactBank: null,
         contactHoldedUrl: null,
       });
     }
@@ -310,7 +304,7 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       erpPayments: isPaid
         ? [{ id: p.id, amount, paidAt: p.paidAt!.toISOString(), paidBy: displayPaidBy(p.paidBy), notes: p.notes }]
         : [],
-      contactIban: p.iban,
+      contactBank: { status: "ok", iban: p.iban, holder: null, bic: null, bankName: null },
       contactHoldedUrl: null,
     };
 
@@ -354,7 +348,13 @@ export default async function PaymentsPage(): Promise<React.JSX.Element> {
       companyName: sr.company.name,
       verificationStatus: null,
       erpPayments: erpPaymentsPayload,
-      contactIban: sr.employee?.iban ?? null,
+      contactBank: {
+        status: "ok",
+        iban: sr.employee?.iban ?? null,
+        holder: null,
+        bic: null,
+        bankName: null,
+      },
       contactHoldedUrl: null,
     });
   }
