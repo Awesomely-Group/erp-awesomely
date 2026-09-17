@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber, holdedInvoiceUrl } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import { ClassifyLinesForm } from "./classify-lines-form";
 import { MarcaEditor } from "./marca-editor";
@@ -99,7 +99,7 @@ export default async function InvoiceDetailPage({
           {invoice.currency !== "EUR" && (
             <p className="text-sm text-gray-500">
               {formatCurrency(Number(invoice.total), invoice.currency)} · TC:{" "}
-              {Number(invoice.fxRateToEur).toFixed(4)}
+              {formatNumber(Number(invoice.fxRateToEur), { decimals: 4 })}
             </p>
           )}
         </div>

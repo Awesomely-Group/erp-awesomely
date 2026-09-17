@@ -10,6 +10,7 @@ import { InvoiceDrawer } from "./invoice-drawer";
 import { Suspense } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { parseVisibleCols, type ColumnKey } from "./columns";
+import { formatNumber } from "@/lib/utils";
 
 
 const VALID_SORT_KEYS = ["date", "totalEur", "status", "counterparty", "number", "companyName", "accountingMonth", "holdedStatus"] as const;
@@ -349,7 +350,7 @@ export default async function InvoicesPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Facturas</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {total.toLocaleString("es-ES")} facturas
+            {formatNumber(total)} facturas
             {totalPages > 1 && ` · página ${page} de ${totalPages}`}
           </p>
         </div>
@@ -375,7 +376,7 @@ export default async function InvoicesPage({
           >
             Ventas
             <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-              {saleCount.toLocaleString("es-ES")}
+              {formatNumber(saleCount)}
             </span>
           </Link>
           <Link
@@ -388,7 +389,7 @@ export default async function InvoicesPage({
           >
             Compras
             <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
-              {purchaseCount.toLocaleString("es-ES")}
+              {formatNumber(purchaseCount)}
             </span>
           </Link>
         </nav>

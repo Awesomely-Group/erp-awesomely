@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatHours, formatPercent } from "@/lib/utils";
 import { BudgetType, BudgetRegion, BudgetStatus, BudgetTemplate } from "@prisma/client";
 import { Plus, ChevronDown } from "lucide-react";
 import { createBudget, updateBudgetStatus } from "./actions";
@@ -524,7 +524,7 @@ export function BudgetsTable({
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {margin !== null ? (
                           <span className={margin >= 30 ? "text-green-600" : margin >= 15 ? "text-yellow-600" : "text-red-600"}>
-                            {margin.toFixed(1)}%
+                            {formatPercent(margin)}
                           </span>
                         ) : (
                           <span className="text-gray-300 text-xs">—</span>
@@ -532,9 +532,9 @@ export function BudgetsTable({
                       </td>
                       <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
                         {row.totalEstimatedHours > 0
-                          ? `${row.totalEstimatedHours.toLocaleString("es-ES")} h`
+                          ? formatHours(row.totalEstimatedHours)
                           : row.estimatedHours
-                          ? `${row.estimatedHours.toLocaleString("es-ES")} h`
+                          ? formatHours(row.estimatedHours)
                           : <span className="text-gray-300 text-xs">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-500">{row.linesCount}</td>

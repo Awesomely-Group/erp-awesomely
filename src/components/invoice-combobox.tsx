@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { formatCurrency } from "@/lib/utils";
 
 interface InvoiceOption {
   id: string;
@@ -113,7 +114,7 @@ export function InvoiceCombobox({ marca, companyId, contactId, value, onChange, 
     const num = inv.number ? `#${inv.number}` : "(sin nº)";
     const cp = inv.counterparty ?? "—";
     const date = inv.date.slice(0, 7);
-    const total = inv.totalEur.toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+    const total = formatCurrency(inv.totalEur);
     return `${num} · ${cp} · ${date} · ${total}`;
   }
 

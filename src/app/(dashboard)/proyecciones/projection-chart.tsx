@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatThousandsTick } from "@/lib/utils";
 import type { ProjectionPoint } from "@/lib/projection-data";
 
 type TooltipEntry = { dataKey: string; value: number };
@@ -88,7 +88,7 @@ export function ProjectionChart({
           tickLine={false}
         />
         <YAxis
-          tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`}
+          tickFormatter={formatThousandsTick}
           tick={{ fontSize: 12, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}

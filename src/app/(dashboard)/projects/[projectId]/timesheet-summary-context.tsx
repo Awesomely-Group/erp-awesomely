@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback } from "react";
+import { formatCurrencyRounded, formatHours } from "@/lib/utils";
 
 export interface SummaryUser {
   accountId: string;
@@ -50,13 +51,6 @@ export function useTimesheetSummary(): TimesheetSummaryState {
   return useContext(TimesheetSummaryContext);
 }
 
-function formatEur(amount: number): string {
-  return new Intl.NumberFormat("es-ES", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 export function TimesheetSummarySlot(): React.JSX.Element | null {
   const { users, loading } = useTimesheetSummary();
@@ -98,17 +92,17 @@ export function TimesheetSummarySlot(): React.JSX.Element | null {
               <span className="font-medium text-gray-700 w-28 truncate">{user.displayName}</span>
               <div className="flex items-baseline gap-1 min-w-[64px]">
                 <span className={`tabular-nums font-semibold ${overH ? "text-red-600" : "text-gray-900"}`}>
-                  {user.totalHours}h
+                  {formatHours(user.totalHours)}
                 </span>
-                {user.estimateHours > 0 && <span className="text-gray-400">/ {user.estimateHours}h</span>}
+                {user.estimateHours > 0 && <span className="text-gray-400">/ {formatHours(user.estimateHours)}</span>}
               </div>
               {hasAnyCost && (
                 <div className="flex items-baseline gap-1 min-w-[80px]">
                   <span className={`tabular-nums font-semibold ${overCost ? "text-red-600" : "text-gray-700"}`}>
-                    {user.ratePerHour > 0 ? formatEur(user.actualCostEur) : "—"}
+                    {user.ratePerHour > 0 ? formatCurrencyRounded(user.actualCostEur) : "—"}
                   </span>
                   {user.estimatedCostEur != null && user.ratePerHour > 0 && (
-                    <span className="text-gray-400">/ {formatEur(user.estimatedCostEur)}</span>
+                    <span className="text-gray-400">/ {formatCurrencyRounded(user.estimatedCostEur)}</span>
                   )}
                 </div>
               )}
@@ -123,18 +117,18 @@ export function TimesheetSummarySlot(): React.JSX.Element | null {
               <span
                 className={`tabular-nums font-semibold ${totalEstH > 0 && totalH > totalEstH ? "text-red-600" : "text-gray-900"}`}
               >
-                {totalH}h
+                {formatHours(totalH)}
               </span>
-              {totalEstH > 0 && <span className="text-gray-400">/ {totalEstH}h</span>}
+              {totalEstH > 0 && <span className="text-gray-400">/ {formatHours(totalEstH)}</span>}
             </div>
             {hasAnyCost && totalActCost > 0 && (
               <div className="flex items-baseline gap-1 min-w-[80px]">
                 <span
                   className={`tabular-nums font-semibold ${totalEstCost > 0 && totalActCost > totalEstCost ? "text-red-600" : "text-gray-700"}`}
                 >
-                  {formatEur(totalActCost)}
+                  {formatCurrencyRounded(totalActCost)}
                 </span>
-                {totalEstCost > 0 && <span className="text-gray-400">/ {formatEur(totalEstCost)}</span>}
+                {totalEstCost > 0 && <span className="text-gray-400">/ {formatCurrencyRounded(totalEstCost)}</span>}
               </div>
             )}
           </div>

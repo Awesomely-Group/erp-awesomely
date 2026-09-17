@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { EMPTY_VALUE, formatNumber, formatPercent } from "@/lib/format";
 
 // ─── Public params ────────────────────────────────────────────────────────────
 
@@ -488,4 +489,24 @@ export async function getPlYears(): Promise<number[]> {
     ORDER BY year DESC
   `;
   return rows.map((r) => Number(r.year));
+}
+
+/**
+ * Importe de una celda del P&L. Regla propia de esta pantalla: el cero se
+ * muestra como vacío y las cifras grandes se abrevian para que la tabla, que
+ * es muy ancha, quepa sin scroll horizontal.
+ */
+export function formatPlAmount(amount: number): string {
+  if (amount === 0) return EMPTY_VALUE;
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000) {
+    return `${formatNumber(amount / 1_000_000, { decimals: 2 })}M`;
+  }
+  return formatNumber(amount);
+}
+
+/** Peso de una línea del P&L sobre ventas. */
+export function formatPlRatio(value: number, ventas: number): string {
+  if (ventas === 0) return EMPTY_VALUE;
+  return formatPercent((value / ventas) * 100);
 }
