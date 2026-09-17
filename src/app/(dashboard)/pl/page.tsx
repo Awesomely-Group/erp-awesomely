@@ -3,7 +3,7 @@ import { getPlData, getPlYears } from "@/lib/pl-data";
 import type { PlParams } from "@/lib/pl-data";
 import { PlTable } from "./pl-client";
 import { PlFilters } from "./pl-filters";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatPercent } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 export default async function PlPage({
@@ -58,7 +58,7 @@ export default async function PlPage({
           </p>
           {yearly.ventas > 0 && (
             <p className="mt-1 text-xs text-gray-400">
-              {((yearly.margen_bruto / yearly.ventas) * 100).toFixed(1)}% s/ventas
+              {formatPercent((yearly.margen_bruto / yearly.ventas) * 100)} s/ventas
             </p>
           )}
         </div>
@@ -69,7 +69,7 @@ export default async function PlPage({
           </p>
           {yearly.ventas > 0 && (
             <p className="mt-1 text-xs text-indigo-300">
-              {((yearly.ebitda / yearly.ventas) * 100).toFixed(1)}% s/ventas
+              {formatPercent((yearly.ebitda / yearly.ventas) * 100)} s/ventas
             </p>
           )}
         </div>
@@ -80,7 +80,7 @@ export default async function PlPage({
           </p>
           {yearly.ventas > 0 && (
             <p className="mt-1 text-xs text-gray-400">
-              {((yearly.resultado_ejercicio / yearly.ventas) * 100).toFixed(1)}% s/ventas
+              {formatPercent((yearly.resultado_ejercicio / yearly.ventas) * 100)} s/ventas
             </p>
           )}
         </div>

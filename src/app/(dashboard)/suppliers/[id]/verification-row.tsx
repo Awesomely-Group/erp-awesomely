@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { formatCurrency, formatDate, formatHourlyRate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatHourlyRate, formatHours, formatMaybe } from "@/lib/utils";
 import {
   captureTempoHours,
   linkInvoice,
@@ -142,7 +142,7 @@ export function VerificationRow({ verification: v, availableInvoices }: Props): 
 
         {/* Horas aprobadas */}
         <span className="text-gray-700 text-xs text-right">
-          {v.tempoHours != null ? `${v.tempoHours} h` : "—"}
+          {formatMaybe(v.tempoHours, formatHours)}
           {v.capturedAt && <span className="block text-gray-400 text-xs">{fmtDate(v.capturedAt)}</span>}
         </span>
 
