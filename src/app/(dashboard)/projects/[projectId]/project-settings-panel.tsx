@@ -3,7 +3,7 @@
 import React, { useState, useTransition, useRef, useEffect } from "react";
 import { updateProjectTypes, upsertHourBucket, deleteHourBucket, toggleHourBucketActive, upsertRegularFeeEntry, deleteRegularFeeEntry } from "../actions";
 import { InvoiceCombobox } from "@/components/invoice-combobox";
-import { formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
 
 interface RoleOption {
   id: string;
@@ -362,7 +362,7 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
                         ))}
                       </select>
                       <p className="text-xs text-gray-400">
-                        {e.monthlyFee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}/mes · {formatHours(e.maxHoursPerMonth)}/mes
+                        {formatCurrency(e.monthlyFee)}/mes · {formatHours(e.maxHoursPerMonth)}/mes
                       </p>
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1">Factura vinculada</p>
@@ -379,7 +379,7 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
                   <div className="flex justify-between text-xs font-medium text-purple-700 px-1 pt-1">
                     <span>Total mensual</span>
                     <span>
-                      {config.regularFeeEntries.reduce((s, e) => s + e.monthlyFee, 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      {formatCurrency(config.regularFeeEntries.reduce((s, e) => s + e.monthlyFee, 0))}
                       {" / "}
                       {formatHours(config.regularFeeEntries.reduce((s, e) => s + e.maxHoursPerMonth, 0))}
                     </span>

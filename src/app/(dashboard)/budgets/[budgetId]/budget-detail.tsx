@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatDate, formatHours, formatPercent, holdedEstimateUrl } from "@/lib/utils";
+import { formatCurrency, formatDate, formatHours, formatNumber, formatPercent, holdedEstimateUrl } from "@/lib/utils";
 import {
   BudgetType,
   BudgetRegion,
@@ -843,7 +843,7 @@ export function BudgetDetail({
                         <td className="px-4 py-2.5 text-xs"><span className="text-gray-300">—</span></td>
                         <td className="px-4 py-2.5 text-xs"><span className="text-gray-300">—</span></td>
                         <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
-                          {Number(line.quantity ?? 1).toLocaleString("es-ES")} uds.
+                          {formatNumber(Number(line.quantity ?? 1))} uds.
                         </td>
                         <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
                           {formatCurrency(Number(line.unitPrice ?? 0))}
