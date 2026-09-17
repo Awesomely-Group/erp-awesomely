@@ -375,9 +375,11 @@ export function PaymentRow({
         </div>
       )}
 
-      {/* ERP payments — always visible */}
-      <div className="px-4 pb-3">
-        {invoice.erpPayments.length > 0 ? (
+      {/* Pagos registrados en ERP — el bloque solo aparece si hay alguno: la fila ya
+          comunica el estado con "Pendiente conciliar" y el botón "Marcar pagada", y
+          en un pago suelto pendiente el propio registro es el pago. */}
+      {invoice.erpPayments.length > 0 && (
+        <div className="px-4 pb-3">
           <div className="space-y-1">
             <p className="text-xs font-medium text-gray-500 mb-1">
               Pagos registrados en ERP
@@ -401,10 +403,8 @@ export function PaymentRow({
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-xs text-gray-400">Sin pagos registrados en ERP</p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
