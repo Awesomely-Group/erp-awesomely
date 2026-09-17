@@ -321,6 +321,56 @@ function toV2DocumentPayload(
 /** Thrown by HoldedClient on any non-OK HTTP response, carrying the status code so callers
  *  can distinguish "not found" (404 — safe to treat as absent) from transient/server errors
  *  (which should be retried on a later sync, not treated as a confirmed negative result). */
+/** Datos bancarios de un contacto, ya normalizados. */
+export interface ContactBankData {
+  /** `null` significa que el contacto no tiene IBAN, no que falle la consulta. */
+  iban: string | null;
+  holder: string | null;
+  bic: string | null;
+  bankName: string | null;
+  paymentMethod: string | null;
+}
+
+/**
+ * Forma parcial de `GET /contacts/{id}`. Todo opcional a propósito: Holded omite
+ * los campos vacíos y las dos versiones de la API difieren.
+ */
+interface HoldedContactBankNested {
+  iban?: unknown;
+  bankAccount?: unknown;
+  accountHolder?: unknown;
+  holder?: unknown;
+  titular?: unknown;
+  swift?: unknown;
+  bic?: unknown;
+  bicSwift?: unknown;
+  bankName?: unknown;
+  name?: unknown;
+}
+
+interface HoldedContactBankRaw {
+  iban?: unknown;
+  bankAccount?: unknown;
+  accountHolder?: unknown;
+  holder?: unknown;
+  swift?: unknown;
+  bic?: unknown;
+  bankName?: unknown;
+  payment_method?: unknown;
+  bankData?: HoldedContactBankNested;
+  payment?: { iban?: unknown; method?: unknown };
+}
+
+/** Primer candidato que sea una cadena con contenido. */
+export function pickString(...candidates: readonly unknown[]): string | null {
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim() !== "") {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
 export class HoldedApiError extends Error {
   constructor(
     public readonly status: number,
@@ -439,6 +489,7 @@ export class HoldedClient {
     baseUrl: string,
     path: string,
     params?: Record<string, string>,
+    options?: { signal?: AbortSignal },
   ): Promise<T> {
     const url = new URL(`${baseUrl}${path}`);
     if (params) {
@@ -451,6 +502,9 @@ export class HoldedClient {
         "Content-Type": "application/json",
       },
       next: { revalidate: 0 },
+      // Sin señal no hay ningún timeout en toda la capa: una conexión colgada
+      // bloquearía el render entero del Server Component que la llama.
+      signal: options?.signal,
     });
 
     if (!res.ok) {
@@ -466,8 +520,9 @@ export class HoldedClient {
   private async fetch<T>(
     path: string,
     params?: Record<string, string>,
+    options?: { signal?: AbortSignal },
   ): Promise<T> {
-    return this.fetchFromBase<T>(HOLDED_BASE_URL, path, params);
+    return this.fetchFromBase<T>(HOLDED_BASE_URL, path, params, options);
   }
 
   private normalizeChartList(data: unknown): HoldedChartAccountRow[] {
@@ -944,38 +999,52 @@ export class HoldedClient {
     );
   }
 
-  async getContactWithBankData(
+  /**
+   * Datos bancarios de un contacto. La API no está documentada al detalle y v1
+   * y v2 no devuelven la misma forma, así que cada campo se busca en una
+   * cascada de nombres plausibles y se estrecha en runtime: la interfaz es una
+   * afirmación sobre una API externa, no una garantía.
+   *
+   * Para confirmar los nombres reales contra un contacto de verdad:
+   * GET /api/debug-contacts?contactId=<id>
+   */
+  async getContactBankData(
     id: string,
-  ): Promise<{ iban: string | null; paymentMethod: string | null }> {
-    const data = await this.fetch<Record<string, unknown>>(`/contacts/${id}`);
-    const bankData = data["bankData"] as Record<string, unknown> | undefined;
-    const payment = data["payment"] as Record<string, unknown> | undefined;
-    const iban =
-      (typeof data["iban"] === "string" && data["iban"]
-        ? data["iban"]
-        : null) ??
-      (typeof data["bankAccount"] === "string" && data["bankAccount"]
-        ? (data["bankAccount"] as string)
-        : null) ??
-      (typeof bankData?.["iban"] === "string" && bankData["iban"]
-        ? (bankData["iban"] as string)
-        : null) ??
-      (typeof bankData?.["bankAccount"] === "string" && bankData["bankAccount"]
-        ? (bankData["bankAccount"] as string)
-        : null) ??
-      (typeof payment?.["iban"] === "string" && payment["iban"]
-        ? (payment["iban"] as string)
-        : null) ??
-      null;
-    const paymentObj = data["payment"] as Record<string, unknown> | undefined;
-    const paymentMethod =
-      (typeof data["payment_method"] === "string"
-        ? data["payment_method"]
-        : null) ??
-      (typeof paymentObj?.["method"] === "string"
-        ? (paymentObj["method"] as string)
-        : null);
-    return { iban, paymentMethod };
+    options?: { signal?: AbortSignal },
+  ): Promise<ContactBankData> {
+    const data = await this.fetch<HoldedContactBankRaw>(
+      `/contacts/${id}`,
+      undefined,
+      options,
+    );
+    const bank = data.bankData;
+    const payment = data.payment;
+
+    return {
+      iban: pickString(
+        data.iban,
+        data.bankAccount,
+        bank?.iban,
+        bank?.bankAccount,
+        payment?.iban,
+      ),
+      holder: pickString(
+        data.accountHolder,
+        data.holder,
+        bank?.accountHolder,
+        bank?.holder,
+        bank?.titular,
+      ),
+      bic: pickString(
+        data.swift,
+        data.bic,
+        bank?.swift,
+        bank?.bic,
+        bank?.bicSwift,
+      ),
+      bankName: pickString(data.bankName, bank?.bankName, bank?.name),
+      paymentMethod: pickString(data.payment_method, payment?.method),
+    };
   }
 
   async getClientContacts(
