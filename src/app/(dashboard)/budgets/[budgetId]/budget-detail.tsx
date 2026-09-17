@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatDate, holdedEstimateUrl } from "@/lib/utils";
+import { formatCurrency, formatDate, formatHours, formatPercent, holdedEstimateUrl } from "@/lib/utils";
 import {
   BudgetType,
   BudgetRegion,
@@ -773,7 +773,7 @@ export function BudgetDetail({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs text-gray-500 mb-1">Total horas</p>
-            <p className="text-sm font-semibold text-gray-900">{totalHours.toLocaleString("es-ES")} h</p>
+            <p className="text-sm font-semibold text-gray-900">{formatHours(totalHours)}</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs text-gray-500 mb-1">PVP total estimado</p>
@@ -787,7 +787,7 @@ export function BudgetDetail({
             <p className="text-xs text-gray-500 mb-1">Margen bruto estimado</p>
             {grossMargin !== null ? (
               <p className={`text-sm font-semibold ${grossMargin >= 30 ? "text-green-600" : grossMargin >= 15 ? "text-yellow-600" : "text-red-600"}`}>
-                {grossMargin.toFixed(1)}%
+                {formatPercent(grossMargin)}
               </p>
             ) : (
               <p className="text-sm text-gray-300">—</p>
@@ -867,7 +867,7 @@ export function BudgetDetail({
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
-                          {(line.estimatedHours ?? 0).toLocaleString("es-ES")} h
+                          {formatHours(line.estimatedHours ?? 0)}
                         </td>
                         <td className="px-4 py-2.5 text-right text-gray-600 text-xs">
                           {formatCurrency(Number(line.pvpPerHour ?? 0))}
@@ -883,7 +883,7 @@ export function BudgetDetail({
                             if (m === null) return <span className="text-gray-300">—</span>;
                             return (
                               <span className={m >= 30 ? "text-green-600" : m >= 15 ? "text-yellow-600" : "text-red-600"}>
-                                {m.toFixed(0)}%
+                                {formatPercent(m, { decimals: 0 })}
                               </span>
                             );
                           })()}
@@ -982,7 +982,7 @@ export function BudgetDetail({
                     </td>
                     <td className="px-4 py-2.5 text-right text-xs text-gray-600">
                       {term.valueType === "PERCENTAGE"
-                        ? `${Number(term.value).toLocaleString("es-ES")}%`
+                        ? formatPercent(Number(term.value), { decimals: 0 })
                         : formatCurrency(Number(term.value))}
                     </td>
                     <td className="px-4 py-2.5 text-right font-medium text-xs text-gray-900">

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { getHourlyReconciliation } from "@/lib/reconciliation";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatMaybe, formatNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { ReconciliationFilters } from "./reconciliation-filters";
 
@@ -76,7 +76,7 @@ export default async function ReconciliationPage({ searchParams }: Props): Promi
                     </p>
                   </td>
                   <td className="text-right px-4 py-3 text-gray-700">
-                    {row.approvedHours !== null ? row.approvedHours.toFixed(1) : "—"}
+                    {formatMaybe(row.approvedHours, (h) => formatNumber(h, { decimals: 1 }))}
                   </td>
                   <td className="text-right px-4 py-3 text-gray-700">
                     {row.approvedCost !== null ? formatCurrency(row.approvedCost) : "Sin tarifa"}
