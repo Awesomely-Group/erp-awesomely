@@ -6,6 +6,7 @@ import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
 import { SortThClick } from "@/components/sort-th";
 import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
+import { formatCurrencyRounded, formatHours } from "@/lib/utils";
 
 export interface ProjectRow {
   id: string;
@@ -334,9 +335,6 @@ interface ProjectRowProps {
   showTotal: boolean;
 }
 
-function fmt(n: number): string {
-  return n.toLocaleString("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + "€";
-}
 
 function ProjectTableRow({
   project,
@@ -355,14 +353,14 @@ function ProjectTableRow({
     if (!project.hasTempoToken) return dash;
     if (loading) return spin;
     const h = data?.byMonth[key]?.hours;
-    return h != null && h > 0 ? <span className="text-gray-900">{h}h</span> : dash;
+    return h != null && h > 0 ? <span className="text-gray-900">{formatHours(h)}</span> : dash;
   }
 
   function costCell(key: string): React.JSX.Element {
     if (!project.hasTempoToken) return dash;
     if (loading) return spin;
     const c = data?.byMonth[key]?.cost;
-    return c != null && c > 0 ? <span className="text-indigo-600 tabular-nums">{fmt(c)}</span> : dash;
+    return c != null && c > 0 ? <span className="text-indigo-600 tabular-nums">{formatCurrencyRounded(c)}</span> : dash;
   }
 
   function totalHoursCell(): React.JSX.Element {
@@ -370,7 +368,7 @@ function ProjectTableRow({
     if (loading) return spin;
     if (!data || data.totalHours === 0) return dash;
     const overBudget = data.estimateHours != null && data.totalHours > data.estimateHours;
-    return <span className={`font-semibold ${overBudget ? "text-red-600" : "text-gray-900"}`}>{data.totalHours}h</span>;
+    return <span className={`font-semibold ${overBudget ? "text-red-600" : "text-gray-900"}`}>{formatHours(data.totalHours)}</span>;
   }
 
   function totalCostCell(): React.JSX.Element {
@@ -378,14 +376,14 @@ function ProjectTableRow({
     if (loading) return spin;
     if (!data || data.totalCost === 0) return dash;
     const overBudget = data.estimateCost != null && data.totalCost > data.estimateCost;
-    return <span className={`font-semibold tabular-nums ${overBudget ? "text-red-600" : "text-indigo-600"}`}>{fmt(data.totalCost)}</span>;
+    return <span className={`font-semibold tabular-nums ${overBudget ? "text-red-600" : "text-indigo-600"}`}>{formatCurrencyRounded(data.totalCost)}</span>;
   }
 
   function estHoursCell(): React.JSX.Element {
     if (!project.hasTempoToken) return dash;
     if (loading) return spin;
     return data?.estimateHours != null && data.estimateHours > 0
-      ? <span className="text-gray-500">{data.estimateHours}h</span>
+      ? <span className="text-gray-500">{formatHours(data.estimateHours)}</span>
       : dash;
   }
 
@@ -393,7 +391,7 @@ function ProjectTableRow({
     if (!project.hasTempoToken) return dash;
     if (loading) return spin;
     return data?.estimateCost != null && data.estimateCost > 0
-      ? <span className="text-gray-400 tabular-nums">{fmt(data.estimateCost)}</span>
+      ? <span className="text-gray-400 tabular-nums">{formatCurrencyRounded(data.estimateCost)}</span>
       : dash;
   }
 

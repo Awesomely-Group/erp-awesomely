@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HourBucketEntry, HourBucketsResponse, UnassignedUser } from "@/app/api/projects/[projectId]/hour-buckets/route";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
-import { formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
 
 interface Props {
   projectId: string;
@@ -84,7 +84,7 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
 
       <div className="flex justify-between text-xs text-gray-500 pt-1 border-t border-gray-100">
         <span>Restantes: <span className="font-medium text-gray-800">{formatHours(Math.max(bucket.totalHours - bucket.consumedHours, 0))}</span></span>
-        <span>Valor: <span className="font-medium text-gray-800">{(bucket.totalHours * bucket.ratePerHour).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+        <span>Valor: <span className="font-medium text-gray-800">{formatCurrency(bucket.totalHours * bucket.ratePerHour)}</span></span>
       </div>
     </div>
   );

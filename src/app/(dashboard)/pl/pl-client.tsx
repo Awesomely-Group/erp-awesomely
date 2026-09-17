@@ -1,33 +1,20 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { PL_LINE_DEFS } from "@/lib/pl-data";
+import { formatPlAmount, formatPlRatio, PL_LINE_DEFS } from "@/lib/pl-data";
 import type { PlEntityData, PlLineKey } from "@/lib/pl-data";
 
 interface PlTableProps {
   entity: PlEntityData;
 }
 
-function fmtCell(n: number): string {
-  if (n === 0) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n / 1_000_000)}M`;
-  if (abs >= 1_000)     return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(n);
-  return `${Math.round(n)}`;
-}
-
-function fmtPct(value: number, ventas: number): string {
-  if (ventas === 0) return "—";
-  return `${((value / ventas) * 100).toFixed(1)}%`;
-}
-
 function CellValue({ value, isSubtotal }: { value: number; isSubtotal: boolean }): React.JSX.Element {
   if (value === 0) return <span className={isSubtotal ? "text-white/40" : "text-gray-200"}>—</span>;
   const positive = value > 0;
   if (isSubtotal) {
-    return <span className={cn("tabular-nums font-semibold", positive ? "text-white" : "text-red-300")}>{fmtCell(value)}</span>;
+    return <span className={cn("tabular-nums font-semibold", positive ? "text-white" : "text-red-300")}>{formatPlAmount(value)}</span>;
   }
-  return <span className={cn("tabular-nums", positive ? "text-gray-800" : "text-red-500")}>{fmtCell(value)}</span>;
+  return <span className={cn("tabular-nums", positive ? "text-gray-800" : "text-red-500")}>{formatPlAmount(value)}</span>;
 }
 
 function PctCell({ value, ventas, isSubtotal }: { value: number; ventas: number; isSubtotal: boolean }): React.JSX.Element {
@@ -40,7 +27,7 @@ function PctCell({ value, ventas, isSubtotal }: { value: number; ventas: number;
         ? pct >= 0 ? "text-white/80" : "text-red-300"
         : pct >= 0 ? "text-gray-400" : "text-red-400",
     )}>
-      {fmtPct(value, ventas)}
+      {formatPlRatio(value, ventas)}
     </span>
   );
 }
