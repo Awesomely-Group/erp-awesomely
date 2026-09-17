@@ -1,6 +1,8 @@
 // Holded API client — supports v1 and v2 via HOLDED_API_VERSION env var
 // Docs: https://www.holded.com/es/desarrolladores
 
+import { buildQuarterlyWindows, buildScopeWindow } from "./sync-scope";
+
 const IS_V2 = process.env.HOLDED_API_VERSION === "v2";
 
 const HOLDED_BASE_URL = IS_V2
@@ -63,6 +65,49 @@ export interface HoldedInvoice {
 export interface HoldedListResponse {
   data?: HoldedInvoice[];
   items?: HoldedInvoiceV2Raw[];
+}
+
+// ─── Paginación de los listados de documentos (API v2) ────────────────────────
+//
+// Comprobado contra la API real con scripts/probe-holded-invoices-cap.ts:
+//
+//   · /invoices, /purchases y /proformas responden `{ items, cursor, has_more }`,
+//     igual que /ledger-entries.
+//   · El tope es de 200 elementos por respuesta, se pida el `limit` que se pida:
+//     /purchases devuelve 200 con `has_more: true` tanto con `limit=250` como
+//     con `limit=5000`.
+//   · `offset` y `page` se ignoran. La única forma de avanzar es repetir la
+//     llamada con el `cursor` devuelto ("page:2", "page:3", …).
+//   · El cursor convive con `start_date`/`end_date`, así que las ventanas
+//     mensuales de /purchases también se pueden paginar.
+//
+// Sin seguir el cursor, una empresa con más de 200 documentos recibía una lista
+// truncada sin ningún error visible, y el sync la leía como "el resto ya no
+// está en Holded". De ahí que todo listado diga ahora si llegó completo.
+const V2_PAGE_SIZE = 200;
+
+/** Tope de páginas por listado: 40.000 documentos. Frena un cursor que no avance. */
+const V2_MAX_PAGES = 200;
+
+/**
+ * Listado de documentos devuelto por el cliente.
+ *
+ * `complete: false` significa que la lista **puede estar incompleta**. Quien
+ * reconcilie borrados debe abortar al verlo: que un documento no aparezca en una
+ * lista truncada no prueba que se haya borrado en Holded.
+ */
+export interface HoldedDocumentList {
+  documents: HoldedInvoice[];
+  complete: boolean;
+  /** Motivo del truncado, para registrarlo en el log del sync. */
+  incompleteReason?: string;
+}
+
+/** Páginas crudas de un listado v2, antes de normalizar. */
+interface RawDocumentPages {
+  items: HoldedInvoiceV2Raw[];
+  complete: boolean;
+  incompleteReason?: string;
 }
 
 // ─── Holded API v2 raw types ───────────────────────────────────────────────────
@@ -331,11 +376,56 @@ export class HoldedApiError extends Error {
   }
 }
 
+/** Contador de llamadas a la API de Holded consumidas por un cliente. */
+export interface HoldedApiStats {
+  total: number;
+  /** Llamadas por endpoint, con los IDs normalizados a `:id` para poder agrupar. */
+  byEndpoint: Record<string, number>;
+}
+
+export function createHoldedApiStats(): HoldedApiStats {
+  return { total: 0, byEndpoint: {} };
+}
+
 export class HoldedClient {
   private readonly apiKey: string;
+  private readonly stats: HoldedApiStats;
 
-  constructor(apiKey: string) {
+  /**
+   * @param stats contador compartido: pasando el mismo objeto a todos los
+   * clientes de un sync se obtiene el coste total de la ejecución, no el de
+   * cada cliente por separado.
+   */
+  constructor(apiKey: string, stats?: HoldedApiStats) {
     this.apiKey = apiKey;
+    this.stats = stats ?? createHoldedApiStats();
+  }
+
+  /**
+   * Llamadas consumidas por esta instancia. La cuota de Holded se mide en
+   * llamadas por periodo, así que esto es lo que hay que vigilar: se guarda en
+   * SyncLog.details.apiCalls para poder ver el coste real de cada sync.
+   */
+  getApiStats(): HoldedApiStats {
+    return {
+      total: this.stats.total,
+      byEndpoint: { ...this.stats.byEndpoint },
+    };
+  }
+
+  /** Normaliza `/salary-records/abc123` → `/salary-records/:id` para agrupar. */
+  private trackCall(path: string): void {
+    const normalized = path
+      .split("/")
+      // El primer segmento es el nombre del endpoint (`/chartofaccounts` también
+      // es largo y alfanumérico); solo los siguientes pueden ser IDs.
+      .map((segment, i) =>
+        i > 1 && /^[A-Za-z0-9]{12,}$/.test(segment) ? ":id" : segment,
+      )
+      .join("/");
+    this.stats.total++;
+    this.stats.byEndpoint[normalized] =
+      (this.stats.byEndpoint[normalized] ?? 0) + 1;
   }
 
   private authHeaders(): Record<string, string> {
@@ -345,6 +435,7 @@ export class HoldedClient {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
+    this.trackCall(path);
     const url = `${HOLDED_BASE_URL}${path}`;
     const res = await fetch(url, {
       method: "POST",
@@ -360,6 +451,7 @@ export class HoldedClient {
   }
 
   private async put<T>(path: string, body: unknown): Promise<T> {
+    this.trackCall(path);
     const url = `${HOLDED_BASE_URL}${path}`;
     const res = await fetch(url, {
       method: "PUT",
@@ -414,6 +506,7 @@ export class HoldedClient {
     path: string,
     params?: Record<string, string>,
   ): Promise<T> {
+    this.trackCall(path);
     const url = new URL(`${baseUrl}${path}`);
     if (params) {
       Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -1101,147 +1194,302 @@ export class HoldedClient {
     }
   }
 
-  async getAllProformasPaginated(): Promise<HoldedInvoice[]> {
-    if (IS_V2) {
-      // v2: offset/page/starttmp are all ignored — single request with large limit
-      const raw = await this.fetch<
-        { items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]
-      >("/proformas", {
-        limit: "5000",
-      });
-      const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
-      return rawBatch.map((r) => normalizeV2Invoice(r, v2ProformaStatusToNum));
+  /** Inicio del ámbito: por defecto, toda la historia configurada. */
+  private scopeStart(fromDate?: Date): Date {
+    return fromDate ?? new Date(HOLDED_SYNC_FROM_YEAR, 0, 1);
+  }
+
+  /**
+   * Recorre un listado de documentos de la v2 siguiendo el cursor hasta agotarlo.
+   *
+   * Devuelve además si la lista llegó entera. Se marca incompleta cuando:
+   *   · una página falla (la lista se queda a medias);
+   *   · se agota `V2_MAX_PAGES` con `has_more` todavía a true;
+   *   · la respuesta llega como array plano —sin `has_more` que consultar— y trae
+   *     exactamente tantos elementos como se pidieron, que es la firma de un
+   *     truncado silencioso.
+   */
+  private async fetchDocumentPages(
+    path: string,
+    params: Record<string, string> = {},
+  ): Promise<RawDocumentPages> {
+    interface DocumentPage {
+      items?: HoldedInvoiceV2Raw[];
+      cursor?: string | null;
+      has_more?: boolean;
     }
 
-    // v1: quarterly time windows workaround (page param does not work reliably)
+    const items: HoldedInvoiceV2Raw[] = [];
+    const seenIds = new Set<string>();
+    let cursor: string | undefined;
+    let pages = 0;
+    let firstPageIds: string[] = [];
+
+    const collect = (batch: HoldedInvoiceV2Raw[]): void => {
+      for (const item of batch) {
+        // El cursor es posicional ("page:N"): si se crea un documento a mitad de
+        // barrido la ventana se desplaza y un elemento puede repetirse.
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          items.push(item);
+        }
+      }
+    };
+
+    const describe = (): string =>
+      Object.keys(params).length > 0
+        ? `${path} (${Object.entries(params)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(" ")})`
+        : path;
+
+    for (;;) {
+      const query: Record<string, string> = {
+        ...params,
+        limit: String(V2_PAGE_SIZE),
+      };
+      if (cursor) query.cursor = cursor;
+
+      let raw: DocumentPage | HoldedInvoiceV2Raw[];
+      try {
+        raw = await this.fetch<DocumentPage | HoldedInvoiceV2Raw[]>(path, query);
+      } catch (err) {
+        const reason = `${describe()}: falló la página ${pages + 1}${
+          cursor ? ` (cursor ${cursor})` : ""
+        }: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`[holded] ${reason}`);
+        return { items, complete: false, incompleteReason: reason };
+      }
+
+      pages++;
+
+      if (Array.isArray(raw)) {
+        // Sin sobre `{items, cursor, has_more}` no hay forma de preguntar si
+        // queda más. Recibir justo lo pedido es indistinguible de un truncado,
+        // así que se trata como tal.
+        collect(raw);
+        if (raw.length >= V2_PAGE_SIZE) {
+          const reason = `${describe()}: respuesta sin cursor con ${raw.length} elementos (= el límite pedido); se asume truncada`;
+          console.error(`[holded] ${reason}`);
+          return { items, complete: false, incompleteReason: reason };
+        }
+        return { items, complete: true };
+      }
+
+      collect(raw.items ?? []);
+      if (pages === 1) firstPageIds = (raw.items ?? []).map((i) => i.id);
+
+      if (!raw.has_more) {
+        return pages === 1
+          ? { items, complete: true }
+          : this.verifyStablePagination(path, params, describe(), items, firstPageIds);
+      }
+
+      if (!raw.cursor) {
+        // Quedan documentos pero no hay por dónde seguir pidiéndolos.
+        const reason = `${describe()}: has_more a true pero sin cursor; lista truncada en ${items.length} documentos`;
+        console.error(`[holded] ${reason}`);
+        return { items, complete: false, incompleteReason: reason };
+      }
+
+      if (pages >= V2_MAX_PAGES) {
+        const reason = `${describe()}: ${V2_MAX_PAGES} páginas y has_more sigue a true; lista truncada en ${items.length} documentos`;
+        console.error(`[holded] ${reason}`);
+        return { items, complete: false, incompleteReason: reason };
+      }
+
+      cursor = raw.cursor;
+    }
+  }
+
+  /**
+   * Comprueba que la lista no se ha movido bajo los pies mientras se paginaba.
+   *
+   * El cursor es posicional ("page:N") y el orden por defecto es por fecha
+   * descendente —lo nuevo entra por arriba—, así que un documento creado a mitad
+   * de barrido desplaza las páginas siguientes y puede colar un salto: un
+   * documento que existe y no aparece en la lista. Justo lo que la
+   * reconciliación de borrados leería como "ya no está en Holded".
+   *
+   * La API no ofrece un orden estable con el que evitarlo (`sort=asc`,
+   * `sort=date_asc` y `sort=cualquier-cosa` devuelven todos el mismo orden, y no
+   * es por fecha), así que se detecta a posteriori: se vuelve a pedir la primera
+   * página y se compara. Cuesta una llamada, y solo cuando de verdad hubo más de
+   * una página.
+   *
+   * Cubre lo que cambia por la cabecera de la lista, que es donde entra y se
+   * modifica casi todo con el orden por fecha descendente. Un borrado en una
+   * página que ya se había pasado no lo ve nadie — para eso haría falta un orden
+   * estable que la API no da. Ante la duda, marca incompleto: perder una
+   * reconciliación es recuperable en el siguiente sync; borrar de más, no.
+   */
+  private async verifyStablePagination(
+    path: string,
+    params: Record<string, string>,
+    description: string,
+    items: HoldedInvoiceV2Raw[],
+    firstPageIds: string[],
+  ): Promise<RawDocumentPages> {
+    interface DocumentPage {
+      items?: HoldedInvoiceV2Raw[];
+    }
+
+    let recheck: DocumentPage | HoldedInvoiceV2Raw[];
+    try {
+      recheck = await this.fetch<DocumentPage | HoldedInvoiceV2Raw[]>(path, {
+        ...params,
+        limit: String(V2_PAGE_SIZE),
+      });
+    } catch (err) {
+      // Sin poder comprobarlo no se puede afirmar que la lista esté entera.
+      const reason = `${description}: no se pudo verificar la paginación: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+      console.error(`[holded] ${reason}`);
+      return { items, complete: false, incompleteReason: reason };
+    }
+
+    const nowIds = (Array.isArray(recheck) ? recheck : (recheck.items ?? [])).map(
+      (i) => i.id,
+    );
+    const moved =
+      nowIds.length !== firstPageIds.length ||
+      nowIds.some((id, i) => id !== firstPageIds[i]);
+
+    if (moved) {
+      const reason = `${description}: la lista cambió durante el barrido (la primera página ya no es la misma); puede haberse saltado algún documento`;
+      console.error(`[holded] ${reason}`);
+      return { items, complete: false, incompleteReason: reason };
+    }
+
+    return { items, complete: true };
+  }
+
+  /** Une varias páginas/ventanas en un solo listado, sin repetidos. */
+  private static combinePages(
+    pages: RawDocumentPages[],
+    statusMapper?: (status: string | undefined, draft?: boolean) => number,
+  ): HoldedDocumentList {
+    const seenIds = new Set<string>();
+    const documents: HoldedInvoice[] = [];
+    const reasons: string[] = [];
+
+    for (const page of pages) {
+      if (!page.complete && page.incompleteReason) reasons.push(page.incompleteReason);
+      for (const item of page.items) {
+        if (seenIds.has(item.id)) continue;
+        seenIds.add(item.id);
+        documents.push(normalizeV2Invoice(item, statusMapper));
+      }
+    }
+
+    // Sin ninguna página no hay foto de nada: darla por completa autorizaría a
+    // borrar toda la tabla. Solo puede pasar si el ámbito se calcula mal.
+    const complete = pages.length > 0 && pages.every((p) => p.complete);
+    if (pages.length === 0) reasons.push("no se pidió ninguna página");
+
+    return {
+      documents,
+      complete,
+      ...(reasons.length > 0 ? { incompleteReason: reasons.join(" | ") } : {}),
+    };
+  }
+
+  async getAllProformasPaginated(
+    opts: { fromDate?: Date } = {},
+  ): Promise<HoldedDocumentList> {
+    if (IS_V2) {
+      const pages = await this.fetchDocumentPages("/proformas");
+      return HoldedClient.combinePages([pages], v2ProformaStatusToNum);
+    }
+
+    // v1: ventanas trimestrales (el parámetro page no funciona de forma fiable)
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];
 
-    const now = new Date();
-    const endYear = now.getFullYear();
+    for (const { starttmp, endtmp } of buildQuarterlyWindows(
+      this.scopeStart(opts.fromDate),
+      new Date(),
+    )) {
+      const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
+        `/documents/proform`,
+        { starttmp: starttmp.toString(), endtmp: endtmp.toString() },
+      );
 
-    for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
-      for (let quarter = 0; quarter < 4; quarter++) {
-        const windowStart = new Date(year, quarter * 3, 1);
-        if (windowStart > now) break;
+      const batch: HoldedInvoice[] = Array.isArray(raw)
+        ? raw
+        : ((raw as HoldedListResponse).data ?? []);
 
-        const windowEnd = new Date(year, (quarter + 1) * 3, 1);
-        const starttmp = Math.floor(windowStart.getTime() / 1000);
-        const endtmp = Math.floor(windowEnd.getTime() / 1000);
-
-        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
-          `/documents/proform`,
-          { starttmp: starttmp.toString(), endtmp: endtmp.toString() },
-        );
-
-        const batch: HoldedInvoice[] = Array.isArray(raw)
-          ? raw
-          : ((raw as HoldedListResponse).data ?? []);
-
-        for (const inv of batch) {
-          if (!seenIds.has(inv.id)) {
-            seenIds.add(inv.id);
-            all.push(inv);
-          }
+      for (const inv of batch) {
+        if (!seenIds.has(inv.id)) {
+          seenIds.add(inv.id);
+          all.push(inv);
         }
       }
     }
 
-    return all;
+    // v1 no expone ninguna señal de truncado en /documents/*, así que no se puede
+    // afirmar lo contrario de lo que ya se asumía antes de paginar por cursor.
+    return { documents: all, complete: true };
   }
 
   async getAllInvoicesPaginated(
     type: "invoice" | "purchase",
-  ): Promise<HoldedInvoice[]> {
+    opts: { fromDate?: Date } = {},
+  ): Promise<HoldedDocumentList> {
     if (IS_V2) {
       if (type === "invoice") {
-        // /invoices: no hard cap observed — single request is sufficient
-        const raw = await this.fetch<
-          { items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]
-        >("/invoices", {
-          limit: "5000",
-        });
-        const rawBatch = Array.isArray(raw) ? raw : (raw.items ?? []);
-        return rawBatch.map((r) => normalizeV2Invoice(r));
+        // /invoices se pide sin filtro de fecha —el sync reconcilia borrados de
+        // ventas en los dos modos y para eso necesita la foto entera—, así que
+        // hay que seguir el cursor hasta el final: por encima de 200 facturas
+        // una sola llamada devuelve una lista truncada sin decirlo.
+        const pages = await this.fetchDocumentPages("/invoices");
+        return HoldedClient.combinePages([pages]);
       }
 
-      // /purchases: Holded v2 hard-caps at 200 per request regardless of `limit`.
-      // offset/page are ignored. Use monthly start_date/end_date windows fetched in parallel.
-      const now = new Date();
-      const endYear = now.getFullYear();
+      // /purchases se pide en una sola ventana de fechas y se pagina por cursor.
+      // Antes iba por ventanas mensuales —una llamada por mes, ~81 en modo full—
+      // porque se creía que no había más forma de esquivar el tope de 200 por
+      // respuesta. Con el cursor, el ámbito entero cabe en una ventana y el
+      // número de llamadas lo fija el volumen real: ~6 para 974 compras.
+      const window = buildScopeWindow(this.scopeStart(opts.fromDate), new Date());
+      if (!window) return { documents: [], complete: false };
 
-      // Build list of all month windows to fetch
-      const windows: Array<{ start: string; end: string }> = [];
-      for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
-        const endMonth = year === endYear ? now.getMonth() + 1 : 12;
-        for (let month = 1; month <= endMonth; month++) {
-          const mm = String(month).padStart(2, "0");
-          const lastDay = new Date(year, month, 0).getDate();
-          windows.push({
-            start: `${year}-${mm}-01`,
-            end: `${year}-${mm}-${lastDay}`,
-          });
-        }
-      }
+      const pages = await this.fetchDocumentPages("/purchases", {
+        start_date: window.start,
+        end_date: window.end,
+      });
 
-      // Fetch all windows in parallel — 5x-10x faster than sequential
-      const batches = await Promise.all(
-        windows.map(({ start, end }) =>
-          this.fetch<{ items?: HoldedInvoiceV2Raw[] } | HoldedInvoiceV2Raw[]>(
-            "/purchases",
-            { limit: "500", start_date: start, end_date: end },
-          ).then((raw) => (Array.isArray(raw) ? raw : (raw.items ?? []))),
-        ),
-      );
-
-      const seenIds = new Set<string>();
-      const all: HoldedInvoice[] = [];
-      for (const batch of batches) {
-        for (const item of batch) {
-          if (!seenIds.has(item.id)) {
-            seenIds.add(item.id);
-            all.push(normalizeV2Invoice(item));
-          }
-        }
-      }
-      return all;
+      return HoldedClient.combinePages([pages]);
     }
 
-    // v1: quarterly time windows workaround (page param does not work reliably)
+    // v1: ventanas trimestrales (el parámetro page no funciona de forma fiable)
     const seenIds = new Set<string>();
     const all: HoldedInvoice[] = [];
 
-    const now = new Date();
-    const endYear = now.getFullYear();
+    for (const { starttmp, endtmp } of buildQuarterlyWindows(
+      this.scopeStart(opts.fromDate),
+      new Date(),
+    )) {
+      const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
+        `/documents/${type}`,
+        { starttmp: starttmp.toString(), endtmp: endtmp.toString() },
+      );
 
-    for (let year = HOLDED_SYNC_FROM_YEAR; year <= endYear; year++) {
-      for (let quarter = 0; quarter < 4; quarter++) {
-        const windowStart = new Date(year, quarter * 3, 1);
-        if (windowStart > now) break;
+      const batch: HoldedInvoice[] = Array.isArray(raw)
+        ? raw
+        : ((raw as HoldedListResponse).data ?? []);
 
-        const windowEnd = new Date(year, (quarter + 1) * 3, 1);
-        const starttmp = Math.floor(windowStart.getTime() / 1000);
-        const endtmp = Math.floor(windowEnd.getTime() / 1000);
-
-        const raw = await this.fetch<HoldedInvoice[] | HoldedListResponse>(
-          `/documents/${type}`,
-          { starttmp: starttmp.toString(), endtmp: endtmp.toString() },
-        );
-
-        const batch: HoldedInvoice[] = Array.isArray(raw)
-          ? raw
-          : ((raw as HoldedListResponse).data ?? []);
-
-        for (const inv of batch) {
-          if (!seenIds.has(inv.id)) {
-            seenIds.add(inv.id);
-            all.push(inv);
-          }
+      for (const inv of batch) {
+        if (!seenIds.has(inv.id)) {
+          seenIds.add(inv.id);
+          all.push(inv);
         }
       }
     }
 
-    return all;
+    // Ver la nota de getAllProformasPaginated: v1 no da señal de truncado.
+    return { documents: all, complete: true };
   }
 
   /**

@@ -2,12 +2,41 @@ import { prisma } from "./prisma";
 import {
   HoldedClient,
   HOLDED_SYNC_FROM_YEAR,
+  createHoldedApiStats,
+  type HoldedApiStats,
+  type HoldedInvoice,
   type HoldedJournalEntry,
+  type HoldedSalaryRecordDetail,
+  type HoldedSalaryRecordSummary,
 } from "./holded";
+import {
+  resolveSyncScope,
+  yearsInScope,
+  type SyncMode,
+  type SyncScope,
+} from "./sync-scope";
 import { JiraClient } from "./jira";
-import { InvoiceType, SyncResult, SyncSource } from "@prisma/client";
+import { InvoiceType, Prisma, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
 import { inferInvoiceRecurrence } from "./invoice-recurrence";
+
+// ─── Contexto de sincronización ────────────────────────────────────────────────
+//
+// `scope` decide cuánta historia se relee (ver sync-scope.ts) y `stats` es el
+// contador de llamadas compartido por todas las fases, para poder registrar en
+// SyncLog lo que ha costado realmente la ejecución.
+
+export interface SyncContext {
+  scope: SyncScope;
+  stats: HoldedApiStats;
+}
+
+export function createSyncContext(mode: SyncMode = "full"): SyncContext {
+  return {
+    scope: resolveSyncScope(mode, { fromYear: HOLDED_SYNC_FROM_YEAR }),
+    stats: createHoldedApiStats(),
+  };
+}
 
 // ─── Jira Sync ─────────────────────────────────────────────────────────────────
 
@@ -82,11 +111,14 @@ export async function syncJiraWorkspace(
 
 // ─── Supplier Sync ─────────────────────────────────────────────────────────────
 
-export async function syncSuppliers(companyId: string): Promise<void> {
+export async function syncSuppliers(
+  companyId: string,
+  ctx: SyncContext = createSyncContext(),
+): Promise<void> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
-  const client = new HoldedClient(company.holdedApiKey);
+  const client = new HoldedClient(company.holdedApiKey, ctx.stats);
   const contacts = await client.getSupplierContacts();
 
   const activeHoldedIds = new Set(contacts.map((c) => c.id));
@@ -117,11 +149,13 @@ export async function syncSuppliers(companyId: string): Promise<void> {
 export async function syncHoldedCompany(
   companyId: string,
   triggeredBy?: string,
+  ctx: SyncContext = createSyncContext(),
 ): Promise<void> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
 
+  const { scope } = ctx;
   const startedAt = new Date();
   let invoicesSynced = 0;
   let errorMessage: string | undefined;
@@ -137,9 +171,11 @@ export async function syncHoldedCompany(
   };
   const upsertErrors: UpsertError[] = [];
   let fetchedIds: string[] = [];
+  /** Listados que llegaron truncados; mientras haya alguno no se borra nada. */
+  const truncations: string[] = [];
 
   async function upsertBatch(
-    invoices: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>,
+    invoices: HoldedInvoice[],
     type: InvoiceType,
     accountMaps: AccountMaps,
     batchSize = 20,
@@ -171,20 +207,38 @@ export async function syncHoldedCompany(
   }
 
   try {
-    const client = new HoldedClient(company.holdedApiKey);
+    const client = new HoldedClient(company.holdedApiKey, ctx.stats);
 
-    // Fetch chart of accounts and both invoice types in parallel
-    const [accountMaps, salesInvoices, purchaseInvoices] = await Promise.all([
+    // Fetch chart of accounts and both invoice types in parallel.
+    // /invoices (ventas) se pide sin filtro de fecha y paginado por cursor hasta
+    // el final, porque los borrados de ventas se reconcilian en los dos modos.
+    // /purchases se pide en una sola ventana de fechas, también paginada: el
+    // ámbito recorta el tamaño de la ventana, no el número de llamadas.
+    const [accountMaps, sales, purchases] = await Promise.all([
       client.getAccountMaps(),
       client.getAllInvoicesPaginated("invoice"),
-      client.getAllInvoicesPaginated("purchase"),
+      client.getAllInvoicesPaginated("purchase", { fromDate: scope.fromDate }),
     ]);
+
+    const salesInvoices = sales.documents;
+    const purchaseInvoices = purchases.documents;
+
+    if (!sales.complete) {
+      truncations.push(`ventas: ${sales.incompleteReason ?? "listado incompleto"}`);
+    }
+    if (!purchases.complete) {
+      truncations.push(
+        `compras: ${purchases.incompleteReason ?? "listado incompleto"}`,
+      );
+    }
 
     fetchedIds = [
       ...salesInvoices.map((i) => i.id),
       ...purchaseInvoices.map((i) => i.id),
     ];
 
+    // Guardar lo recibido siempre es seguro: el upsert añade y actualiza, nunca
+    // quita. Lo que no puede hacerse sobre una lista a medias es lo de después.
     await Promise.all([
       upsertBatch(salesInvoices, InvoiceType.SALE, accountMaps),
       upsertBatch(purchaseInvoices, InvoiceType.PURCHASE, accountMaps),
@@ -197,10 +251,42 @@ export async function syncHoldedCompany(
       ...purchaseInvoices.map((i) => i.id),
     ]);
 
-    const dbInvoices = await prisma.invoice.findMany({
-      where: { companyId },
-      select: { id: true, holdedId: true },
-    });
+    // La reconciliación de borrados solo es válida sobre lo que se ha pedido a
+    // Holded *y* ha llegado entero. Son dos condiciones distintas, y se evalúan
+    // por tipo de documento:
+    //
+    //   · Ámbito: en incremental las compras anteriores a la ventana no se han
+    //     consultado. Incluirlas aquí las marcaría como huérfanas y vaciaría la
+    //     histórica. Las ventas se piden enteras, así que se reconcilian siempre.
+    //   · Integridad: si el listado llegó truncado faltan documentos que sí
+    //     existen. No haber preguntado y no haber recibido se parecen desde
+    //     aquí —en los dos casos el documento no está en la lista— y los dos
+    //     acaban borrando lo que no toca.
+    const reconcileScopes: Prisma.InvoiceWhereInput[] = [];
+    if (sales.complete) {
+      reconcileScopes.push({ type: InvoiceType.SALE });
+    }
+    if (purchases.complete) {
+      reconcileScopes.push(
+        scope.mode === "full"
+          ? { type: InvoiceType.PURCHASE }
+          : { type: InvoiceType.PURCHASE, date: { gte: scope.fromDate } },
+      );
+    }
+
+    if (truncations.length > 0) {
+      console.error(
+        `[sync] company=${companyId}: no se reconcilian borrados donde el listado llegó incompleto — ${truncations.join(" | ")}`,
+      );
+    }
+
+    const dbInvoices =
+      reconcileScopes.length === 0
+        ? []
+        : await prisma.invoice.findMany({
+            where: { companyId, OR: reconcileScopes },
+            select: { id: true, holdedId: true },
+          });
 
     const orphanedIds = dbInvoices
       .filter((i) => !returnedHoldedIds.has(i.holdedId))
@@ -296,28 +382,44 @@ export async function syncHoldedCompany(
       ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0].error}`
       : undefined);
 
-  await prisma.syncLog.create({
+  // Un listado truncado no es un error de ejecución —los documentos recibidos se
+  // han guardado— pero sí deja el sync a medias: se registra como PARCIAL para
+  // que se vea en /sync, en vez de quedar solo en los logs de la función.
+  const truncationWarning =
+    truncations.length > 0
+      ? `Listado(s) incompleto(s) de Holded — reconciliación de borrados omitida: ${truncations.join(" | ")}`
+      : undefined;
+
+  const syncLog = await prisma.syncLog.create({
     data: {
       source: SyncSource.HOLDED,
-      result: combinedError ? SyncResult.ERROR : SyncResult.SUCCESS,
+      result: combinedError
+        ? SyncResult.ERROR
+        : truncationWarning
+          ? SyncResult.PARTIAL
+          : SyncResult.SUCCESS,
       companyId,
       invoicesSynced,
-      errorMessage: combinedError ?? null,
-      details:
-        fetchedIds.length > 0 || upsertErrors.length > 0
-          ? { fetchedIds, upsertErrors }
-          : undefined,
+      errorMessage: combinedError ?? truncationWarning ?? null,
+      details: {
+        mode: scope.mode,
+        fromDate: scope.fromDate.toISOString(),
+        ...(truncations.length > 0 ? { truncations } : {}),
+        ...(fetchedIds.length > 0 ? { fetchedIds } : {}),
+        ...(upsertErrors.length > 0 ? { upsertErrors } : {}),
+      },
       triggeredBy: triggeredBy ?? null,
       startedAt,
       finishedAt: new Date(),
     },
+    select: { id: true },
   });
 
-  await syncSuppliers(companyId).catch((err: unknown) => {
+  await syncSuppliers(companyId, ctx).catch((err: unknown) => {
     console.error("[sync] Error syncing suppliers:", err);
   });
 
-  await syncProformas(companyId).catch((err: unknown) => {
+  await syncProformas(companyId, ctx).catch((err: unknown) => {
     console.error("[sync] Error syncing proformas:", err);
   });
 
@@ -325,7 +427,7 @@ export async function syncHoldedCompany(
   // the per-document detail endpoint, GET /invoices/{id}, not on the list endpoint used by
   // syncProformas/syncHoldedCompany above). Cached via sourceDocumentChecked so this only
   // costs an extra API call once per invoice, not on every sync.
-  await resolveInvoiceSourceDocuments(companyId).catch((err: unknown) => {
+  await resolveInvoiceSourceDocuments(companyId, ctx).catch((err: unknown) => {
     console.error("[sync] Error resolving invoice source documents:", err);
   });
 
@@ -342,13 +444,41 @@ export async function syncHoldedCompany(
     console.error("[sync] Error marking converted proformas:", err);
   });
 
-  await syncJournalEntries(companyId).catch((err: unknown) => {
+  await syncJournalEntries(companyId, ctx).catch((err: unknown) => {
     console.error("[sync] Error syncing journal entries:", err);
   });
 
-  await syncEmployeesAndSalaryRecords(companyId).catch((err: unknown) => {
+  await syncEmployeesAndSalaryRecords(companyId, ctx).catch((err: unknown) => {
     console.error("[sync] Error syncing employees/salary records:", err);
   });
+
+  // Coste real de la ejecución. La cuota de Holded se mide en llamadas, así que
+  // queda registrado para poder comparar incremental vs full desde /sync-logs.
+  console.log(
+    `[sync] company=${companyId} mode=${scope.mode} desde=${scope.fromDate
+      .toISOString()
+      .slice(0, 10)} → ${ctx.stats.total} llamadas a la API de Holded`,
+  );
+  await prisma.syncLog
+    .update({
+      where: { id: syncLog.id },
+      data: {
+        details: {
+          mode: scope.mode,
+          fromDate: scope.fromDate.toISOString(),
+          apiCalls: {
+            total: ctx.stats.total,
+            byEndpoint: ctx.stats.byEndpoint,
+          },
+          ...(truncations.length > 0 ? { truncations } : {}),
+          ...(fetchedIds.length > 0 ? { fetchedIds } : {}),
+          ...(upsertErrors.length > 0 ? { upsertErrors } : {}),
+        },
+      },
+    })
+    .catch((err: unknown) => {
+      console.error("[sync] No se pudo registrar el coste de API:", err);
+    });
 
   if (errorMessage) throw new Error(errorMessage);
 }
@@ -379,7 +509,7 @@ function resolveAccount(
 }
 
 async function upsertInvoice(
-  inv: Awaited<ReturnType<HoldedClient["getAllInvoicesPaginated"]>>[number],
+  inv: HoldedInvoice,
   companyId: string,
   type: InvoiceType,
   accountMaps: AccountMaps = { byNum: new Map(), byId: new Map() },
@@ -834,11 +964,14 @@ async function markConvertedProformas(companyId: string): Promise<void> {
 // getAllInvoicesPaginated(). This resolves it once per invoice and caches the result
 // locally (sourceDocumentChecked) so subsequent syncs don't re-fetch it.
 
-async function resolveInvoiceSourceDocuments(companyId: string): Promise<void> {
+async function resolveInvoiceSourceDocuments(
+  companyId: string,
+  ctx: SyncContext = createSyncContext(),
+): Promise<void> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
-  const client = new HoldedClient(company.holdedApiKey);
+  const client = new HoldedClient(company.holdedApiKey, ctx.stats);
 
   const unresolvedInvoices = await prisma.invoice.findMany({
     where: { companyId, type: InvoiceType.SALE, sourceDocumentChecked: false },
@@ -924,16 +1057,21 @@ async function linkProformasByHoldedRelation(companyId: string): Promise<void> {
 
 // ─── Proforma Sync ─────────────────────────────────────────────────────────────
 
-export async function syncProformas(companyId: string): Promise<void> {
+export async function syncProformas(
+  companyId: string,
+  ctx: SyncContext = createSyncContext(),
+): Promise<void> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
-  const client = new HoldedClient(company.holdedApiKey);
-  const proformas = await client.getAllProformasPaginated();
+  const client = new HoldedClient(company.holdedApiKey, ctx.stats);
+  const proformaList = await client.getAllProformasPaginated({
+    fromDate: ctx.scope.fromDate,
+  });
 
   const seenHoldedIds = new Set<string>();
 
-  for (const pf of proformas) {
+  for (const pf of proformaList.documents) {
     seenHoldedIds.add(pf.id);
     const date = new Date(pf.date * 1000);
     const currency = (pf.currency ?? "EUR").toUpperCase();
@@ -1048,9 +1186,25 @@ export async function syncProformas(companyId: string): Promise<void> {
     });
   }
 
-  // Remove proformas no longer in Holded (no user data to preserve)
+  // Remove proformas no longer in Holded (no user data to preserve).
+  // Igual que con las facturas: en incremental solo se ha consultado la ventana,
+  // así que fuera de ella no se puede concluir que una proforma haya desaparecido.
+  // Y si el listado llegó truncado no se borra nada: aquí el borrado es directo,
+  // sin la red de seguridad de "solo si no tiene trabajo del usuario".
+  if (!proformaList.complete) {
+    console.error(
+      `[sync] company=${companyId}: listado de proformas incompleto, no se borra ninguna — ${
+        proformaList.incompleteReason ?? "motivo desconocido"
+      }`,
+    );
+    return;
+  }
+
   const dbProformas = await prisma.proforma.findMany({
-    where: { companyId },
+    where:
+      ctx.scope.mode === "full"
+        ? { companyId }
+        : { companyId, date: { gte: ctx.scope.fromDate } },
     select: { id: true, holdedId: true },
   });
   const orphanedIds = dbProformas
@@ -1110,11 +1264,14 @@ function isPlAccount(account: string, mappedAccounts: Set<string>): boolean {
   return mappedAccounts.has(digits);
 }
 
-export async function syncJournalEntries(companyId: string): Promise<number> {
+export async function syncJournalEntries(
+  companyId: string,
+  ctx: SyncContext = createSyncContext(),
+): Promise<number> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
-  const client = new HoldedClient(company.holdedApiKey);
+  const client = new HoldedClient(company.holdedApiKey, ctx.stats);
 
   // Cuentas OU↔SL mapeadas explícitamente (account_mappings), cargadas una única vez
   // por sync — permiten que isPlAccount reconozca cuentas del plan contable estonio
@@ -1128,11 +1285,13 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
     if (m.accountNumSL) mappedAccounts.add(m.accountNumSL);
   }
 
-  const currentYear = new Date().getFullYear();
   let totalSynced = 0;
   const allReturnedEntryIds = new Set<string>();
 
-  for (let year = HOLDED_SYNC_FROM_YEAR; year <= currentYear; year++) {
+  // El mayor se pide por año y cada año son varias páginas de 200 líneas: es la
+  // llamada más cara del sync. En incremental solo se releen los ejercicios que
+  // toca la ventana — los años cerrados ya no cambian.
+  for (const year of yearsInScope(ctx.scope)) {
     let entries: HoldedJournalEntry[];
     try {
       entries = await client.getJournalEntries(year);
@@ -1202,10 +1361,15 @@ export async function syncJournalEntries(companyId: string): Promise<number> {
   }
 
   // Eliminar líneas de asientos que Holded ya no devuelve
-  // (los journal entries no tienen datos de usuario, se pueden borrar sin riesgo)
+  // (los journal entries no tienen datos de usuario, se pueden borrar sin riesgo).
+  // Solo dentro del ámbito consultado: en incremental los años que no se han
+  // pedido no aparecen en allReturnedEntryIds y se borrarían enteros.
   if (allReturnedEntryIds.size > 0) {
     const dbLines = await prisma.journalEntryLine.findMany({
-      where: { companyId },
+      where:
+        ctx.scope.mode === "full"
+          ? { companyId }
+          : { companyId, date: { gte: ctx.scope.fromDate } },
       select: { id: true, holdedEntryId: true },
     });
     const orphanIds = dbLines
@@ -1246,11 +1410,12 @@ function mapHoldedSalaryStatus(
 
 export async function syncEmployeesAndSalaryRecords(
   companyId: string,
+  ctx: SyncContext = createSyncContext(),
 ): Promise<number> {
   const company = await prisma.company.findUniqueOrThrow({
     where: { id: companyId },
   });
-  const client = new HoldedClient(company.holdedApiKey);
+  const client = new HoldedClient(company.holdedApiKey, ctx.stats);
 
   // ── Empleados ──────────────────────────────────────────────────────────────
   const employees = await client.getEmployees();
@@ -1279,17 +1444,61 @@ export async function syncEmployeesAndSalaryRecords(
   const startDate = `${HOLDED_SYNC_FROM_YEAR}-01-01`;
   const summaries = await client.getSalaryRecords({ startDate });
 
+  // El detalle de cada nómina cuesta una llamada por registro y lo único que
+  // añade sobre el resumen son las líneas. Si la nómina ya está guardada con sus
+  // líneas, no es un borrador y ni importes ni estado han cambiado, las líneas
+  // tampoco pueden haber cambiado: nos ahorramos la llamada.
+  const storedRecords = await prisma.salaryRecord.findMany({
+    where: { companyId },
+    select: {
+      holdedSalaryRecordId: true,
+      isDraft: true,
+      totalPayable: true,
+      paymentTotal: true,
+      paymentPending: true,
+      paymentStatus: true,
+      _count: { select: { lines: true } },
+    },
+  });
+  const storedByHoldedId = new Map(
+    storedRecords.map((r) => [r.holdedSalaryRecordId, r]),
+  );
+
+  const sameAmount = (stored: unknown, fresh: number): boolean =>
+    Number(stored).toFixed(2) === fresh.toFixed(2);
+
+  const detailAlreadyStored = (
+    summary: HoldedSalaryRecordSummary,
+  ): boolean => {
+    const stored = storedByHoldedId.get(summary.id);
+    if (!stored || stored._count.lines === 0) return false;
+    // Un borrador puede cambiar sin que se mueva ningún importe.
+    if (stored.isDraft || summary.isDraft) return false;
+    return (
+      sameAmount(stored.totalPayable, summary.totalPayable) &&
+      sameAmount(stored.paymentTotal, summary.paymentTotal) &&
+      sameAmount(stored.paymentPending, summary.paymentPending) &&
+      stored.paymentStatus === mapHoldedSalaryStatus(summary.paymentStatus)
+    );
+  };
+
   let totalSynced = 0;
+  let detailsFetched = 0;
   for (const summary of summaries) {
-    let detail;
-    try {
-      detail = await client.getSalaryRecordDetail(summary.id);
-    } catch (err) {
-      console.error(
-        `[sync] getSalaryRecordDetail id=${summary.id} company=${companyId}:`,
-        err,
-      );
-      continue;
+    // El resumen se sigue guardando siempre (no cuesta llamadas y mantiene al
+    // día el vínculo con el empleado); lo que se evita es el detalle.
+    let detail: HoldedSalaryRecordDetail | undefined;
+    if (!detailAlreadyStored(summary)) {
+      try {
+        detail = await client.getSalaryRecordDetail(summary.id);
+        detailsFetched++;
+      } catch (err) {
+        console.error(
+          `[sync] getSalaryRecordDetail id=${summary.id} company=${companyId}:`,
+          err,
+        );
+        continue;
+      }
     }
 
     try {
@@ -1331,20 +1540,22 @@ export async function syncEmployeesAndSalaryRecords(
         select: { id: true },
       });
 
-      // Las líneas se recrean en cada sync (igual de "barato" que journal_entry_lines
-      // — no tienen datos de usuario, solo lo que devuelve Holded).
-      await prisma.salaryRecordLine.deleteMany({
-        where: { salaryRecordId: salaryRecord.id },
-      });
-      if (detail.lines.length > 0) {
-        await prisma.salaryRecordLine.createMany({
-          data: detail.lines.map((l) => ({
-            salaryRecordId: salaryRecord.id,
-            type: l.type,
-            amount: l.amount,
-            description: l.description ?? null,
-          })),
+      // Las líneas se recrean solo si hemos pedido el detalle; si estaba
+      // cacheado, las que ya hay en base son exactamente las mismas.
+      if (detail) {
+        await prisma.salaryRecordLine.deleteMany({
+          where: { salaryRecordId: salaryRecord.id },
         });
+        if (detail.lines.length > 0) {
+          await prisma.salaryRecordLine.createMany({
+            data: detail.lines.map((l) => ({
+              salaryRecordId: salaryRecord.id,
+              type: l.type,
+              amount: l.amount,
+              description: l.description ?? null,
+            })),
+          });
+        }
       }
 
       totalSynced++;
@@ -1357,7 +1568,7 @@ export async function syncEmployeesAndSalaryRecords(
   }
 
   console.log(
-    `[sync] Nóminas company=${companyId}: ${employees.length} empleados, ${totalSynced}/${summaries.length} nóminas sincronizadas`,
+    `[sync] Nóminas company=${companyId}: ${employees.length} empleados, ${totalSynced}/${summaries.length} nóminas sincronizadas (${detailsFetched} detalles pedidos a la API)`,
   );
   return totalSynced;
 }
@@ -1417,22 +1628,37 @@ export type SyncProgressEvent =
       type: "complete";
       companies: number;
       workspaces: number;
+      mode: SyncMode;
+      apiCalls: number;
       errors: string[];
     }
   | { type: "fatal"; error: string };
 
+/**
+ * @param mode "incremental" (por defecto) relee solo la ventana reciente;
+ * "full" relee toda la historia y es el único que reconcilia borrados antiguos.
+ * El cron diario usa incremental y el semanal full — ver vercel.json.
+ */
 export async function syncAll(
   triggeredBy?: string,
   onProgress?: (event: SyncProgressEvent) => void,
+  mode: SyncMode = "incremental",
 ): Promise<{
   companies: number;
   workspaces: number;
+  mode: SyncMode;
+  apiCalls: number;
   errors: string[];
 }> {
   const [companies, workspaces] = await Promise.all([
     prisma.company.findMany({ where: { active: true } }),
     prisma.jiraWorkspace.findMany({ where: { active: true } }),
   ]);
+
+  // Un único ámbito para toda la ejecución, pero un contador por empresa: así
+  // cada SyncLog registra lo que ha costado esa empresa, no la suma de todas.
+  const scope = resolveSyncScope(mode, { fromYear: HOLDED_SYNC_FROM_YEAR });
+  const statsByCompany = new Map<string, HoldedApiStats>();
 
   // Announce all sources upfront so the UI can show spinners for everything
   onProgress?.({
@@ -1454,8 +1680,10 @@ export async function syncAll(
   const errors: string[] = [];
 
   await Promise.allSettled([
-    ...companies.map((c) =>
-      syncHoldedCompany(c.id, triggeredBy)
+    ...companies.map((c) => {
+      const stats = createHoldedApiStats();
+      statsByCompany.set(c.id, stats);
+      return syncHoldedCompany(c.id, triggeredBy, { scope, stats })
         .then(() => {
           onProgress?.({
             type: "update",
@@ -1474,8 +1702,8 @@ export async function syncAll(
             status: "error",
             error: msg,
           });
-        }),
-    ),
+        });
+    }),
     ...workspaces.map((w) =>
       syncJiraWorkspace(w.id, triggeredBy)
         .then(() => {
@@ -1500,5 +1728,17 @@ export async function syncAll(
     ),
   ]);
 
-  return { companies: companies.length, workspaces: workspaces.length, errors };
+  let apiCalls = 0;
+  for (const stats of statsByCompany.values()) apiCalls += stats.total;
+  console.log(
+    `[sync] syncAll mode=${mode} empresas=${companies.length} → ${apiCalls} llamadas a la API de Holded`,
+  );
+
+  return {
+    companies: companies.length,
+    workspaces: workspaces.length,
+    mode,
+    apiCalls,
+    errors,
+  };
 }

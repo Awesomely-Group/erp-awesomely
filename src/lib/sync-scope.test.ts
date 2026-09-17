@@ -1,0 +1,188 @@
+import { describe, it, expect } from "vitest";
+import {
+  buildMonthlyWindows,
+  buildScopeWindow,
+  buildQuarterlyWindows,
+  parseSyncMode,
+  resolveSyncScope,
+  yearsInScope,
+} from "./sync-scope";
+
+// Referencia fija para que los tests no dependan del día en que se ejecuten.
+const NOW = new Date(2026, 8, 16); // 16 de septiembre de 2026 (mes 8 = septiembre)
+
+// ─── resolveSyncScope ──────────────────────────────────────────────────────────
+
+describe("resolveSyncScope", () => {
+  it("en modo full arranca el 1 de enero del año configurado", () => {
+    const scope = resolveSyncScope("full", { fromYear: 2020, now: NOW });
+    expect(scope.mode).toBe("full");
+    expect(scope.fromDate).toEqual(new Date(2020, 0, 1));
+  });
+
+  it("en incremental arranca a principio del mes del corte", () => {
+    // 16-sep menos 60 días = 18-jul → se alinea al 1 de julio porque las
+    // ventanas de /purchases son mensuales.
+    const scope = resolveSyncScope("incremental", {
+      fromYear: 2020,
+      now: NOW,
+      lookbackDays: 60,
+    });
+    expect(scope.fromDate).toEqual(new Date(2026, 6, 1));
+  });
+
+  it("nunca retrocede más allá del inicio de la historia configurada", () => {
+    const scope = resolveSyncScope("incremental", {
+      fromYear: 2026,
+      now: NOW,
+      lookbackDays: 3650,
+    });
+    expect(scope.fromDate).toEqual(new Date(2026, 0, 1));
+  });
+});
+
+// ─── buildMonthlyWindows ───────────────────────────────────────────────────────
+
+describe("buildMonthlyWindows", () => {
+  it("cubre desde el mes inicial hasta el mes final, ambos incluidos", () => {
+    const windows = buildMonthlyWindows(new Date(2026, 6, 1), NOW);
+    expect(windows).toEqual([
+      { start: "2026-07-01", end: "2026-07-31" },
+      { start: "2026-08-01", end: "2026-08-31" },
+      { start: "2026-09-01", end: "2026-09-30" },
+    ]);
+  });
+
+  it("cruza el cambio de año", () => {
+    const windows = buildMonthlyWindows(
+      new Date(2025, 10, 1),
+      new Date(2026, 1, 5),
+    );
+    expect(windows.map((w) => w.start)).toEqual([
+      "2025-11-01",
+      "2025-12-01",
+      "2026-01-01",
+      "2026-02-01",
+    ]);
+  });
+
+  it("respeta los febreros bisiestos", () => {
+    const [feb] = buildMonthlyWindows(new Date(2028, 1, 1), new Date(2028, 1, 9));
+    expect(feb.end).toBe("2028-02-29");
+  });
+
+  it("devuelve una lista vacía si el inicio es posterior al fin", () => {
+    expect(buildMonthlyWindows(new Date(2026, 5, 1), new Date(2026, 2, 1))).toEqual(
+      [],
+    );
+  });
+
+  // Esta es la razón de ser del modo incremental: cada ventana es una llamada
+  // a la API, y la cuota de Holded se mide en llamadas.
+  it("el ahorro del incremental frente al full es de dos órdenes de magnitud", () => {
+    const full = buildMonthlyWindows(new Date(2020, 0, 1), NOW);
+    const incremental = buildMonthlyWindows(new Date(2026, 6, 1), NOW);
+    expect(full).toHaveLength(81);
+    expect(incremental).toHaveLength(3);
+  });
+});
+
+// ─── buildQuarterlyWindows ─────────────────────────────────────────────────────
+
+describe("buildQuarterlyWindows", () => {
+  it("genera un trimestre por ventana hasta la fecha final", () => {
+    const windows = buildQuarterlyWindows(new Date(2026, 0, 1), NOW);
+    expect(windows).toHaveLength(3); // Q1, Q2 y Q3 de 2026
+    expect(windows[0].starttmp).toBe(
+      Math.floor(new Date(2026, 0, 1).getTime() / 1000),
+    );
+    expect(windows[0].endtmp).toBe(
+      Math.floor(new Date(2026, 3, 1).getTime() / 1000),
+    );
+  });
+
+  it("empieza en el trimestre que contiene la fecha inicial", () => {
+    const windows = buildQuarterlyWindows(new Date(2026, 7, 20), NOW);
+    expect(windows).toHaveLength(1);
+    expect(windows[0].starttmp).toBe(
+      Math.floor(new Date(2026, 6, 1).getTime() / 1000),
+    );
+  });
+});
+
+// ─── yearsInScope ──────────────────────────────────────────────────────────────
+
+describe("yearsInScope", () => {
+  it("full devuelve todos los ejercicios", () => {
+    const scope = resolveSyncScope("full", { fromYear: 2020, now: NOW });
+    expect(yearsInScope(scope, NOW)).toEqual([
+      2020, 2021, 2022, 2023, 2024, 2025, 2026,
+    ]);
+  });
+
+  it("incremental se queda en el ejercicio abierto", () => {
+    const scope = resolveSyncScope("incremental", {
+      fromYear: 2020,
+      now: NOW,
+      lookbackDays: 60,
+    });
+    expect(yearsInScope(scope, NOW)).toEqual([2026]);
+  });
+
+  it("incremental incluye el ejercicio anterior si la ventana lo alcanza", () => {
+    const enero = new Date(2026, 0, 20);
+    const scope = resolveSyncScope("incremental", {
+      fromYear: 2020,
+      now: enero,
+      lookbackDays: 60,
+    });
+    expect(yearsInScope(scope, enero)).toEqual([2025, 2026]);
+  });
+});
+
+// ─── parseSyncMode ─────────────────────────────────────────────────────────────
+
+describe("parseSyncMode", () => {
+  it("solo 'full' activa la relectura completa", () => {
+    expect(parseSyncMode("full")).toBe("full");
+    expect(parseSyncMode("incremental")).toBe("incremental");
+    expect(parseSyncMode(null)).toBe("incremental");
+    expect(parseSyncMode(undefined)).toBe("incremental");
+    expect(parseSyncMode("FULL")).toBe("incremental");
+  });
+});
+
+// ─── buildScopeWindow ──────────────────────────────────────────────────────────
+
+describe("buildScopeWindow", () => {
+  // El contrato que importa: la ventana única tiene que cubrir exactamente lo
+  // mismo que cubrían todas las mensuales juntas. Si se recortara —por ejemplo
+  // cortando en "hoy" en vez de a fin de mes— las compras con fecha futura
+  // dentro del mes en curso desaparecerían del listado, y el sync las leería
+  // como borradas en Holded.
+  it.each([
+    ["mismo mes", new Date(2026, 8, 1), new Date(2026, 8, 16)],
+    ["varios meses", new Date(2026, 6, 1), new Date(2026, 8, 16)],
+    ["varios años", new Date(2020, 0, 1), new Date(2026, 8, 16)],
+    ["desde mitad de mes", new Date(2026, 6, 20), new Date(2026, 8, 16)],
+  ])("cubre lo mismo que las ventanas mensuales (%s)", (_caso, from, to) => {
+    const meses = buildMonthlyWindows(from, to);
+    const ventana = buildScopeWindow(from, to);
+
+    expect(ventana).toEqual({
+      start: meses[0].start,
+      end: meses[meses.length - 1].end,
+    });
+  });
+
+  it("termina a fin de mes, no el día de hoy", () => {
+    expect(buildScopeWindow(new Date(2026, 8, 1), new Date(2026, 8, 16))).toEqual({
+      start: "2026-09-01",
+      end: "2026-09-30",
+    });
+  });
+
+  it("devuelve null si no hay nada que cubrir", () => {
+    expect(buildScopeWindow(new Date(2026, 8, 16), new Date(2026, 6, 1))).toBeNull();
+  });
+});
