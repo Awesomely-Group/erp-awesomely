@@ -32,14 +32,23 @@ más de mayor, para siempre.
 
 ### Dos modos
 
-- **`incremental`** (por defecto): relee solo los últimos
-  `HOLDED_INCREMENTAL_LOOKBACK_DAYS` días (60 por defecto), alineados a
-  principio de mes. Unas **10-20 llamadas** por empresa.
-- **`full`**: relee toda la historia. Es el único que reconcilia borrados
-  antiguos de compras, proformas y mayor, porque es el único que ve la foto
-  completa de esos documentos.
+- **`incremental`** (por defecto): relee **el ejercicio en curso entero**, del
+  1 de enero a hoy. Si `HOLDED_INCREMENTAL_LOOKBACK_DAYS` (60 por defecto)
+  alcanza más atrás, manda el lookback — es lo que pasa en enero y febrero, donde
+  hay que seguir mirando el cierre del año anterior. Unas **10-20 llamadas** por
+  empresa.
+- **`full`**: relee toda la historia. Es el único que reconcilia borrados de
+  ejercicios ya cerrados, porque es el único que los mira.
 
 Se elige con `?mode=full` en `/api/sync` y `/api/sync/stream`.
+
+**Por qué el año entero y no una ventana corta.** Una compra de febrero se puede
+corregir, o borrar, en septiembre; hasta que no se relee ese periodo no hay forma
+de enterarse. Con un lookback de 60 días, un borrado de marzo esperaba al sync
+completo del domingo. Ahora lo coge el diario. Cuesta **2 llamadas más por
+empresa** (`/purchases` pasa de 1 a 3), que con la paginación por cursor sale
+prácticamente gratis — antes, con ventanas mensuales, releer el año entero
+habría costado 9.
 
 ### Una ventana por listado, no una por mes
 
@@ -52,7 +61,7 @@ llamadas lo fija el volumen real de documentos, no el calendario:
 | | Antes | Ahora |
 |---|---|---|
 | `/purchases`, modo full (974 compras, 2020→hoy) | 81 | 6 |
-| `/purchases`, modo incremental (2 meses) | 2-3 | 2 |
+| `/purchases`, modo incremental (año en curso, ~300 compras) | 9 | 3 |
 
 La ventana sigue terminando a **fin del mes en curso**, no hoy: las ventanas
 mensuales ya incluían los documentos con fecha futura dentro del mes (facturas
