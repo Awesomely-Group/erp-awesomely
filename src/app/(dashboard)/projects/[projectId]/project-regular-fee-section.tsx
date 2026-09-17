@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatHourlyRate, formatMaybe } from "@/lib/utils";
 
 interface FeeEntry {
   id: string;
@@ -71,7 +72,7 @@ export function ProjectRegularFeeSection({ entries, months, totalHours }: Props)
                       <td className="py-2 text-right tabular-nums text-gray-700">{fmt(e.monthlyFee)}</td>
                       <td className="py-2 text-right tabular-nums text-gray-700">{e.maxHoursPerMonth} h</td>
                       <td className="py-2 text-right tabular-nums text-gray-400 text-xs">
-                        {implRate !== null ? `${implRate.toFixed(2)} €/h` : "—"}
+                        {formatMaybe(implRate, formatHourlyRate)}
                       </td>
                     </tr>
                   );
