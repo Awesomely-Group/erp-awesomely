@@ -33,9 +33,11 @@ interface Props {
   visibleCols: ColumnKey[];
   invoiceType: "SALE" | "PURCHASE";
   holdedStatus?: string;
+  /** Filtro por vencimiento que llega desde los enlaces de alertas del dashboard. */
+  dueBefore?: string;
 }
 
-export function InvoicesFilters({ projects = [], visibleCols, invoiceType }: Props): React.JSX.Element {
+export function InvoicesFilters({ projects = [], visibleCols, invoiceType, dueBefore }: Props): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -67,7 +69,7 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType }: Pro
   function applyWith(overrides: Partial<{
     search: string; period: string; dateFrom: string; dateTo: string;
     status: string; marca: string; project: string; holdedPresence: string;
-    recurrence: string; cols: string; holdedStatus: string;
+    recurrence: string; cols: string; holdedStatus: string; dueBefore: string;
   }>): void {
     const m = {
       search, period, dateFrom, dateTo, status,
@@ -78,6 +80,7 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType }: Pro
       recurrence: selectedRecurrence,
       holdedStatus: selectedHoldedStatus,
       cols: sp.get("cols") ?? "",
+      dueBefore: sp.get("dueBefore") ?? "",
       ...overrides,
     };
     const params = new URLSearchParams();
@@ -89,6 +92,7 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType }: Pro
     if (m.holdedPresence && m.holdedPresence !== "active") params.set("holdedPresence", m.holdedPresence);
     if (m.recurrence) params.set("recurrence", m.recurrence);
     if (m.holdedStatus) params.set("holdedStatus", m.holdedStatus);
+    if (m.dueBefore) params.set("dueBefore", m.dueBefore);
     // Preserve column preferences across filter changes (only omit if all cols are visible)
     if (m.cols) params.set("cols", m.cols);
     if (m.period) {
@@ -137,8 +141,26 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType }: Pro
 
   const selectClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white";
 
+  const dueBeforeLabel = dueBefore
+    ? new Date(dueBefore).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" })
+    : null;
+
   return (
     <div className="flex flex-wrap gap-3 items-end">
+      {dueBeforeLabel && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Vencimiento</label>
+          <button
+            onClick={() => applyWith({ dueBefore: "" })}
+            title="Quitar el filtro de vencimiento"
+            className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 hover:bg-amber-100"
+          >
+            Anterior a {dueBeforeLabel}
+            <span aria-hidden className="text-amber-500">×</span>
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Buscar</label>
         <input

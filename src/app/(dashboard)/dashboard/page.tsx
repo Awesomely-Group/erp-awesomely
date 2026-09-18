@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { getDateRange } from "@/lib/date-range";
-import { invoiceWhereMarca, MARCA_FILTER_UNASSIGNED } from "@/lib/org";
+import { invoiceWhereMarca, MARCA_FILTER_UNASSIGNED, STATUS_FILTER_UNASSIGNED } from "@/lib/org";
 import { InvoiceStatus, Prisma, type Prisma as PrismaTypes } from "@prisma/client";
 import { DashboardFilters } from "./dashboard-filters";
 import { Suspense } from "react";
@@ -113,6 +113,9 @@ async function getDashboardCashflow(
   return Array.from(pointMap.values());
 }
 
+/** Estado de Holded "pendiente de cobro/pago" — el mismo valor que usa el filtro Pago/Cobro de /invoices. */
+const HOLDED_STATUS_PENDING = 1;
+
 async function getAlerts() {
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
@@ -120,9 +123,17 @@ async function getAlerts() {
   const fourteenDaysLater = new Date(now);
   fourteenDaysLater.setDate(fourteenDaysLater.getDate() + 14);
 
+  // Pendiente de cobro/pago es el estado que trae Holded (1 = pendiente), NO el estado
+  // de clasificación del ERP. Hasta ahora estas alertas miraban `status`, que es la
+  // clasificación: la fila "Pagos pendientes atrasados" contaba en realidad compras sin
+  // clasificar emitidas hace más de 30 días — 1, cuando lo pendiente de pago eran 38.
+  const pendingPayment = { removedFromHoldedAt: null, holdedStatus: HOLDED_STATUS_PENDING };
+
   const [
     unclassified,
+    pendingCollection,
     overdueCollection,
+    pendingPaymentAgg,
     overduePayment,
     proformasDueSoon,
     proformasOverdue,
@@ -131,12 +142,23 @@ async function getAlerts() {
       where: { removedFromHoldedAt: null, status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] } },
     }),
     prisma.invoice.aggregate({
-      where: { removedFromHoldedAt: null, type: "SALE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
+      where: { ...pendingPayment, type: "SALE" },
       _count: true,
       _sum: { totalEur: true },
     }),
     prisma.invoice.aggregate({
-      where: { removedFromHoldedAt: null, type: "PURCHASE", status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL] }, date: { lt: thirtyDaysAgo } },
+      // Vencidas: se mide contra la fecha de vencimiento, no la de emisión.
+      where: { ...pendingPayment, type: "SALE", dueDate: { lt: thirtyDaysAgo } },
+      _count: true,
+      _sum: { totalEur: true },
+    }),
+    prisma.invoice.aggregate({
+      where: { ...pendingPayment, type: "PURCHASE" },
+      _count: true,
+      _sum: { totalEur: true },
+    }),
+    prisma.invoice.aggregate({
+      where: { ...pendingPayment, type: "PURCHASE", dueDate: { lt: thirtyDaysAgo } },
       _count: true,
       _sum: { totalEur: true },
     }),
@@ -151,10 +173,21 @@ async function getAlerts() {
     }),
   ]);
 
+  const agg = (r: { _count: number; _sum: { totalEur: unknown } }) => ({
+    count: r._count,
+    total: Number(r._sum.totalEur ?? 0),
+  });
+
   return {
     unclassified,
-    overdueCollection: { count: overdueCollection._count, total: Number(overdueCollection._sum.totalEur ?? 0) },
-    overduePayment: { count: overduePayment._count, total: Number(overduePayment._sum.totalEur ?? 0) },
+    pendingCollection: agg(pendingCollection),
+    overdueCollection: agg(overdueCollection),
+    pendingPayment: agg(pendingPaymentAgg),
+    overduePayment: agg(overduePayment),
+    // Las alertas de vencidas filtran por vencimiento, y eso no se puede expresar con
+    // los filtros visibles de /invoices: el enlace lleva `dueBefore` para que la lista
+    // enseñe exactamente las mismas facturas que ha contado la alerta.
+    overdueBefore: thirtyDaysAgo.toISOString().slice(0, 10),
     proformasDueSoon,
     proformasOverdue,
   };
@@ -292,22 +325,38 @@ export default async function DashboardPage({
           <AlertRow
             label="Facturas sin clasificar"
             count={alerts.unclassified}
-            href="/invoices?status=PENDING"
+            // "Sin asignar" = PENDING + PARTIAL, que es justo lo que cuenta la alerta.
+            // El enlace anterior filtraba solo PENDING y enseñaba menos de las que decía.
+            href={`/invoices?status=${STATUS_FILTER_UNASSIGNED}`}
             severity={alerts.unclassified > 0 ? "warning" : "ok"}
           />
           <AlertRow
-            label="Facturas de venta atrasadas (+30 días)"
+            label="Cobros pendientes"
+            count={alerts.pendingCollection.count}
+            amount={alerts.pendingCollection.total}
+            href={`/invoices?type=SALE&holdedStatus=${HOLDED_STATUS_PENDING}`}
+            severity={alerts.pendingCollection.count > 0 ? "warning" : "ok"}
+          />
+          <AlertRow
+            label="Cobros vencidos (+30 días)"
             count={alerts.overdueCollection.count}
             amount={alerts.overdueCollection.total}
-            href="/invoices?type=SALE&status=PENDING"
+            href={`/invoices?type=SALE&holdedStatus=${HOLDED_STATUS_PENDING}&dueBefore=${alerts.overdueBefore}`}
             severity={alerts.overdueCollection.count > 0 ? "error" : "ok"}
           />
           <AlertRow
-            label="Pagos pendientes atrasados (+30 días)"
+            label="Pagos pendientes"
+            count={alerts.pendingPayment.count}
+            amount={alerts.pendingPayment.total}
+            href={`/invoices?type=PURCHASE&holdedStatus=${HOLDED_STATUS_PENDING}`}
+            severity={alerts.pendingPayment.count > 0 ? "warning" : "ok"}
+          />
+          <AlertRow
+            label="Pagos vencidos (+30 días)"
             count={alerts.overduePayment.count}
             amount={alerts.overduePayment.total}
-            href="/invoices?type=PURCHASE&status=PENDING"
-            severity={alerts.overduePayment.count > 0 ? "warning" : "ok"}
+            href={`/invoices?type=PURCHASE&holdedStatus=${HOLDED_STATUS_PENDING}&dueBefore=${alerts.overdueBefore}`}
+            severity={alerts.overduePayment.count > 0 ? "error" : "ok"}
           />
           <AlertRow
             label="Proformas vencidas sin emitir"
