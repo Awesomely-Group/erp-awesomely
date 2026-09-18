@@ -757,7 +757,7 @@ export function PaymentsView({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Pagos y Cobros</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Facturas pendientes de pago y cobro
+            Facturas, nóminas y pagos sueltos pendientes
           </p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">
