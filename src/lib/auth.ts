@@ -9,6 +9,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   callbacks: {
+    // jwt/session (id + role) viven en authConfig, compartidos con src/proxy.ts — ver
+    // comentario allí. signIn necesita Prisma, por eso solo está aquí.
+    ...authConfig.callbacks,
     async signIn({ user }) {
       const email = normalizeEmail(user.email ?? "");
       if (!email) return false;
@@ -16,14 +19,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         where: { email },
       });
       return !!row;
-    },
-    jwt({ token, user }) {
-      if (user) token.id = user.id;
-      return token;
-    },
-    session({ session, token }) {
-      session.user.id = token.id as string;
-      return session;
     },
   },
 });

@@ -28,14 +28,28 @@ export default auth((req) => {
 
   if (isApiAuth || isApiInternal) return NextResponse.next();
   // En desarrollo local (NODE_ENV !== "production") se omite el login para agilizar las
-  // pruebas sin pasar por SSO. Nunca afecta a producción (ver también layout.tsx).
-  if (process.env.NODE_ENV !== "production") return NextResponse.next();
-  if (!isLoggedIn && !isLoginPage) {
-    return NextResponse.redirect(new URL("/login", req.url));
+  // pruebas sin pasar por SSO. Nunca afecta a producción (ver también layout.tsx). El
+  // guard de rol COMERCIAL de más abajo sí se aplica también en local, para poder
+  // probarlo sin desplegar.
+  const skipLoginCheck = process.env.NODE_ENV !== "production";
+  if (!skipLoginCheck) {
+    if (!isLoggedIn && !isLoginPage) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+    if (isLoggedIn && isLoginPage) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
   }
-  if (isLoggedIn && isLoginPage) {
-    return NextResponse.redirect(new URL("/", req.url));
+
+  // Growth (D8, revisión 2026-09-18): COMERCIAL solo ve /crm y /campanas — el resto del
+  // ERP (facturación, nóminas, previsiones…) queda fuera. ADMIN (o cualquier usuario sin
+  // rol explícito, default en BD) no tiene restricción, igual que hoy.
+  const role = req.auth?.user?.role;
+  const isGrowthRoute = p === "/crm" || p.startsWith("/crm/") || p === "/campanas" || p.startsWith("/campanas/");
+  if (role === "COMERCIAL" && !isGrowthRoute && !isLoginPage) {
+    return NextResponse.redirect(new URL("/crm", req.url));
   }
+
   return NextResponse.next();
 });
 

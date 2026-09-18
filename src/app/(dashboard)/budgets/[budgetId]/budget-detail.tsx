@@ -73,7 +73,9 @@ type BudgetData = {
   holdedSyncedAt: Date | null;
   clientName: string | null;
   updatedAt: Date;
-  project: { id: string; name: string; jiraKey: string };
+  // Nullable (Growth/CRM, revisión 2026-09-18): puede nacer de un CrmLead sin
+  // proyecto de Jira todavía (F7).
+  project: { id: string; name: string; jiraKey: string } | null;
   company: { id: string; name: string } | null;
   lines: BudgetLineData[];
   paymentTerms: PaymentTermData[];
@@ -681,8 +683,14 @@ export function BudgetDetail({
             )}
           </h1>
           <p className="text-sm text-gray-500">
-            <span className="font-mono text-gray-400">{budget.project.jiraKey}</span>
-            {" "}·{" "}{budget.project.name}
+            {budget.project ? (
+              <>
+                <span className="font-mono text-gray-400">{budget.project.jiraKey}</span>
+                {" "}·{" "}{budget.project.name}
+              </>
+            ) : (
+              <span className="italic text-gray-400">Sin proyecto de Jira</span>
+            )}
             {budget.company && (
               <span className="ml-2 text-xs text-gray-400">· {budget.company.name}</span>
             )}

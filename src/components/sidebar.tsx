@@ -23,6 +23,10 @@ import {
   ChevronDown,
   ChevronRight,
   Banknote,
+  KanbanSquare,
+  Building2,
+  Handshake,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
@@ -40,8 +44,10 @@ type NavGroup = {
  * de 14 enlaces sin jerarquía visual, difícil de escanear. Los bloques siguen el
  * flujo marketing/ventas → operaciones → facturación → contabilidad → sistema.
  *
- * "CRM" y "Marketing" (dentro de Marketing y Ventas) son subsecciones vacías a
- * propósito, reservadas para cuando existan esas páginas — no enlazan a nada todavía.
+ * "Marketing y Ventas" se renombró a "Growth" (revisión 2026-09-18, plan Growth/CRM):
+ * la subsección "CRM" ya tiene páginas reales (pipeline, cuentas, actividades,
+ * comisiones); "Campañas" sigue siendo un placeholder a propósito — la integración
+ * real de ads vive pausada en otra rama, fuera de este módulo (ver /campanas).
  */
 const NAVIGATION_GROUPS: NavGroup[] = [
   {
@@ -49,11 +55,19 @@ const NAVIGATION_GROUPS: NavGroup[] = [
     items: [{ name: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
   },
   {
-    label: "Marketing y Ventas",
+    label: "Growth",
     items: [],
     subsections: [
-      { label: "CRM", items: [] },
-      { label: "Marketing", items: [] },
+      {
+        label: "CRM",
+        items: [
+          { name: "Pipeline", href: "/crm", icon: KanbanSquare },
+          { name: "Cuentas", href: "/crm/cuentas", icon: Building2 },
+          { name: "Actividades", href: "/crm/actividades", icon: CalendarDays },
+          { name: "Comisiones", href: "/crm/comisiones", icon: Handshake },
+        ],
+      },
+      { label: "Campañas", items: [{ name: "Campañas", href: "/campanas", icon: Megaphone }] },
     ],
   },
   {
