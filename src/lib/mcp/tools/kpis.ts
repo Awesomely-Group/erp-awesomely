@@ -7,7 +7,7 @@ export function registerKpiTools(server: McpServer): void {
     "get_kpis",
     {
       description:
-        "Devuelve KPIs financieros del ERP: P&L (cuenta de resultados), cashflow mensual, métricas derivadas y proyecciones. Acepta filtros por año, rango de fechas, marca y empresa.",
+        "Devuelve KPIs financieros del ERP: P&L (cuenta de resultados), cashflow mensual, métricas derivadas, proyecciones y KPIs comerciales de Growth/CRM (leads, conversión por etapa, ciclo de venta, pipeline ponderado). Acepta filtros por año, rango de fechas, marca, línea de negocio y empresa.",
       inputSchema: {
         year: z
           .number()
@@ -36,6 +36,12 @@ export function registerKpiTools(server: McpServer): void {
           .describe(
             'ID de empresa. Usar "consolidated" para vista consolidada.'
           ),
+        lineOfBusiness: z
+          .string()
+          .optional()
+          .describe(
+            'Línea de negocio dentro de la marca, solo para KPIs comerciales (p.ej. "GENERAL", "ODOO"). Si no se indica, agrega todas las líneas.'
+          ),
       },
     },
     async (args) => {
@@ -45,6 +51,7 @@ export function registerKpiTools(server: McpServer): void {
         dateTo: args.dateTo ? new Date(args.dateTo) : undefined,
         marca: args.marca,
         companyId: args.companyId,
+        lineOfBusiness: args.lineOfBusiness,
       });
 
       return {

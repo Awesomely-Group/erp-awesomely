@@ -1,14 +1,16 @@
-export type { KPIFilters, PLKPIs, CashflowKPIs, DerivedKPIs, ProjectionKPIs, KPIResponse } from "./types";
+export type { KPIFilters, PLKPIs, CashflowKPIs, DerivedKPIs, ProjectionKPIs, CommercialKPIs, KPIResponse } from "./types";
 export { getPLKPIs } from "./pl";
 export { getCashflowKPIs } from "./cashflow";
 export { getDerivedKPIs } from "./derived";
 export { getProjections } from "./projections";
+export { getCommercialKPIs } from "./commercial";
 
 import type { Prisma } from "@prisma/client";
 import { getPLKPIs } from "./pl";
 import { getCashflowKPIs } from "./cashflow";
 import { getDerivedKPIs } from "./derived";
 import { getProjections } from "./projections";
+import { getCommercialKPIs } from "./commercial";
 import { prisma } from "@/lib/prisma";
 import { invoiceWhereMarca } from "@/lib/org";
 import type { KPIFilters, KPIResponse } from "./types";
@@ -38,11 +40,12 @@ function getDataQualityWhere(filters: KPIFilters): Prisma.InvoiceWhereInput {
 }
 
 export async function getAllKPIs(filters: KPIFilters): Promise<KPIResponse> {
-  const [pl, cashflow, derived, projections, unclassifiedCount] = await Promise.all([
+  const [pl, cashflow, derived, projections, commercial, unclassifiedCount] = await Promise.all([
     getPLKPIs(filters),
     getCashflowKPIs(filters),
     getDerivedKPIs(filters),
     getProjections(filters),
+    getCommercialKPIs(filters),
     prisma.invoice.count({
       where: getDataQualityWhere(filters),
     }),
@@ -53,6 +56,7 @@ export async function getAllKPIs(filters: KPIFilters): Promise<KPIResponse> {
     cashflow,
     derived,
     projections,
+    commercial,
     dataQuality: { unclassifiedCount },
     generatedAt: new Date().toISOString(),
   };

@@ -1253,17 +1253,37 @@ enum CrmActivityType {
   @@map("crm_activity_type")
 }
 
+/// Origen del lead (revisión 2026-09-18, impacto plan Odoo): distingue base
+/// instalada que se migra/amplía (INSIDE_OUT) de mercado abierto (OUTSIDE_IN) — el
+/// deck de Odoo separa objetivos por ese mix, y LaTroupe necesita lo mismo para su
+/// "tasa de referidos >50%".
+enum CrmLeadOrigin {
+  INSIDE_OUT
+  OUTSIDE_IN
+  REFERRAL
+  INBOUND
+  PARTNER
+
+  @@map("crm_lead_origin")
+}
+
 /// Etapas del pipeline, propias del ERP (ya no las define Holded). Una lista por
 /// marca — el seed inicial se confirma con el usuario antes de sembrarse (ver
 /// scripts/seed-crm-stages.ts), no viene de ningún documento verificado en la
 /// sesión que diseñó este módulo.
 model CrmStage {
-  id     String  @id @default(cuid())
-  marca  String
-  name   String
-  order  Int
-  isWon  Boolean @default(false)
-  isLost Boolean @default(false)
+  id             String  @id @default(cuid())
+  marca          String
+  // Línea de negocio dentro de la marca (revisión 2026-09-18, impacto plan Odoo):
+  // Gigson Solutions puede tener más de un embudo (p.ej. "INTEGRACIONES" vs "ODOO",
+  // cada uno con sus propias etapas — la de Odoo incluye "Demo", que no existe en el
+  // embudo actual). "GENERAL" es el valor por defecto para marcas con un único
+  // funnel — no obliga a nadie a tener líneas de negocio para poder usar el CRM.
+  lineOfBusiness String  @default("GENERAL")
+  name           String
+  order          Int
+  isWon          Boolean @default(false)
+  isLost         Boolean @default(false)
 
   leads      CrmLead[]
   fromEvents CrmLeadStageEvent[] @relation("StageEventFrom")
@@ -1272,21 +1292,32 @@ model CrmStage {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([marca, order])
-  @@index([marca])
+  @@unique([marca, lineOfBusiness, order])
+  @@index([marca, lineOfBusiness])
   @@map("crm_stages")
 }
 
 model CrmLead {
-  id     String        @id @default(cuid())
-  name   String
-  marca  String
-  source CrmLeadSource
+  id             String        @id @default(cuid())
+  name           String
+  marca          String
+  // Ver comentario en CrmStage.lineOfBusiness — debe coincidir con la línea del
+  // CrmStage al que apunta `stageId` (no hay constraint de BD que lo garantice, se
+  // valida en el código que crea/mueve el lead).
+  lineOfBusiness String        @default("GENERAL")
+  source         CrmLeadSource
 
   contactName String?
   email       String?
   phone       String?
   amount      Decimal?
+
+  // Mix inside-out/outside-in (plan Odoo) y pipeline por mercado (LaTroupe: UK/US/
+  // ES/Nórdicos/Sudáfrica, porque su paid está segmentado así). `seats` es el nº de
+  // usuarios propuestos — objetivo de la línea Odoo (~75 en el año 1).
+  origin CrmLeadOrigin?
+  market String?
+  seats  Int?
 
   stageId String
   stage   CrmStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
@@ -1504,4 +1535,47 @@ model Commission {
   @@index([marca])
   @@index([status])
   @@map("commissions")
+}
+
+// ─── Growth: metas de KPI (revisión 2026-09-18, impacto plan Odoo) ─────────────
+
+enum KpiTargetPeriodType {
+  MONTH
+  QUARTER
+  YEAR
+
+  @@map("kpi_target_period_type")
+}
+
+/// Meta configurable por métrica/marca/línea de negocio/periodo, transversal (no
+/// solo CRM — sirve igual para métricas de entrega o financieras el día que se
+/// construyan). Alimenta el semáforo Verde (≥100% meta) / Ámbar (70-99%) / Rojo
+/// (<70%) de la rutina mensual comercial. Se edita en /settings — el ERP no asume
+/// valores por defecto: las cifras del plan de activación de Odoo (88/44/22/9, 75
+/// usuarios, ratio 3x) son una plantilla sin aprobar, no se siembran aquí.
+model KpiTarget {
+  id String @id @default(cuid())
+
+  /// Identificador libre de la métrica (p.ej. "leads_mes", "demos_mes",
+  /// "propuestas_enviadas", "ticket_medio", "win_rate") — sin enum cerrado a
+  /// propósito, para no tener que migrar el schema cada vez que se añade una métrica
+  /// nueva a src/lib/kpis/commercial.ts.
+  metric String
+
+  marca          String?
+  lineOfBusiness String?
+
+  periodType KpiTargetPeriodType
+  /// "2026-09" (MONTH), "2026-Q3" (QUARTER) o "2026" (YEAR) — texto simple en vez de
+  /// fechas para no tener que decidir a qué día del periodo apuntar.
+  periodKey  String
+
+  value Decimal
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([metric, marca, lineOfBusiness, periodType, periodKey])
+  @@index([metric])
+  @@map("kpi_targets")
 }

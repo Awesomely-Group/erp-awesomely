@@ -13,6 +13,15 @@ import { MARCA_OPTIONS } from "@/lib/org";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { createLeadManual, moveLeadStage } from "./actions";
+import type { CrmLeadOrigin } from "@prisma/client";
+
+const ORIGIN_LABEL: Record<CrmLeadOrigin, string> = {
+  INSIDE_OUT: "Base instalada (inside-out)",
+  OUTSIDE_IN: "Mercado abierto (outside-in)",
+  REFERRAL: "Referido",
+  INBOUND: "Inbound",
+  PARTNER: "Partner",
+};
 
 export interface BoardStage {
   id: string;
@@ -122,10 +131,12 @@ function StageColumn({
 
 function NewLeadModal({
   marca,
+  lineOfBusiness,
   users,
   onClose,
 }: {
   marca: string;
+  lineOfBusiness: string;
   users: BoardUser[];
   onClose: () => void;
 }): React.JSX.Element {
@@ -137,6 +148,9 @@ function NewLeadModal({
   const [amount, setAmount] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [notes, setNotes] = useState("");
+  const [origin, setOrigin] = useState<CrmLeadOrigin | "">("");
+  const [market, setMarket] = useState("");
+  const [seats, setSeats] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent): void {
@@ -153,12 +167,16 @@ function NewLeadModal({
       await createLeadManual({
         name,
         marca,
+        lineOfBusiness,
         contactName: contactName || null,
         email: email || null,
         phone: phone || null,
         amount: amount ? Number(amount) : null,
         ownerId: ownerId || null,
         notes: notes || null,
+        origin: origin || null,
+        market: market || null,
+        seats: seats ? Number(seats) : null,
       });
       onClose();
     });
@@ -167,7 +185,10 @@ function NewLeadModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-        <h2 className="text-base font-semibold text-gray-900">Nuevo lead — {marca}</h2>
+        <h2 className="text-base font-semibold text-gray-900">
+          Nuevo lead — {marca}
+          {lineOfBusiness !== "GENERAL" && ` (${lineOfBusiness})`}
+        </h2>
         <form onSubmit={handleSubmit} className="mt-4 space-y-3">
           <input
             className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
@@ -214,6 +235,33 @@ function NewLeadModal({
               </option>
             ))}
           </select>
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              value={origin}
+              onChange={(e) => setOrigin(e.target.value as CrmLeadOrigin | "")}
+            >
+              <option value="">Origen (opcional)</option>
+              {Object.entries(ORIGIN_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              placeholder="Mercado (UK/US/ES…)"
+              value={market}
+              onChange={(e) => setMarket(e.target.value)}
+            />
+          </div>
+          <input
+            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            placeholder="Usuarios/seats propuestos (opcional)"
+            type="number"
+            value={seats}
+            onChange={(e) => setSeats(e.target.value)}
+          />
           <textarea
             className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
             placeholder="Notas"
@@ -246,11 +294,15 @@ function NewLeadModal({
 
 export function CrmBoard({
   marca,
+  lineOfBusiness,
+  availableLines,
   stages,
   leads,
   users,
 }: {
   marca: string;
+  lineOfBusiness: string;
+  availableLines: string[];
   stages: BoardStage[];
   leads: BoardLead[];
   users: BoardUser[];
@@ -301,6 +353,24 @@ export function CrmBoard({
               </Link>
             ))}
           </div>
+          {availableLines.length > 1 && (
+            <div className="mt-1.5 flex gap-1">
+              {availableLines.map((line) => (
+                <Link
+                  key={line}
+                  href={`/crm?marca=${encodeURIComponent(marca)}&lineOfBusiness=${encodeURIComponent(line)}`}
+                  className={cn(
+                    "rounded-md px-2 py-0.5 text-[11px] font-medium",
+                    line === lineOfBusiness
+                      ? "bg-gray-800 text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  )}
+                >
+                  {line}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
         <button
           onClick={() => setShowNewLead(true)}
@@ -324,7 +394,7 @@ export function CrmBoard({
           ))}
           {stages.length === 0 && (
             <p className="text-sm text-gray-400">
-              No hay etapas configuradas para {marca}. Ejecuta{" "}
+              No hay etapas configuradas para {marca} / {lineOfBusiness}. Ejecuta{" "}
               <code className="rounded bg-gray-100 px-1">scripts/seed-growth-crm.ts</code>.
             </p>
           )}
@@ -332,7 +402,12 @@ export function CrmBoard({
       </DndContext>
 
       {showNewLead && (
-        <NewLeadModal marca={marca} users={users} onClose={() => setShowNewLead(false)} />
+        <NewLeadModal
+          marca={marca}
+          lineOfBusiness={lineOfBusiness}
+          users={users}
+          onClose={() => setShowNewLead(false)}
+        />
       )}
     </div>
   );

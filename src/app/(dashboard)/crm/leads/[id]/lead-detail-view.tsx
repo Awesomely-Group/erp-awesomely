@@ -10,18 +10,30 @@ import {
   createActivity,
   completeActivity,
 } from "../../actions";
-import type { CrmActivityType } from "@prisma/client";
+import type { CrmActivityType, CrmLeadOrigin } from "@prisma/client";
+
+const ORIGIN_LABEL: Record<CrmLeadOrigin, string> = {
+  INSIDE_OUT: "Base instalada (inside-out)",
+  OUTSIDE_IN: "Mercado abierto (outside-in)",
+  REFERRAL: "Referido",
+  INBOUND: "Inbound",
+  PARTNER: "Partner",
+};
 
 export interface LeadDetail {
   id: string;
   name: string;
   marca: string;
+  lineOfBusiness: string;
   source: string;
   contactName: string | null;
   email: string | null;
   phone: string | null;
   amount: number | null;
   notes: string | null;
+  origin: CrmLeadOrigin | null;
+  market: string | null;
+  seats: number | null;
   qualified: boolean;
   stageId: string;
   stageName: string;
@@ -123,7 +135,9 @@ export function LeadDetailView({
           </label>
         </div>
         <p className="text-sm text-gray-500">
-          {lead.marca} · {lead.source} · creado el {formatDate(lead.createdAt)}
+          {lead.marca}
+          {lead.lineOfBusiness !== "GENERAL" && ` · ${lead.lineOfBusiness}`} · {lead.source} ·
+          creado el {formatDate(lead.createdAt)}
         </p>
       </div>
 
@@ -150,6 +164,24 @@ export function LeadDetailView({
                   {lead.amount !== null ? formatCurrency(lead.amount) : "—"}
                 </dd>
               </div>
+              {lead.origin && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Origen</dt>
+                  <dd className="text-gray-900">{ORIGIN_LABEL[lead.origin]}</dd>
+                </div>
+              )}
+              {lead.market && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Mercado</dt>
+                  <dd className="text-gray-900">{lead.market}</dd>
+                </div>
+              )}
+              {lead.seats !== null && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Usuarios/seats propuestos</dt>
+                  <dd className="text-gray-900">{lead.seats}</dd>
+                </div>
+              )}
               {lead.notes && (
                 <div className="pt-2">
                   <dt className="text-gray-500">Notas</dt>

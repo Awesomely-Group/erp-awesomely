@@ -24,7 +24,12 @@ export default async function LeadDetailPage({
   if (!lead) notFound();
 
   const [stages, users] = await Promise.all([
-    prisma.crmStage.findMany({ where: { marca: lead.marca }, orderBy: { order: "asc" } }),
+    // Solo las etapas del mismo funnel (marca + lineOfBusiness) — ver
+    // CrmStage.lineOfBusiness, revisión 2026-09-18.
+    prisma.crmStage.findMany({
+      where: { marca: lead.marca, lineOfBusiness: lead.lineOfBusiness },
+      orderBy: { order: "asc" },
+    }),
     prisma.user.findMany({ select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
   ]);
 
@@ -32,12 +37,16 @@ export default async function LeadDetailPage({
     id: lead.id,
     name: lead.name,
     marca: lead.marca,
+    lineOfBusiness: lead.lineOfBusiness,
     source: lead.source,
     contactName: lead.contactName,
     email: lead.email,
     phone: lead.phone,
     amount: lead.amount !== null ? Number(lead.amount) : null,
     notes: lead.notes,
+    origin: lead.origin,
+    market: lead.market,
+    seats: lead.seats,
     qualified: lead.qualified,
     stageId: lead.stageId,
     stageName: lead.stage.name,

@@ -2,15 +2,20 @@ import { json, badRequest, unauthorized } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import { authenticateLeadsWebhook, isWebhookLeadSource } from "@/lib/leads-webhook";
 import { MARCA_OPTIONS } from "@/lib/org";
-import { Prisma } from "@prisma/client";
+import { CrmLeadOrigin, Prisma } from "@prisma/client";
 
 const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
+const ORIGIN_VALUES = new Set<string>(Object.values(CrmLeadOrigin));
 
 interface LeadWebhookPayload {
   source: string;
   externalRef: string;
   name: string;
   marca: string;
+  // Ver CrmStage.lineOfBusiness (revisión 2026-09-18) — default "GENERAL" si no se
+  // envía. Solo tiene sentido pasar otra cosa si esa marca ya tiene más de un funnel
+  // sembrado (ver scripts/seed-growth-crm.ts).
+  lineOfBusiness?: string;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -20,6 +25,11 @@ interface LeadWebhookPayload {
   utmMedium?: string | null;
   utmCampaign?: string | null;
   notes?: string | null;
+  // Impacto del plan de activación de Odoo (revisión 2026-09-18): mix inside-out/
+  // outside-in, mercado (LaTroupe) y nº de usuarios propuestos (Odoo).
+  origin?: string | null;
+  market?: string | null;
+  seats?: number | null;
 }
 
 /**
@@ -59,8 +69,12 @@ export async function POST(req: Request): Promise<Response> {
   if (!payload.email && !payload.phone) {
     return badRequest("email o phone es obligatorio (al menos uno)");
   }
+  if (payload.origin !== undefined && payload.origin !== null && !ORIGIN_VALUES.has(payload.origin)) {
+    return badRequest(`origin inválido. Valores: ${[...ORIGIN_VALUES].join(", ")}`);
+  }
 
   const source = payload.source;
+  const lineOfBusiness = payload.lineOfBusiness ?? "GENERAL";
 
   const existing = await prisma.crmLead.findUnique({
     where: { source_externalRef: { source, externalRef: payload.externalRef } },
@@ -71,12 +85,14 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const firstStage = await prisma.crmStage.findFirst({
-    where: { marca: payload.marca },
+    where: { marca: payload.marca, lineOfBusiness },
     orderBy: { order: "asc" },
   });
   if (!firstStage) {
     return json(
-      { error: `No hay etapas configuradas (CrmStage) para la marca "${payload.marca}" — ejecutar scripts/seed-growth-crm.ts` },
+      {
+        error: `No hay etapas configuradas (CrmStage) para "${payload.marca}" / línea "${lineOfBusiness}" — ejecutar scripts/seed-growth-crm.ts`,
+      },
       500
     );
   }
@@ -86,6 +102,7 @@ export async function POST(req: Request): Promise<Response> {
       data: {
         name: payload.name,
         marca: payload.marca,
+        lineOfBusiness,
         source,
         externalRef: payload.externalRef,
         contactName: payload.contactName ?? null,
@@ -97,6 +114,9 @@ export async function POST(req: Request): Promise<Response> {
         utmMedium: payload.utmMedium ?? null,
         utmCampaign: payload.utmCampaign ?? null,
         notes: payload.notes ?? null,
+        origin: (payload.origin as CrmLeadOrigin | null | undefined) ?? null,
+        market: payload.market ?? null,
+        seats: payload.seats ?? null,
         stageId: firstStage.id,
         stageEvents: {
           create: { toStageId: firstStage.id, trigger: "WEBHOOK" },

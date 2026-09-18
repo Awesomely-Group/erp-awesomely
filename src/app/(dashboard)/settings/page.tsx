@@ -6,9 +6,10 @@ import { SsoAllowlistSection } from "./sso-allowlist";
 import { AccountMappingTable } from "./account-mapping-table";
 import { RoleTemplatesSection } from "./role-templates-section";
 import { ApiKeysSection } from "./api-keys";
+import { KpiTargetsSection } from "./kpi-targets-section";
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
-  const [companies, workspaces, auditLogs, accountMappings, roleTemplates] = await Promise.all([
+  const [companies, workspaces, auditLogs, accountMappings, roleTemplates, kpiTargets] = await Promise.all([
     prisma.company.findMany({ orderBy: { name: "asc" } }),
     prisma.jiraWorkspace.findMany({ orderBy: { name: "asc" } }),
     prisma.auditLog.findMany({
@@ -18,6 +19,7 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
     }),
     prisma.accountMapping.findMany({ orderBy: [{ l1: "asc" }, { tag: "asc" }] }),
     prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.kpiTarget.findMany({ orderBy: [{ metric: "asc" }, { periodKey: "asc" }] }),
   ]);
 
   return (
@@ -91,6 +93,27 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         </div>
         <RoleTemplatesSection
           templates={roleTemplates.map((t) => ({ id: t.id, name: t.name, color: t.color, ratePerHour: Number(t.ratePerHour) }))}
+        />
+      </section>
+
+      {/* Metas de KPI (Growth) */}
+      <section className="space-y-4 max-w-3xl">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Metas de Growth (KPIs)</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Objetivos por métrica comercial, marca, línea de negocio y periodo.
+          </p>
+        </div>
+        <KpiTargetsSection
+          targets={kpiTargets.map((t) => ({
+            id: t.id,
+            metric: t.metric,
+            marca: t.marca,
+            lineOfBusiness: t.lineOfBusiness,
+            periodType: t.periodType,
+            periodKey: t.periodKey,
+            value: Number(t.value),
+          }))}
         />
       </section>
 

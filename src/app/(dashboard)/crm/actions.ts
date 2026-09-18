@@ -3,33 +3,42 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireAdmin } from "@/lib/roles";
 import { revalidatePath } from "next/cache";
-import { CrmActivityType, Prisma } from "@prisma/client";
+import { CrmActivityType, CrmLeadOrigin, Prisma } from "@prisma/client";
 
 interface CreateLeadPayload {
   name: string;
   marca: string;
+  /** Ver CrmStage.lineOfBusiness — default "GENERAL" si la marca no tiene líneas. */
+  lineOfBusiness?: string;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
   amount?: number | null;
   notes?: string | null;
   ownerId?: string | null;
+  origin?: CrmLeadOrigin | null;
+  market?: string | null;
+  seats?: number | null;
 }
 
 /** Alta manual desde el ERP (D7) — source: MANUAL, a diferencia del webhook de leads. */
 export async function createLeadManual(payload: CreateLeadPayload): Promise<{ id: string }> {
   await requireSession();
 
+  const lineOfBusiness = payload.lineOfBusiness ?? "GENERAL";
   const firstStage = await prisma.crmStage.findFirst({
-    where: { marca: payload.marca },
+    where: { marca: payload.marca, lineOfBusiness },
     orderBy: { order: "asc" },
   });
-  if (!firstStage) throw new Error(`No hay etapas configuradas para la marca "${payload.marca}"`);
+  if (!firstStage) {
+    throw new Error(`No hay etapas configuradas para "${payload.marca}" / línea "${lineOfBusiness}"`);
+  }
 
   const lead = await prisma.crmLead.create({
     data: {
       name: payload.name,
       marca: payload.marca,
+      lineOfBusiness,
       source: "MANUAL",
       contactName: payload.contactName ?? null,
       email: payload.email ?? null,
@@ -37,6 +46,9 @@ export async function createLeadManual(payload: CreateLeadPayload): Promise<{ id
       amount: payload.amount ?? null,
       notes: payload.notes ?? null,
       ownerId: payload.ownerId ?? null,
+      origin: payload.origin ?? null,
+      market: payload.market ?? null,
+      seats: payload.seats ?? null,
       stageId: firstStage.id,
       stageEvents: { create: { toStageId: firstStage.id, trigger: "MANUAL_DRAG" } },
     },
@@ -51,9 +63,20 @@ export async function createLeadManual(payload: CreateLeadPayload): Promise<{ id
 export async function moveLeadStage(leadId: string, toStageId: string): Promise<void> {
   const session = await requireSession();
 
-  const lead = await prisma.crmLead.findUnique({ where: { id: leadId }, select: { stageId: true } });
+  const lead = await prisma.crmLead.findUnique({
+    where: { id: leadId },
+    select: { stageId: true, marca: true, lineOfBusiness: true },
+  });
   if (!lead) throw new Error("Lead no encontrado");
   if (lead.stageId === toStageId) return;
+
+  // Defensa en profundidad: la UI ya solo ofrece etapas de la misma marca/línea de
+  // negocio, pero un lead no debería poder saltar de funnel arrastrándolo (revisión
+  // 2026-09-18, lineOfBusiness).
+  const toStage = await prisma.crmStage.findUnique({ where: { id: toStageId } });
+  if (!toStage || toStage.marca !== lead.marca || toStage.lineOfBusiness !== lead.lineOfBusiness) {
+    throw new Error("La etapa de destino no pertenece al mismo funnel del lead");
+  }
 
   await prisma.$transaction([
     prisma.crmLead.update({ where: { id: leadId }, data: { stageId: toStageId } }),

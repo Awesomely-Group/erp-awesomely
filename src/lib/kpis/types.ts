@@ -6,6 +6,11 @@ export interface KPIFilters {
   companyId?: string
   /** Invoice.marca value */
   marca?: string
+  /**
+   * CrmStage/CrmLead.lineOfBusiness (Growth, revisión 2026-09-18) — solo se usa en
+   * getCommercialKPIs(). Una marca sin líneas de negocio distintas usa "GENERAL".
+   */
+  lineOfBusiness?: string
 }
 
 // ─── P&L KPIs ─────────────────────────────────────────────────────────────────
@@ -80,6 +85,42 @@ export interface ProjectionKPIs {
   }>
 }
 
+// ─── Commercial KPIs (Growth/CRM, revisión 2026-09-18) ─────────────────────────
+//
+// Reutiliza el mismo framework que el resto de grupos (KPIFilters → getXxxKPIs()),
+// en vez de un módulo de KPIs aparte para el CRM. `lineOfBusiness` distingue
+// embudos dentro de una misma marca (p.ej. Gigson Solutions: Integraciones/IA vs
+// Odoo) — agregar solo por `marca` mezclaría conversiones que no significan nada.
+
+export interface CommercialFunnelStage {
+  stageId: string
+  stageName: string
+  order: number
+  isWon: boolean
+  isLost: boolean
+  /** Leads actualmente en esta etapa (foto del momento, no acumulado del periodo). */
+  openCount: number
+  openAmount: number
+}
+
+export interface CommercialKPIs {
+  marca?: string
+  lineOfBusiness?: string
+  dateFrom: string
+  dateTo: string
+  /** Leads creados en el periodo filtrado. */
+  leadsCreated: number
+  leadsByOrigin: Record<string, number>
+  wonCount: number
+  lostCount: number
+  winRatePct: number | null
+  avgDealSize: number | null
+  avgCycleDays: number | null
+  /** Foto actual (no filtrada por fecha de creación): leads abiertos × probabilidad. */
+  weightedPipeline: number
+  funnel: CommercialFunnelStage[]
+}
+
 // ─── Full response ────────────────────────────────────────────────────────────
 
 export interface KPIResponse {
@@ -87,6 +128,7 @@ export interface KPIResponse {
   cashflow?: CashflowKPIs
   derived?: DerivedKPIs
   projections?: ProjectionKPIs
+  commercial?: CommercialKPIs
   dataQuality: {
     unclassifiedCount: number
   }
