@@ -1,6 +1,6 @@
 import { json, unauthorized } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { syncAll } from "@/lib/sync";
+import { syncAll, SyncAlreadyRunningError } from "@/lib/sync";
 import { SyncSource } from "@prisma/client";
 
 // Holded puede disparar un webhook por cada documento que cambia. Antes cada
@@ -22,6 +22,10 @@ function minIntervalMinutes(): number {
 }
 
 const TRIGGERED_BY = "webhook:holded";
+
+// Igual que /api/sync y /api/sync/stream: este webhook también lanza un syncAll entero
+// (incremental, pero con las empresas en serie).
+export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
   const secret =
@@ -61,6 +65,12 @@ export async function POST(req: Request): Promise<Response> {
     const result = await syncAll(TRIGGERED_BY, undefined, "incremental");
     return json({ ok: true, result });
   } catch (err) {
+    // Ya hay un sync en marcha: no es un fallo del webhook. Se responde OK a propósito —
+    // un 500 repetido puede hacer que Holded acabe desactivando el webhook, y lo que traía
+    // este aviso lo recoge la ejecución en curso o, como muy tarde, el cron diario.
+    if (err instanceof SyncAlreadyRunningError) {
+      return json({ ok: true, skipped: true, reason: err.message });
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,

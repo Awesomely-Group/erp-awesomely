@@ -659,6 +659,9 @@ enum SyncResult {
   SUCCESS
   PARTIAL
   ERROR
+  // Ejecución abierta: la fila se crea al empezar y se cierra al terminar. Una fila
+  // que se queda en RUNNING es un sync que murió por el camino (ver src/lib/sync.ts).
+  RUNNING
 }
 
 model SyncLog {

@@ -2,7 +2,9 @@ import { auth } from "@/lib/auth";
 import { syncAll, type SyncProgressEvent } from "@/lib/sync";
 import { parseSyncMode } from "@/lib/sync-scope";
 
-// Holded sync can take a while — give it up to 5 minutes
+// El cron del domingo (`?mode=full`) relee toda la historia: con las empresas en serie
+// son ~410 s, medidos sobre el coste real de los últimos syncs completos. El incremental
+// de diario se queda en ~200 s y cabe aquí; el full NO — ver la nota de sync-timing.ts.
 export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {

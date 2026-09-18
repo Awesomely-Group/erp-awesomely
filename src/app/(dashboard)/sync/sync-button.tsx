@@ -19,18 +19,26 @@ interface SourceItem {
 export function SyncButton(): React.JSX.Element {
   const [isSyncing, setIsSyncing] = useState(false);
   const [items, setItems] = useState<SourceItem[]>([]);
+  // Fallo de la ejecución entera, no de una fuente concreta. Va fuera del panel
+  // desplegable (que solo aparece al pasar el ratón y solo si hay fuentes) porque el
+  // caso típico — el sync se rechaza antes de arrancar, p. ej. porque ya hay otro en
+  // curso — no llega a emitir ninguna fuente y antes se quedaba en nada: el botón
+  // dejaba de girar y no pasaba nada más.
+  const [fatalError, setFatalError] = useState<string | null>(null);
   const router = useRouter();
   const [, startTransition] = useTransition();
 
   async function handleSync(): Promise<void> {
     setIsSyncing(true);
     setItems([]);
+    setFatalError(null);
 
     try {
       const res = await fetch("/api/sync/stream", { method: "POST" });
 
       if (!res.ok || !res.body) {
         setItems([]);
+        setFatalError(`No se pudo iniciar la sincronización (HTTP ${res.status})`);
         return;
       }
 
@@ -79,6 +87,7 @@ export function SyncButton(): React.JSX.Element {
             } else if (data.type === "complete") {
               startTransition(() => { router.refresh(); });
             } else if (data.type === "fatal") {
+              setFatalError(data.error);
               setItems((prev) =>
                 prev.map((item) =>
                   item.status === "running"
@@ -92,6 +101,7 @@ export function SyncButton(): React.JSX.Element {
       }
     } catch {
       // Network error — mark any still-running items as error
+      setFatalError("Conexión interrumpida");
       setItems((prev) =>
         prev.map((item) =>
           item.status === "running"
@@ -119,6 +129,12 @@ export function SyncButton(): React.JSX.Element {
         <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
         {isSyncing ? "Sincronizando..." : "Sincronizar ahora"}
       </button>
+
+      {fatalError && (
+        <p className="mt-2 max-w-xs text-right text-xs text-red-600" title={fatalError}>
+          {fatalError}
+        </p>
+      )}
 
       {items.length > 0 && (
         <div className="absolute top-full right-0 mt-2 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden min-w-[280px]">
