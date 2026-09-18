@@ -24,3 +24,16 @@ export const SYNC_STALE_AFTER_MS = 15 * 60 * 1000;
 export function syncStaleCutoff(now: Date = new Date()): Date {
   return new Date(now.getTime() - SYNC_STALE_AFTER_MS);
 }
+
+/** Margen que se reserva para cerrar los logs y responder antes de que la plataforma corte. */
+export const SYNC_DEADLINE_MARGIN_MS = 30_000;
+
+/**
+ * Momento a partir del cual ya no merece la pena empezar más trabajo: la plataforma
+ * matará la función poco después y lo que se deje a medias no quedaría registrado.
+ */
+export function syncDeadline(startedAt: Date): Date {
+  return new Date(
+    startedAt.getTime() + SYNC_MAX_DURATION_SECONDS * 1000 - SYNC_DEADLINE_MARGIN_MS,
+  );
+}
