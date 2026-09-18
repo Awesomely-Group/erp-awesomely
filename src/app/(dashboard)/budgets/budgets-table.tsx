@@ -10,9 +10,13 @@ import { createBudget, updateBudgetStatus } from "./actions";
 export type BudgetRow = {
   id: string;
   name: string;
-  projectId: string;
-  projectName: string;
-  projectKey: string;
+  // Nullable (Growth/CRM, revisión 2026-09-18): un presupuesto puede nacer de un
+  // CrmLead sin proyecto de Jira todavía (F7). El alta manual desde este formulario
+  // sigue exigiendo elegir un proyecto — solo las propuestas creadas vía
+  // /api/webhooks/proposals pueden llegar sin él.
+  projectId: string | null;
+  projectName: string | null;
+  projectKey: string | null;
   type: BudgetType;
   region: BudgetRegion;
   status: BudgetStatus;
@@ -509,8 +513,14 @@ export function BudgetsTable({
                     >
                       <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                        <span className="font-mono mr-1 text-gray-400">{row.projectKey}</span>
-                        {row.projectName}
+                        {row.projectId ? (
+                          <>
+                            <span className="font-mono mr-1 text-gray-400">{row.projectKey}</span>
+                            {row.projectName}
+                          </>
+                        ) : (
+                          <span className="italic text-gray-400">Sin proyecto</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_COLORS[row.type]}`}>

@@ -96,7 +96,7 @@ export async function createHoldedQuote(budgetId: string): Promise<{ error?: str
       date: Math.floor(Date.now() / 1000),
       ...(budget.holdedContactId
         ? { contactId: budget.holdedContactId }
-        : { contactName: budget.clientName ?? budget.project.name }),
+        : { contactName: budget.clientName ?? budget.project?.name ?? budget.name }),
       currency: budget.currency,
       notes: budget.notes ?? undefined,
       products: buildHoldedProducts(budget),
@@ -169,7 +169,7 @@ export async function syncHoldedQuote(budgetId: string): Promise<{ error?: strin
       date: Math.floor(Date.now() / 1000),
       ...(budget.holdedContactId
         ? { contactId: budget.holdedContactId }
-        : { contactName: budget.clientName ?? budget.project.name }),
+        : { contactName: budget.clientName ?? budget.project?.name ?? budget.name }),
       currency: budget.currency,
       notes: budget.notes ?? undefined,
       products: buildHoldedProducts(budget),

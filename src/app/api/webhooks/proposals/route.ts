@@ -41,7 +41,12 @@ interface ProposalPaymentTermInput {
 interface CreateProposalPayload {
   brand: string;
   externalRef: string;
-  projectId: string;
+  // Opcional desde Growth/CRM (revisión 2026-09-18, F7): un lead puede llegar a
+  // propuesta sin proyecto de Jira todavía — antes era obligatorio.
+  projectId?: string | null;
+  // Lead de Growth/CRM del que nace esta propuesta — enlaza Budget.crmLeadId y
+  // dispara la comisión PROPOSAL_PERCENT al firmarse (D9/F7).
+  crmLeadId?: string | null;
   name: string;
   type: BudgetType;
   region?: BudgetRegion;
@@ -83,7 +88,6 @@ export async function POST(req: Request): Promise<Response> {
   const brand = payload.brand as "SOLUTIONS" | "TROUPE"; // narrowed by authenticateProposalWebhook
 
   if (!payload.externalRef) return badRequest("externalRef es obligatorio");
-  if (!payload.projectId) return badRequest("projectId es obligatorio");
   if (!payload.name) return badRequest("name es obligatorio");
   if (!payload.type || !Object.values(BudgetType).includes(payload.type)) {
     return badRequest(`type inválido. Valores: ${Object.values(BudgetType).join(", ")}`);
@@ -123,7 +127,8 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const budget = await prisma.budget.create({
       data: {
-        projectId: payload.projectId,
+        projectId: payload.projectId ?? null,
+        crmLeadId: payload.crmLeadId ?? null,
         name: payload.name,
         type: payload.type,
         region: payload.region ?? "EU",
@@ -180,6 +185,28 @@ export async function POST(req: Request): Promise<Response> {
     }
     const message = err instanceof Error ? err.message : "Error al crear el presupuesto";
     return new Response(JSON.stringify({ error: message }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
+
+  // Mueve el lead de Growth/CRM a "Propuesta enviada" (F7). Best-effort: si el lead o
+  // la etapa no existen (p.ej. seed de CrmStage no ejecutado para esa marca), no
+  // bloquea la creación del presupuesto — solo se registra en consola.
+  if (payload.crmLeadId) {
+    try {
+      const lead = await prisma.crmLead.findUnique({ where: { id: payload.crmLeadId } });
+      const targetStage = lead
+        ? await prisma.crmStage.findFirst({ where: { marca: lead.marca, name: "Propuesta enviada" } })
+        : null;
+      if (lead && targetStage && lead.stageId !== targetStage.id) {
+        await prisma.$transaction([
+          prisma.crmLead.update({ where: { id: lead.id }, data: { stageId: targetStage.id } }),
+          prisma.crmLeadStageEvent.create({
+            data: { leadId: lead.id, fromStageId: lead.stageId, toStageId: targetStage.id, trigger: "WEBHOOK" },
+          }),
+        ]);
+      }
+    } catch (err) {
+      console.error("[webhooks/proposals] no se pudo mover el lead a 'Propuesta enviada'", err);
+    }
   }
 
   // Enviar a firmar en Documenso. Si esto falla, el Budget ya existe (DRAFT) — el

@@ -56,9 +56,9 @@ export default async function BudgetsPage(): Promise<React.JSX.Element> {
     return {
       id: b.id,
       name: b.name,
-      projectId: b.project.id,
-      projectName: b.project.name,
-      projectKey: b.project.jiraKey,
+      projectId: b.project?.id ?? null,
+      projectName: b.project?.name ?? null,
+      projectKey: b.project?.jiraKey ?? null,
       type: b.type,
       region: b.region,
       status: b.status,

@@ -66,6 +66,7 @@ export async function POST(req: Request): Promise<Response> {
       project: { select: { name: true } },
       lines: { orderBy: [{ phase: "asc" }, { sortOrder: "asc" }] },
       paymentTerms: true,
+      crmLead: true,
     },
   });
   if (!budget) return json({ ok: true, skipped: "budget no encontrado para este documento" });
@@ -95,7 +96,7 @@ export async function POST(req: Request): Promise<Response> {
       date: Math.floor(Date.now() / 1000),
       ...(budget.holdedContactId
         ? { contactId: budget.holdedContactId }
-        : { contactName: budget.clientName ?? budget.project.name }),
+        : { contactName: budget.clientName ?? budget.project?.name ?? budget.name }),
       currency: budget.currency,
       notes: budget.notes ?? undefined,
       products: buildHoldedProducts(budget.lines, budget.name, budget.amount),
@@ -114,7 +115,7 @@ export async function POST(req: Request): Promise<Response> {
         holdedId: holdedResult.id,
         companyId: budget.companyId!,
         number: holdedResult.docNumber ?? null,
-        counterparty: budget.clientName ?? budget.project.name,
+        counterparty: budget.clientName ?? budget.project?.name ?? budget.name,
         holdedContactId: budget.holdedContactId,
         date: new Date(),
         currency: budget.currency,
@@ -142,6 +143,36 @@ export async function POST(req: Request): Promise<Response> {
       },
     });
   });
+
+  // Comisión PROPOSAL_PERCENT (D9/F7, Growth/CRM revisión 2026-09-18): se genera al
+  // FIRMAR la propuesta (asunción explícita del plan, no confirmada al 100% con el
+  // usuario — no al cobrar cada PaymentTerm). Solo si el Budget nace de un CrmLead con
+  // responsable asignado y su marca tiene una CommissionRule activa (hoy solo LaTroupe).
+  if (budget.crmLead?.ownerId) {
+    const rule = await prisma.commissionRule.findUnique({ where: { marca: budget.crmLead.marca } });
+    if (rule?.active) {
+      const baseAmount = Number(budget.amount);
+      const rate = Number(rule.proposalPercent);
+      try {
+        await prisma.commission.create({
+          data: {
+            type: "PROPOSAL_PERCENT",
+            marca: budget.crmLead.marca,
+            userId: budget.crmLead.ownerId,
+            leadId: budget.crmLead.id,
+            budgetId: budget.id,
+            baseAmount,
+            rate,
+            amount: (baseAmount * rate) / 100,
+            status: "PENDING",
+          },
+        });
+      } catch {
+        // Reintento del webhook (idempotencia ya cubierta por budget.holdedDocId arriba,
+        // pero por si acaso no duplicamos la comisión).
+      }
+    }
+  }
 
   return json({ ok: true, holdedDocId: holdedResult.id });
 }

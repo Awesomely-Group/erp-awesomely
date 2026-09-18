@@ -8,16 +8,33 @@ datasource db {
 
 // ─── Auth (NextAuth) ───────────────────────────────────────────────────────────
 
+/// Rol de acceso (Growth, revisión 2026-09-18): ADMIN ve todo el ERP igual que hoy
+/// (es el valor por defecto, para no romper el acceso de nadie que ya existía antes
+/// de este campo); COMERCIAL solo ve la sección Growth (CRM, Campañas, sus propias
+/// comisiones) — ver guard en src/proxy.ts y src/lib/roles.ts.
+enum UserRole {
+  ADMIN
+  COMERCIAL
+
+  @@map("user_role")
+}
+
 model User {
   id            String     @id @default(cuid())
   name          String?
   email         String     @unique
   emailVerified DateTime?
   image         String?
+  role          UserRole   @default(ADMIN)
   accounts      Account[]
   sessions      Session[]
   auditLogs     AuditLog[]
   apiKeys       ApiKey[]
+
+  ownedLeads      CrmLead[]           @relation("CrmLeadOwner")
+  ownedAccounts   CrmAccount[]        @relation("CrmAccountOwner")
+  leadStageEvents CrmLeadStageEvent[]
+  commissions     Commission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -86,6 +103,7 @@ model Company {
   forecastRecurrences ForecastRecurrence[]
   employees           Employee[]
   salaryRecords       SalaryRecord[]
+  crmAccounts         CrmAccount[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -733,6 +751,7 @@ model Proforma {
   @@unique([holdedId, companyId])
   @@index([companyId])
   @@index([companyId, date])
+  @@index([companyId, holdedContactId])
   @@index([marca])
   @@index([invoiceId])
   @@map("proformas")
@@ -891,9 +910,18 @@ enum BudgetLineType {
 }
 
 model Budget {
-  id        String      @id @default(cuid())
-  projectId String
-  project   JiraProject @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  id        String       @id @default(cuid())
+  // Nullable desde Growth/CRM (revisión 2026-09-18): un presupuesto puede originarse
+  // en un CrmLead que todavía no tiene proyecto de Jira asignado (D7/F7). El alta
+  // manual en /budgets sigue exigiendo un proyecto en el formulario (sin cambios de
+  // UX ahí); solo el webhook de propuestas y los leads del CRM pueden dejarlo vacío.
+  projectId String?
+  project   JiraProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  // Lead de Growth/CRM del que nace esta propuesta (D7/F7) — dispara la comisión
+  // PROPOSAL_PERCENT al firmarse (ver src/app/api/webhooks/documenso/route.ts).
+  crmLeadId String?
+  crmLead   CrmLead? @relation(fields: [crmLeadId], references: [id], onDelete: SetNull)
 
   name           String
   type           BudgetType
@@ -932,6 +960,7 @@ model Budget {
   lines           BudgetLine[]
   paymentTerms    PaymentTerm[]
   classifications Classification[]
+  commissions     Commission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -940,6 +969,7 @@ model Budget {
   @@index([projectId])
   @@index([status])
   @@index([companyId])
+  @@index([crmLeadId])
   @@map("budgets")
 }
 
@@ -1176,4 +1206,379 @@ model SalaryRecordLine {
 
   @@index([salaryRecordId])
   @@map("salary_record_lines")
+}
+
+// ─── Growth: CRM (plan revisado 2026-09-18) ────────────────────────────────────
+//
+// A diferencia de Invoice/Proforma/Budget, estos modelos NO son un espejo de
+// Holded — el CRM de Holded no se usa (decisión D4 revertida respecto al plan
+// original). El ERP es el sistema de registro nativo del pipeline comercial;
+// Holded se sigue usando solo para el contacto fiscal/proformas/facturas una vez
+// el lead se convierte en propuesta (holdedContactId en CrmAccount, sin cambios
+// en esa parte).
+
+/// Canal de entrada de un lead (D7). Los 3 canales entran por el mismo endpoint
+/// POST /api/webhooks/leads salvo MANUAL (alta desde el propio ERP).
+enum CrmLeadSource {
+  WEB_GIGSON
+  WEB_LATROUPE
+  APOLLO
+  MANUAL
+  REFERIDO
+  OTRO
+
+  @@map("crm_lead_source")
+}
+
+enum CrmStageChangeTrigger {
+  MANUAL_DRAG
+  WEBHOOK
+
+  @@map("crm_stage_change_trigger")
+}
+
+enum CrmAccountLifecycle {
+  LEAD
+  QUALIFIED
+  CUSTOMER
+  CHURNED
+  DISQUALIFIED
+
+  @@map("crm_account_lifecycle")
+}
+
+enum CrmActivityType {
+  NOTE
+  CALL
+  MEETING
+  TASK
+
+  @@map("crm_activity_type")
+}
+
+/// Origen del lead (revisión 2026-09-18, impacto plan Odoo): distingue base
+/// instalada que se migra/amplía (INSIDE_OUT) de mercado abierto (OUTSIDE_IN) — el
+/// deck de Odoo separa objetivos por ese mix, y LaTroupe necesita lo mismo para su
+/// "tasa de referidos >50%".
+enum CrmLeadOrigin {
+  INSIDE_OUT
+  OUTSIDE_IN
+  REFERRAL
+  INBOUND
+  PARTNER
+
+  @@map("crm_lead_origin")
+}
+
+/// Etapas del pipeline, propias del ERP (ya no las define Holded). Una lista por
+/// marca — el seed inicial se confirma con el usuario antes de sembrarse (ver
+/// scripts/seed-crm-stages.ts), no viene de ningún documento verificado en la
+/// sesión que diseñó este módulo.
+model CrmStage {
+  id             String  @id @default(cuid())
+  marca          String
+  // Línea de negocio dentro de la marca (revisión 2026-09-18, impacto plan Odoo):
+  // Gigson Solutions puede tener más de un embudo (p.ej. "INTEGRACIONES" vs "ODOO",
+  // cada uno con sus propias etapas — la de Odoo incluye "Demo", que no existe en el
+  // embudo actual). "GENERAL" es el valor por defecto para marcas con un único
+  // funnel — no obliga a nadie a tener líneas de negocio para poder usar el CRM.
+  lineOfBusiness String  @default("GENERAL")
+  name           String
+  order          Int
+  isWon          Boolean @default(false)
+  isLost         Boolean @default(false)
+
+  leads      CrmLead[]
+  fromEvents CrmLeadStageEvent[] @relation("StageEventFrom")
+  toEvents   CrmLeadStageEvent[] @relation("StageEventTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([marca, lineOfBusiness, order])
+  @@index([marca, lineOfBusiness])
+  @@map("crm_stages")
+}
+
+model CrmLead {
+  id             String        @id @default(cuid())
+  name           String
+  marca          String
+  // Ver comentario en CrmStage.lineOfBusiness — debe coincidir con la línea del
+  // CrmStage al que apunta `stageId` (no hay constraint de BD que lo garantice, se
+  // valida en el código que crea/mueve el lead).
+  lineOfBusiness String        @default("GENERAL")
+  source         CrmLeadSource
+
+  contactName String?
+  email       String?
+  phone       String?
+  amount      Decimal?
+
+  // Mix inside-out/outside-in (plan Odoo) y pipeline por mercado (LaTroupe: UK/US/
+  // ES/Nórdicos/Sudáfrica, porque su paid está segmentado así). `seats` es el nº de
+  // usuarios propuestos — objetivo de la línea Odoo (~75 en el año 1).
+  origin CrmLeadOrigin?
+  market String?
+  seats  Int?
+
+  stageId String
+  stage   CrmStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  // Nullable (revisión 2026-09-18): hoy no hay ningún usuario con rol COMERCIAL
+  // asignado todavía (D8) — un lead entrante por webhook puede quedar "sin asignar"
+  // hasta que un admin lo reparta, en vez de forzar un dueño ficticio.
+  ownerId String?
+  owner   User?   @relation("CrmLeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  accountId String?
+  account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  // Atribución de campaña (F2, para cruzar con Growth > Campañas más adelante).
+  campaignSource String?
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+
+  // Idempotencia de los 3 canales de entrada — único por origen (D7).
+  externalRef String?
+
+  // Checkbox manual (D9): cualifica al lead y habilita la comisión de 20€ por
+  // reunión cerrada (ver CrmActivity.type MEETING + completedAt).
+  qualified Boolean @default(false)
+
+  expectedCloseDate DateTime?
+  probability       Int?
+  notes             String?
+
+  // Se rellena al ganar el lead y convertirlo en proyecto real.
+  projectId String?
+
+  stageEvents CrmLeadStageEvent[]
+  activities  CrmActivity[]
+  budgets     Budget[]
+  commissions Commission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([source, externalRef])
+  @@index([marca])
+  @@index([stageId])
+  @@index([ownerId])
+  @@index([accountId])
+  @@index([source])
+  @@map("crm_leads")
+}
+
+/// Historial de cambios de etapa — siempre originado en el ERP (ya no hay
+/// distinción SYNC/ERP del plan original porque no hay sync con Holded). Sin
+/// esto no hay ciclo de venta medible (KPIs de Growth).
+model CrmLeadStageEvent {
+  id     String  @id @default(cuid())
+  leadId String
+  lead   CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  fromStageId String?
+  fromStage   CrmStage? @relation("StageEventFrom", fields: [fromStageId], references: [id], onDelete: SetNull)
+  toStageId   String
+  toStage     CrmStage  @relation("StageEventTo", fields: [toStageId], references: [id], onDelete: Restrict)
+
+  trigger         CrmStageChangeTrigger @default(MANUAL_DRAG)
+  changedByUserId String?
+  changedByUser   User?                 @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  changedAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([changedAt])
+  @@map("crm_lead_stage_events")
+}
+
+/// Cuenta de cliente canónica del ERP (no existe en Holded). `holdedContactId`
+/// queda null hasta que se prepara la primera propuesta (D3, sin cambios).
+model CrmAccount {
+  id        String              @id @default(cuid())
+  name      String
+  domain    String?
+  vatNumber String?
+  lifecycle CrmAccountLifecycle @default(LEAD)
+  marca     String?
+
+  ownerId String?
+  owner   User?   @relation("CrmAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  companyId       String?
+  company         Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  holdedContactId String?
+
+  leads      CrmLead[]
+  contacts   CrmContact[]
+  activities CrmActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, holdedContactId])
+  @@index([ownerId])
+  @@map("crm_accounts")
+}
+
+model CrmContact {
+  id        String     @id @default(cuid())
+  accountId String
+  account   CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  name  String
+  email String?
+  phone String?
+  role  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@map("crm_contacts")
+}
+
+model CrmActivity {
+  id   String          @id @default(cuid())
+  type CrmActivityType
+
+  leadId    String?
+  lead      CrmLead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  accountId String?
+  account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  title       String
+  notes       String?
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  /// Referencia externa (ReadAI, hilo de Gmail…), fuera de alcance de este módulo.
+  externalRef String?
+
+  createdByUserId String?
+
+  commission Commission?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([accountId])
+  @@index([dueDate])
+  @@map("crm_activities")
+}
+
+// ─── Growth: Comisiones (D9, solo LaTroupe de momento) ─────────────────────────
+
+enum CommissionType {
+  PROPOSAL_PERCENT
+  QUALIFIED_MEETING
+
+  @@map("commission_type")
+}
+
+enum CommissionStatus {
+  PENDING
+  CONFIRMED
+  PAID
+  CANCELLED
+
+  @@map("commission_status")
+}
+
+/// Regla de comisión por marca. Genérico a propósito (D9): una marca sin fila
+/// aquí, o con `active: false`, simplemente no genera comisiones — así se activa
+/// Gigson en el futuro sin tocar código, solo insertando una fila.
+model CommissionRule {
+  marca                  String  @id
+  proposalPercent        Decimal @default(10)
+  qualifiedMeetingAmount Decimal @default(20)
+  active                 Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("commission_rules")
+}
+
+model Commission {
+  id    String         @id @default(cuid())
+  type  CommissionType
+  marca String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  leadId String?
+  lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  // PROPOSAL_PERCENT: propuesta firmada que originó la comisión.
+  budgetId String?
+  budget   Budget? @relation(fields: [budgetId], references: [id], onDelete: SetNull)
+
+  // QUALIFIED_MEETING: actividad de reunión completada que la originó. Única —
+  // evita duplicados si la actividad se reabre/cierra varias veces.
+  activityId String?      @unique
+  activity   CrmActivity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  // Snapshot de la regla en el momento del cálculo, para no recalcular mal si
+  // luego cambia CommissionRule.
+  baseAmount Decimal?
+  rate       Decimal?
+  amount     Decimal
+  currency   String           @default("EUR")
+  status     CommissionStatus @default(PENDING)
+
+  triggeredAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([marca])
+  @@index([status])
+  @@map("commissions")
+}
+
+// ─── Growth: metas de KPI (revisión 2026-09-18, impacto plan Odoo) ─────────────
+
+enum KpiTargetPeriodType {
+  MONTH
+  QUARTER
+  YEAR
+
+  @@map("kpi_target_period_type")
+}
+
+/// Meta configurable por métrica/marca/línea de negocio/periodo, transversal (no
+/// solo CRM — sirve igual para métricas de entrega o financieras el día que se
+/// construyan). Alimenta el semáforo Verde (≥100% meta) / Ámbar (70-99%) / Rojo
+/// (<70%) de la rutina mensual comercial. Se edita en /settings — el ERP no asume
+/// valores por defecto: las cifras del plan de activación de Odoo (88/44/22/9, 75
+/// usuarios, ratio 3x) son una plantilla sin aprobar, no se siembran aquí.
+model KpiTarget {
+  id String @id @default(cuid())
+
+  /// Identificador libre de la métrica (p.ej. "leads_mes", "demos_mes",
+  /// "propuestas_enviadas", "ticket_medio", "win_rate") — sin enum cerrado a
+  /// propósito, para no tener que migrar el schema cada vez que se añade una métrica
+  /// nueva a src/lib/kpis/commercial.ts.
+  metric String
+
+  marca          String?
+  lineOfBusiness String?
+
+  periodType KpiTargetPeriodType
+  /// "2026-09" (MONTH), "2026-Q3" (QUARTER) o "2026" (YEAR) — texto simple en vez de
+  /// fechas para no tener que decidir a qué día del periodo apuntar.
+  periodKey  String
+
+  value Decimal
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([metric, marca, lineOfBusiness, periodType, periodKey])
+  @@index([metric])
+  @@map("kpi_targets")
 }

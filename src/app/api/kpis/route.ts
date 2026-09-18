@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getPLKPIs, getCashflowKPIs, getDerivedKPIs, getProjections, getAllKPIs } from "@/lib/kpis";
+import {
+  getPLKPIs,
+  getCashflowKPIs,
+  getDerivedKPIs,
+  getProjections,
+  getCommercialKPIs,
+  getAllKPIs,
+} from "@/lib/kpis";
 import type { KPIFilters } from "@/lib/kpis";
 
 function parseFilters(url: URL): KPIFilters {
@@ -9,6 +16,7 @@ function parseFilters(url: URL): KPIFilters {
   const dateTo = url.searchParams.get("dateTo");
   const companyId = url.searchParams.get("companyId") ?? undefined;
   const marca = url.searchParams.get("marca") ?? undefined;
+  const lineOfBusiness = url.searchParams.get("lineOfBusiness") ?? undefined;
 
   return {
     year: year ? parseInt(year, 10) : undefined,
@@ -16,6 +24,7 @@ function parseFilters(url: URL): KPIFilters {
     dateTo: dateTo ? new Date(dateTo) : undefined,
     companyId,
     marca,
+    lineOfBusiness,
   };
 }
 
@@ -52,6 +61,10 @@ export async function GET(req: Request): Promise<NextResponse> {
       case "projections": {
         const projections = await getProjections(filters);
         return NextResponse.json({ projections, generatedAt: new Date().toISOString() });
+      }
+      case "commercial": {
+        const commercial = await getCommercialKPIs(filters);
+        return NextResponse.json({ commercial, generatedAt: new Date().toISOString() });
       }
       case "all":
       default: {
