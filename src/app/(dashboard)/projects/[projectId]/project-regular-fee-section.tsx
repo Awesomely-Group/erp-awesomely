@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatCurrencyRounded, formatHourlyRate, formatHours, formatMaybe, formatPercent } from "@/lib/utils";
 
 interface FeeEntry {
   id: string;
@@ -27,9 +28,6 @@ function monthLabel(month: string): string {
   return d.toLocaleDateString("es-ES", { month: "short", year: "2-digit" });
 }
 
-function fmt(n: number): string {
-  return n.toLocaleString("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-}
 
 export function ProjectRegularFeeSection({ entries, months, totalHours }: Props): React.JSX.Element {
   const totalMonthlyFee = entries.reduce((s, e) => s + e.monthlyFee, 0);
@@ -68,10 +66,10 @@ export function ProjectRegularFeeSection({ entries, months, totalHours }: Props)
                   return (
                     <tr key={e.id}>
                       <td className="py-2 font-medium text-gray-800">{e.label}</td>
-                      <td className="py-2 text-right tabular-nums text-gray-700">{fmt(e.monthlyFee)}</td>
-                      <td className="py-2 text-right tabular-nums text-gray-700">{e.maxHoursPerMonth} h</td>
+                      <td className="py-2 text-right tabular-nums text-gray-700">{formatCurrencyRounded(e.monthlyFee)}</td>
+                      <td className="py-2 text-right tabular-nums text-gray-700">{formatHours(e.maxHoursPerMonth)}</td>
                       <td className="py-2 text-right tabular-nums text-gray-400 text-xs">
-                        {implRate !== null ? `${implRate.toFixed(2)} €/h` : "—"}
+                        {formatMaybe(implRate, formatHourlyRate)}
                       </td>
                     </tr>
                   );
@@ -80,8 +78,8 @@ export function ProjectRegularFeeSection({ entries, months, totalHours }: Props)
               <tfoot>
                 <tr className="border-t border-gray-200 font-semibold">
                   <td className="pt-2 text-gray-700">Total</td>
-                  <td className="pt-2 text-right tabular-nums text-gray-900">{fmt(totalMonthlyFee)}</td>
-                  <td className="pt-2 text-right tabular-nums text-gray-900">{totalMaxHours} h</td>
+                  <td className="pt-2 text-right tabular-nums text-gray-900">{formatCurrencyRounded(totalMonthlyFee)}</td>
+                  <td className="pt-2 text-right tabular-nums text-gray-900">{formatHours(totalMaxHours)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -92,19 +90,19 @@ export function ProjectRegularFeeSection({ entries, months, totalHours }: Props)
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
             <div className="bg-gray-50 rounded-lg px-4 py-3">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Fee total/mes</p>
-              <p className="text-lg font-bold text-gray-900">{fmt(totalMonthlyFee)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrencyRounded(totalMonthlyFee)}</p>
             </div>
             <div className="bg-gray-50 rounded-lg px-4 py-3">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Horas máx./mes</p>
-              <p className="text-lg font-bold text-gray-900">{totalMaxHours} h</p>
+              <p className="text-lg font-bold text-gray-900">{formatHours(totalMaxHours)}</p>
             </div>
             <div className="bg-gray-50 rounded-lg px-4 py-3">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Horas reales</p>
-              <p className="text-lg font-bold text-gray-900">{totalHours.toFixed(1)} h</p>
+              <p className="text-lg font-bold text-gray-900">{formatHours(totalHours)}</p>
             </div>
             <div className="bg-gray-50 rounded-lg px-4 py-3">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Fee acum. período</p>
-              <p className="text-lg font-bold text-gray-900">{fmt(totalMonthlyFee * numMonths)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrencyRounded(totalMonthlyFee * numMonths)}</p>
             </div>
           </div>
 
@@ -131,14 +129,14 @@ export function ProjectRegularFeeSection({ entries, months, totalHours }: Props)
                     return (
                       <tr key={m.month}>
                         <td className="py-2 text-gray-700">{monthLabel(m.month)}</td>
-                        <td className="py-2 text-right font-mono text-gray-800">{m.totalHours.toFixed(1)} h</td>
+                        <td className="py-2 text-right font-mono text-gray-800">{formatHours(m.totalHours)}</td>
                         <td className={`py-2 text-right text-xs ${hOver ? "text-red-600 font-semibold" : "text-gray-400"}`}>
-                          {hPct !== null ? `${hPct.toFixed(0)}%` : "—"}
+                          {formatMaybe(hPct, (v) => formatPercent(v, { decimals: 0 }))}
                         </td>
-                        <td className="py-2 text-right font-mono text-gray-800">{fmt(m.totalCost)}</td>
-                        <td className="py-2 text-right font-mono text-gray-500">{fmt(totalMonthlyFee)}</td>
+                        <td className="py-2 text-right font-mono text-gray-800">{formatCurrencyRounded(m.totalCost)}</td>
+                        <td className="py-2 text-right font-mono text-gray-500">{formatCurrencyRounded(totalMonthlyFee)}</td>
                         <td className={`py-2 text-right font-mono text-xs ${diff < 0 ? "text-red-600 font-semibold" : "text-green-600"}`}>
-                          {diff >= 0 ? "+" : ""}{fmt(diff)}
+                          {diff >= 0 ? "+" : ""}{formatCurrencyRounded(diff)}
                         </td>
                       </tr>
                     );

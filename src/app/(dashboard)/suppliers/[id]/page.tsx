@@ -8,6 +8,7 @@ import { VerificationRow, type SerializedVerification, type AvailableInvoice } f
 import { NewVerificationForm } from "./new-verification-form";
 import { RolesSection } from "./roles-section";
 import { JiraUserList } from "./jira-user-list";
+import { formatHourlyRate } from "@/lib/utils";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -138,7 +139,7 @@ export default async function SupplierDetailPage({ params }: Props): Promise<Rea
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
               <span>
-                Tarifa: {supplier.hourlyRate != null ? `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(supplier.hourlyRate))} €/h` : <span className="text-gray-400">no configurada</span>}
+                Tarifa: {supplier.hourlyRate != null ? formatHourlyRate(Number(supplier.hourlyRate)) : <span className="text-gray-400">no configurada</span>}
               </span>
               <JiraUserList
                 supplierId={supplier.id}

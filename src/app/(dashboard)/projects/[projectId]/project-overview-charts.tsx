@@ -12,7 +12,7 @@ import {
   ReferenceLine,
   Legend,
 } from "recharts";
-import { formatCurrency } from "@/lib/utils";
+import { EMPTY_VALUE, formatCurrency, formatPercent, formatThousandsTick } from "@/lib/utils";
 
 interface MonthCostData {
   months: Array<{ month: string; totalHours: number; totalCost: number }>;
@@ -237,12 +237,12 @@ export function ProjectOverviewCharts({
           label="Beneficio real"
           value={loading ? "…" : formatCurrency(beneficioReal)}
           accent={loading ? undefined : beneficioReal >= 0 ? "green" : "red"}
-          sub={!loading && margenReal != null ? `${margenReal.toFixed(1)}% margen` : undefined}
+          sub={!loading && margenReal != null ? `${formatPercent(margenReal)} margen` : undefined}
           tooltip="Ingresos − Gastos (facturas). El coste de personal no se resta porque ya está capturado en las facturas de compra."
         />
         <KpiCard
           label="Margen real"
-          value={loading ? "…" : margenReal != null ? `${margenReal.toFixed(1)}%` : "—"}
+          value={loading ? "…" : margenReal != null ? formatPercent(margenReal) : EMPTY_VALUE}
           accent={loading || margenReal == null ? undefined : margenReal >= 0 ? "green" : "red"}
           sub="sobre ingresos"
           tooltip="Beneficio real / Ingresos × 100. Indica qué porcentaje de los ingresos se convierte en beneficio."
@@ -280,12 +280,12 @@ export function ProjectOverviewCharts({
               label="Beneficio esperado"
               value={beneficioEsperado != null ? formatCurrency(beneficioEsperado) : "—"}
               accent={beneficioEsperado == null ? undefined : beneficioEsperado >= 0 ? "green" : "red"}
-              sub={margenEsperado != null ? `${margenEsperado.toFixed(1)}% margen` : undefined}
+              sub={margenEsperado != null ? `${formatPercent(margenEsperado)} margen` : undefined}
               tooltip="Ingresos − Coste estimado de personal. Beneficio proyectado si el equipo hubiera ajustado exactamente a las estimaciones de Jira."
             />
             <KpiCard
               label="Desviación coste"
-              value={desvCoste != null ? `${desvCoste >= 0 ? "+" : ""}${desvCoste.toFixed(1)}%` : "—"}
+              value={desvCoste != null ? formatPercent(desvCoste, { signed: true }) : EMPTY_VALUE}
               accent={desvCoste == null ? undefined : desvCoste > 0 ? "red" : "green"}
               sub={desvCoste != null ? (desvCoste > 0 ? "Por encima del estimado" : "Dentro del estimado") : undefined}
               tooltip="(Coste real personal − Coste estimado) / Coste estimado × 100. Positivo = el equipo ha tardado más de lo estimado."
@@ -297,7 +297,7 @@ export function ProjectOverviewCharts({
                 : "—"}
               accent={beneficioEsperado == null ? undefined : (beneficioReal - beneficioEsperado) >= 0 ? "green" : "red"}
               sub={beneficioEsperado != null && margenEsperado != null && margenReal != null
-                ? `${(margenReal - margenEsperado) >= 0 ? "+" : ""}${(margenReal - margenEsperado).toFixed(1)}pp`
+                ? formatPercent(margenReal - margenEsperado, { signed: true, unit: "pp" })
                 : undefined}
               tooltip="Beneficio real − Beneficio esperado. Diferencia entre lo que realmente se ha ganado y lo que se proyectaba ganar según las estimaciones de Jira."
             />
@@ -319,7 +319,7 @@ export function ProjectOverviewCharts({
                 tickLine={false}
               />
               <YAxis
-                tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`}
+                tickFormatter={formatThousandsTick}
                 tick={{ fontSize: 11, fill: "#6b7280" }}
                 axisLine={false}
                 tickLine={false}

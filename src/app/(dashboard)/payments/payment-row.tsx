@@ -17,6 +17,20 @@ import {
   deletePayment,
 } from "./actions";
 
+/**
+ * Datos bancarios de la contraparte tal y como los ve la fila. Tres estados, para
+ * que la UI no afirme "sin IBAN" cuando en realidad la consulta falló.
+ */
+export type ContactBankInfo =
+  | {
+      status: "ok";
+      iban: string | null;
+      holder: string | null;
+      bic: string | null;
+      bankName: string | null;
+    }
+  | { status: "unavailable" };
+
 export interface PaymentInvoice {
   id: string;
   holdedId: string;
@@ -43,7 +57,10 @@ export interface PaymentInvoice {
     paidBy: string;
     notes: string | null;
   }[];
-  contactIban: string | null;
+  /** `null` = la fila no tiene contacto que consultar (pago suelto, nómina sin
+   * empleado). Ver ContactBankInfo: distingue "no tiene IBAN" de "Holded no
+   * respondió", que antes eran ambos null. */
+  contactBank: ContactBankInfo | null;
   contactHoldedUrl: string | null;
 }
 
@@ -125,6 +142,18 @@ export function PaymentRow({
   // Solo facturas y nóminas tienen un documento/PDF real que previsualizar — un pago
   // suelto ("manual") no tiene nada detrás salvo lo que el propio usuario escribió.
   const canPreview = invoice.source === "invoice" || isPayroll;
+
+  const bank = invoice.contactBank;
+  // Titular, BIC y banco no caben en la línea: van al tooltip del IBAN, y
+  // completos en el formulario de "Marcar pagada", que es cuando se necesitan
+  // para ordenar la transferencia.
+  const bankDetails =
+    bank?.status === "ok"
+      ? [bank.holder, bank.bic, bank.bankName].filter(
+          (v): v is string => v !== null,
+        )
+      : [];
+  const bankTooltip = bankDetails.length > 0 ? bankDetails.join(" · ") : null;
 
   function openPreview(): void {
     if (!canPreview) return;
@@ -244,12 +273,24 @@ export function PaymentRow({
             {invoice.companyName}
             {invoice.dueDate && ` · Vence ${formatDate(invoice.dueDate)}`}
           </p>
-          {/* IBAN + contact link */}
-          {(invoice.contactIban ?? invoice.contactHoldedUrl) && (
+          {/* IBAN + enlace al contacto. El enlace se muestra aunque Holded no
+              responda: es una URL determinista, no hace falta consultarlo. */}
+          {(bank !== null || invoice.contactHoldedUrl) && (
             <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
-              {invoice.contactIban && (
-                <span className="font-mono tracking-tight">
-                  {invoice.contactIban}
+              {bank?.status === "ok" && bank.iban && (
+                <span
+                  className="font-mono tracking-tight"
+                  title={bankTooltip ?? undefined}
+                >
+                  {bank.iban}
+                </span>
+              )}
+              {bank?.status === "unavailable" && (
+                <span
+                  className="text-amber-600"
+                  title="La consulta a Holded falló; el contacto puede tener IBAN."
+                >
+                  No se pudo consultar el banco en Holded
                 </span>
               )}
               {invoice.contactHoldedUrl && (
@@ -333,6 +374,15 @@ export function PaymentRow({
       </div>
 
       {/* Inline pay form */}
+      {showPayForm && bank?.status === "ok" && (bank.iban ?? bankTooltip) && (
+        <div className="px-4 pt-2 text-xs text-gray-600 bg-emerald-50 border-t border-emerald-100">
+          <span className="text-gray-400">Datos de pago:</span>{" "}
+          {bank.iban && <span className="font-mono tracking-tight">{bank.iban}</span>}
+          {bankDetails.map((detail) => (
+            <span key={detail}> · {detail}</span>
+          ))}
+        </div>
+      )}
       {showPayForm && (
         <div className="px-4 pb-3 flex flex-wrap items-end gap-3 bg-emerald-50 border-t border-emerald-100">
           <div className="flex flex-col gap-1">

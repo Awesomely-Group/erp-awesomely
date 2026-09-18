@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HourBucketEntry, HourBucketsResponse, UnassignedUser } from "@/app/api/projects/[projectId]/hour-buckets/route";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
+import { formatCurrency, formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
 
 interface Props {
   projectId: string;
@@ -53,7 +54,7 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400">{bucket.ratePerHour}€/h</p>
+          <p className="text-xs text-gray-400">{formatHourlyRate(bucket.ratePerHour)}</p>
           {(bucket.startDate ?? bucket.endDate) && (
             <p className="text-xs text-gray-400 mt-0.5">
               {bucket.startDate ? fmtDate(bucket.startDate) : "—"} → {bucket.endDate ? fmtDate(bucket.endDate) : "—"}
@@ -74,16 +75,16 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-gray-500">
-            {bucket.consumedHours.toFixed(1)} h / {bucket.totalHours} h
+            {formatHours(bucket.consumedHours)} / {formatHours(bucket.totalHours)}
           </span>
-          <span className={`font-medium ${thresholdColor}`}>{pct.toFixed(1)}%</span>
+          <span className={`font-medium ${thresholdColor}`}>{formatPercent(pct)}</span>
         </div>
         <p className="text-xs text-gray-400">Alerta al {Math.round(threshold)}%</p>
       </div>
 
       <div className="flex justify-between text-xs text-gray-500 pt-1 border-t border-gray-100">
-        <span>Restantes: <span className="font-medium text-gray-800">{Math.max(bucket.totalHours - bucket.consumedHours, 0).toFixed(1)} h</span></span>
-        <span>Valor: <span className="font-medium text-gray-800">{(bucket.totalHours * bucket.ratePerHour).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+        <span>Restantes: <span className="font-medium text-gray-800">{formatHours(Math.max(bucket.totalHours - bucket.consumedHours, 0))}</span></span>
+        <span>Valor: <span className="font-medium text-gray-800">{formatCurrency(bucket.totalHours * bucket.ratePerHour)}</span></span>
       </div>
     </div>
   );
@@ -105,7 +106,7 @@ function UnassignedAlert({ users }: { users: UnassignedUser[] }): React.JSX.Elem
               {u.displayName[0]?.toUpperCase() ?? "?"}
             </div>
             <span className="text-sm text-gray-800">{u.displayName}</span>
-            <span className="text-xs text-gray-500 tabular-nums">{u.hours.toFixed(1)} h</span>
+            <span className="text-xs text-gray-500 tabular-nums">{formatHours(u.hours)}</span>
           </div>
         ))}
       </div>

@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useRef, useEffect } from "react";
 import { updateProjectTypes, upsertHourBucket, deleteHourBucket, toggleHourBucketActive, upsertRegularFeeEntry, deleteRegularFeeEntry } from "../actions";
 import { InvoiceCombobox } from "@/components/invoice-combobox";
+import { formatCurrency, formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
 
 interface RoleOption {
   id: string;
@@ -361,7 +362,7 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
                         ))}
                       </select>
                       <p className="text-xs text-gray-400">
-                        {e.monthlyFee.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}/mes · {e.maxHoursPerMonth} h/mes
+                        {formatCurrency(e.monthlyFee)}/mes · {formatHours(e.maxHoursPerMonth)}/mes
                       </p>
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1">Factura vinculada</p>
@@ -378,9 +379,9 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
                   <div className="flex justify-between text-xs font-medium text-purple-700 px-1 pt-1">
                     <span>Total mensual</span>
                     <span>
-                      {config.regularFeeEntries.reduce((s, e) => s + e.monthlyFee, 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      {formatCurrency(config.regularFeeEntries.reduce((s, e) => s + e.monthlyFee, 0))}
                       {" / "}
-                      {config.regularFeeEntries.reduce((s, e) => s + e.maxHoursPerMonth, 0)} h
+                      {formatHours(config.regularFeeEntries.reduce((s, e) => s + e.maxHoursPerMonth, 0))}
                     </span>
                   </div>
                 </div>
@@ -578,7 +579,7 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
                               {b.active ? "Activa" : "Inactiva"}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-400">{b.ratePerHour}€/h · {b.totalHours}h · alerta {Math.round(b.alertThreshold * 100)}%</p>
+                          <p className="text-xs text-gray-400">{formatHourlyRate(b.ratePerHour)} · {formatHours(b.totalHours)} · alerta {formatPercent(b.alertThreshold * 100, { decimals: 0 })}</p>
                         </div>
                         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                           <button

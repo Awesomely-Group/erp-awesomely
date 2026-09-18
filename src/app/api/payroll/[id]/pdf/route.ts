@@ -1,6 +1,11 @@
-import { authenticateRequest, unauthorized, notFound } from "@/lib/api-auth";
+import {
+  authenticateRequest,
+  unauthorized,
+  notFound,
+  upstreamError,
+} from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { HoldedClient, HoldedApiError } from "@/lib/holded";
+import { HoldedClient, holdedErrorResponse } from "@/lib/holded";
 
 /**
  * Proxy del PDF de una nómina — pedido a Holded al vuelo, nunca guardado en nuestra BD
@@ -35,10 +40,8 @@ export async function GET(
       headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
     });
   } catch (err) {
-    if (err instanceof HoldedApiError) {
-      return notFound(`No se pudo obtener el PDF desde Holded (${err.status})`);
-    }
-    console.error(`[api] payroll/${id}/pdf:`, err);
-    return notFound("No se pudo obtener el PDF desde Holded");
+    const { status, message } = holdedErrorResponse(err);
+    if (status !== 404) console.error(`[api] payroll/${id}/pdf:`, err);
+    return status === 404 ? notFound(message) : upstreamError(message, status);
   }
 }

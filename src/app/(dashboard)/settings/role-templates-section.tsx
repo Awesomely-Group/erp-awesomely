@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { ROLE_COLOR_KEYS, roleColorClasses } from "@/lib/role-colors";
 import { createRoleTemplate, updateRoleTemplate, deleteRoleTemplate } from "./role-templates-actions";
+import { EMPTY_VALUE, formatHourlyRate } from "@/lib/utils";
 
 export interface RoleTemplateItem {
   id: string;
@@ -117,7 +118,7 @@ function TemplateRow({
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0">
       <RolePill name={template.name} color={template.color} />
-      <span className="text-xs text-gray-400">{template.ratePerHour > 0 ? `${template.ratePerHour}€/h` : "—"}</span>
+      <span className="text-xs text-gray-400">{template.ratePerHour > 0 ? formatHourlyRate(template.ratePerHour) : EMPTY_VALUE}</span>
       <div className="ml-auto flex items-center gap-3">
         <button
           onClick={() => setEditing(true)}

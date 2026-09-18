@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatHours, formatPercent } from "@/lib/utils";
 
 interface Props {
   fixedPrice: number | null;
@@ -58,7 +58,7 @@ export function ProjectFixedPriceSection({ fixedPrice, budgetedHours, totalCost,
               <ProgressBar value={totalCost} max={fixedPrice} danger />
               <div className="flex justify-between text-xs text-gray-400">
                 <span>Precio cerrado: {formatCurrency(fixedPrice)}</span>
-                {costPct !== null && <span className={costPct >= 100 ? "text-red-600 font-medium" : ""}>{costPct.toFixed(1)}%</span>}
+                {costPct !== null && <span className={costPct >= 100 ? "text-red-600 font-medium" : ""}>{formatPercent(costPct)}</span>}
               </div>
             </>
           ) : (
@@ -70,14 +70,14 @@ export function ProjectFixedPriceSection({ fixedPrice, budgetedHours, totalCost,
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">Horas reales</span>
-            <span className="font-semibold text-gray-900">{totalHours.toFixed(1)} h</span>
+            <span className="font-semibold text-gray-900">{formatHours(totalHours)}</span>
           </div>
           {budgetedHours !== null ? (
             <>
               <ProgressBar value={totalHours} max={budgetedHours} danger />
               <div className="flex justify-between text-xs text-gray-400">
-                <span>Presupuestadas: {budgetedHours} h</span>
-                {hoursPct !== null && <span className={hoursPct >= 100 ? "text-red-600 font-medium" : ""}>{hoursPct.toFixed(1)}%</span>}
+                <span>Presupuestadas: {formatHours(budgetedHours)}</span>
+                {hoursPct !== null && <span className={hoursPct >= 100 ? "text-red-600 font-medium" : ""}>{formatPercent(hoursPct)}</span>}
               </div>
             </>
           ) : (

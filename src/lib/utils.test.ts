@@ -7,12 +7,11 @@ describe("cn", () => {
   });
 });
 
-describe("formatCurrency", () => {
-  it("formats EUR in es-ES", () => {
-    const s = formatCurrency(1234.5, "EUR");
-    // Decimal separator is comma; grouping may vary by runtime
-    expect(s).toMatch(/34,50/);
-    expect(s).toContain("€");
+describe("re-export de formato", () => {
+  it("sigue sirviendo formatCurrency desde @/lib/utils", () => {
+    // Los helpers viven en ./format; utils los re-exporta para no romper los
+    // imports existentes. La cobertura real está en format.test.ts.
+    expect(formatCurrency(1234.5, "EUR")).toContain("1.234,50");
   });
 });
 

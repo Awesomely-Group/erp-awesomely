@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useTimesheetSummary, type SummaryUser } from "./timesheet-summary-context";
+import { EMPTY_VALUE, formatCurrencyRounded, formatHours, formatMaybe } from "@/lib/utils";
 
 // ─── Period helpers (same logic as projects-table) ────────────────────────────
 
@@ -111,9 +112,6 @@ interface IssueWithWorklogs { issueKey: string; jiraIssueId: number; summary: st
 interface UserWithIssues { accountId: string; displayName: string; totalHours: number; ratePerHour: number; actualCostEur: number; estimatedCostEur: number | null; issues: IssueWithWorklogs[]; }
 interface HierarchicalHoursResponse { users: UserWithIssues[]; totalHours: number; totalEstimateHours: number; totalActualCostEur: number; totalEstimatedCostEur: number; }
 
-function formatEur(amount: number): string {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(amount);
-}
 
 function IssueIcon(): React.JSX.Element {
   return (
@@ -369,16 +367,16 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                   </td>
                   <td className="px-4 py-2.5" />
                   <td className="px-4 py-2.5" />
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-gray-900">{user.totalHours}h</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-gray-900">{formatHours(user.totalHours)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-gray-400 font-semibold">
-                    {user.estimatedCostEur != null ? formatEur(user.estimatedCostEur) : "—"}
+                    {user.estimatedCostEur != null ? formatCurrencyRounded(user.estimatedCostEur) : "—"}
                   </td>
                   <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${
                     user.estimatedCostEur != null && user.actualCostEur > user.estimatedCostEur
                       ? "text-red-600"
                       : "text-gray-900"
                   }`}>
-                    {user.ratePerHour > 0 ? formatEur(user.actualCostEur) : "—"}
+                    {user.ratePerHour > 0 ? formatCurrencyRounded(user.actualCostEur) : "—"}
                   </td>
                 </tr>
 
@@ -418,7 +416,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                               <option value="">— Sin bolsa —</option>
                               {buckets.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${bucketConsumedDisplay[b.id] ?? 0}/${b.totalHours}h` : `${b.totalHours}h`}
+                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${bucketConsumedDisplay[b.id] ?? 0}/${formatHours(b.totalHours)}` : formatHours(b.totalHours)}
                                 </option>
                               ))}
                             </select>
@@ -436,22 +434,22 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                         </a>
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums text-gray-400">
-                        {issue.originalEstimateHours != null ? `${issue.originalEstimateHours}h` : "—"}
+                        {formatMaybe(issue.originalEstimateHours, formatHours)}
                       </td>
                       <td className={`px-4 py-2 text-right tabular-nums ${
                         issue.originalEstimateHours != null && issue.totalHours > issue.originalEstimateHours
                           ? "text-red-600 font-semibold"
                           : "text-gray-700"
-                      }`}>{issue.totalHours}h</td>
+                      }`}>{formatHours(issue.totalHours)}</td>
                       <td className="px-4 py-2 text-right tabular-nums text-gray-400">
-                        {issue.estimatedCostEur != null ? formatEur(issue.estimatedCostEur) : "—"}
+                        {issue.estimatedCostEur != null ? formatCurrencyRounded(issue.estimatedCostEur) : "—"}
                       </td>
                       <td className={`px-4 py-2 text-right tabular-nums ${
                         issue.estimatedCostEur != null && issue.actualCostEur > issue.estimatedCostEur
                           ? "text-red-600 font-semibold"
                           : "text-gray-700"
                       }`}>
-                        {issue.actualCostEur > 0 ? formatEur(issue.actualCostEur) : "—"}
+                        {issue.actualCostEur > 0 ? formatCurrencyRounded(issue.actualCostEur) : "—"}
                       </td>
                     </tr>
 
@@ -474,7 +472,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                           </a>
                         </td>
                         <td className="px-4 py-1.5" />
-                        <td className="px-4 py-1.5 text-right tabular-nums text-gray-500">{wl.hours}h</td>
+                        <td className="px-4 py-1.5 text-right tabular-nums text-gray-500">{formatHours(wl.hours)}</td>
                         <td className="px-4 py-1.5" />
                         <td className="px-4 py-1.5" />
                       </tr>
@@ -496,15 +494,15 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
               const filteredActCost = Math.round(visibleUsers.reduce((s, u) => s + u.actualCostEur, 0) * 100) / 100;
               return (<>
                 <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
-                  {filteredEstH > 0 ? `${filteredEstH}h` : "—"}
+                  {filteredEstH > 0 ? formatHours(filteredEstH) : EMPTY_VALUE}
                 </td>
-                <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${filteredEstH > 0 && filteredH > filteredEstH ? "text-red-600" : "text-gray-900"}`}>{filteredH}h</td>
+                <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${filteredEstH > 0 && filteredH > filteredEstH ? "text-red-600" : "text-gray-900"}`}>{formatHours(filteredH)}</td>
                 <td className="px-4 pt-3 pb-3 text-right tabular-nums text-gray-400 font-semibold">
-                  {filteredEstCost > 0 ? formatEur(filteredEstCost) : "—"}
+                  {filteredEstCost > 0 ? formatCurrencyRounded(filteredEstCost) : "—"}
                 </td>
                 <td className={`px-4 pt-3 pb-3 text-right tabular-nums font-semibold ${filteredEstCost > 0 && filteredActCost > filteredEstCost ? "text-red-600"
                   : "text-gray-900"}`}>
-                  {filteredActCost > 0 ? formatEur(filteredActCost) : "—"}
+                  {filteredActCost > 0 ? formatCurrencyRounded(filteredActCost) : "—"}
                 </td>
               </>);
             })()}
