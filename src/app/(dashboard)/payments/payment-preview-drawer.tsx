@@ -70,7 +70,11 @@ export function PaymentPreviewDrawer(): React.JSX.Element {
     setDetail(null);
     setTab(null);
 
-    const src = `/api/${previewType}/${previewId}/pdf`;
+    // Ojo: el segmento de la ruta no coincide con el tipo. Las facturas se
+    // sirven desde /api/invoices (plural) y `previewType` es "invoice", así que
+    // interpolarlo directamente pedía /api/invoice/… y siempre daba 404.
+    const basePath = previewType === "payroll" ? "payroll" : "invoices";
+    const src = `/api/${basePath}/${previewId}/pdf`;
 
     fetch(src)
       .then(async (res) => {
