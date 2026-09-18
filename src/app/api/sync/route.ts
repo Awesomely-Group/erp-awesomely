@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { syncAll } from "@/lib/sync";
+import { parseSyncMode } from "@/lib/sync-scope";
 
 async function handleSync(req: Request): Promise<NextResponse> {
   // Allow both authenticated users and the cron job
@@ -16,8 +17,11 @@ async function handleSync(req: Request): Promise<NextResponse> {
   }
 
   try {
+    // `?mode=full` relee toda la historia (cron semanal); por defecto,
+    // incremental — que es lo que corre a diario y lo que gasta poca cuota.
+    const mode = parseSyncMode(new URL(req.url).searchParams.get("mode"));
     const triggeredBy = isCron ? "cron" : (session?.user?.email ?? undefined);
-    const result = await syncAll(triggeredBy);
+    const result = await syncAll(triggeredBy, undefined, mode);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
