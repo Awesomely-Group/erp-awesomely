@@ -357,6 +357,7 @@ interface HoldedContactBankRaw {
   bic?: unknown;
   bankName?: unknown;
   payment_method?: unknown;
+  defaults?: { payment_method?: unknown };
   bankData?: HoldedContactBankNested;
   payment?: { iban?: unknown; method?: unknown };
 }
@@ -1005,8 +1006,12 @@ export class HoldedClient {
    * cascada de nombres plausibles y se estrecha en runtime: la interfaz es una
    * afirmación sobre una API externa, no una garantía.
    *
-   * Para confirmar los nombres reales contra un contacto de verdad:
-   * GET /api/debug-contacts?contactId=<id>
+   * Verificado contra un contacto real en v2 (2026-09-18, GET
+   * /api/debug-contacts): la raíz expone `iban`, `swift`, `sepa_ref` y
+   * `defaults.payment_method`. NO existen titular ni nombre de banco, así que
+   * `holder` y `bankName` quedan siempre a null mientras se use v2; las ramas
+   * restantes se conservan como red para v1, cuya forma no hemos podido
+   * comprobar (devuelve 401 con las credenciales actuales).
    */
   async getContactBankData(
     id: string,
@@ -1043,7 +1048,11 @@ export class HoldedClient {
         bank?.bicSwift,
       ),
       bankName: pickString(data.bankName, bank?.bankName, bank?.name),
-      paymentMethod: pickString(data.payment_method, payment?.method),
+      paymentMethod: pickString(
+        data.defaults?.payment_method,
+        data.payment_method,
+        payment?.method,
+      ),
     };
   }
 
