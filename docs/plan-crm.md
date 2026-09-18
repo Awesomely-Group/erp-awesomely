@@ -15,8 +15,13 @@
 >   Holded](https://gigsonsolutions.atlassian.net/wiki/spaces/4b7d8876a83040e982e49eda8189915d/pages/322109441)
 >   (act. 2026-05-19) — límites de cuota, ausencia de webhooks, campos de auditoría reales.
 >
-> Relacionados en el repo: `docs/proposals-plan-v2.md` (contrato de propuestas, implementado a
-> medias), `docs/plan-revision-reunion-2026-09-03.md` (E10, E11, E12).
+> - Google Slides · *"Plan Estratégico & Activación"* de **Odoo Partner** (plantilla de
+>   incorporación de Odoo Enterprise como línea de negocio de Gigson) — embudo, objetivos de año
+>   1 y las 8 métricas de gobernanza. Ver "Impacto del plan de activación de Odoo".
+>
+> Relacionados en el repo: `docs/api-erp.md` (contrato de la API y delta de endpoints de este
+> módulo), `docs/proposals-plan-v2.md` (contrato de propuestas, implementado a medias),
+> `docs/plan-revision-reunion-2026-09-03.md` (E10, E11, E12).
 
 ## Contexto
 
@@ -46,6 +51,8 @@ Este plan conecta ese proceso ya definido con el ERP, sin inventar un CRM parale
 | D2 | **El generador de propuestas vive en las apps de marca** (`gigsonapps.com` / `latroupeapps.com`) | El ERP **no** construye configurador. E11 ("rehacer Presupuestos como generador") se resuelve así: `/budgets` queda como vista interna de lectura/enlace; el ERP expone API + Holded + firma, como ya define `docs/proposals-plan-v2.md` |
 | D3 | **El lead nace en Apollo**; el contacto en Holded se crea **solo al preparar la propuesta** | Ver nota de reconciliación abajo: encaja con la estrategia porque *lead* y *contacto* son dos objetos distintos en Holded |
 | D4 | **Holded CRM es el sistema de registro del pipeline; el ERP lo espeja y lo enriquece** | Se deriva de §10 de la estrategia ("CRM: Holded") y del patrón que ya usa todo el ERP (facturas, proformas, asientos, empleados). Alternativa descartada por defecto: que el ERP sea dueño del pipeline y Holded solo el buzón de entrada — contradice la estrategia vigente y crearía dos pipelines |
+| D5 | **La firma se queda en Documenso** (lo ya implementado); se actualiza la estrategia, no el código | Decisión del 2026-09-17. Cierra la contradicción con §7.1, que decía "Holded / DocuSign" |
+| D6 | **Alcance: solo `erp-awesomely`** | Decisión del 2026-09-18. `lt-tools` y `holded-mcp` quedan para sesión propia (ver final del documento) |
 
 ### Reconciliación de D3 con la estrategia (no hay conflicto)
 
@@ -119,9 +126,75 @@ Esto condiciona el diseño y conviene tenerlo delante:
 | **Leads es uno de los dos únicos recursos con `createdAt` + `updatedAt` + `updatedHash` fiables**, y expone `userId` = responsable asignado | El mejor recurso posible para sync incremental y para mapear propietario comercial |
 | **No hay webhooks** en Holded (está en la wishlist del playbook, prioridad Alta) | Solo polling: el espejo se refresca en el cron, no en tiempo real |
 | **Cuotas mensuales de API desde el 1/6/2026**, por plan y **por cuenta** (SL y OU independientes) | El sync debe ser incremental y con presupuesto de peticiones; no full sync gratuito |
-| **La escritura tiene cobertura irregular** entre módulos (wishlist: "CRUD completo y simétrico al GET") y el MCP interno es **solo GET** | **`POST`/`PATCH` sobre `crm/v1/leads` está sin confirmar** → es la incógnita que decide si el kanban del ERP escribe o es de solo lectura (ver F3) |
+| El playbook interno solo documenta GET porque el MCP interno es **solo GET** — no porque la API sea de lectura | **Confirmado contra la documentación oficial (2026-09-18): el CRM de Holded sí escribe.** 17 endpoints entre embudos y oportunidades, incluidos `POST /leads`, `…/leads/{leadId}/stages` (cambio de etapa) y `…/leads/{leadId}/tasks`. El tablero del ERP puede ser editable (F3) |
 | `GET /contacts` **ignora `page`/`limit`** y devuelve el catálogo completo | El proxy de contactos de las propuestas necesita caché con TTL |
 | Errores silenciosos: filtro inválido → `200 []`; recurso inexistente → **400**, no 404; auth por cabecera `key:` | Validar en cliente, no confiar en el status; registrar `x-correlationid` |
+
+## Impacto del plan de activación de Odoo
+
+Gigson incorpora **Odoo Enterprise como nueva línea de negocio**, y la plantilla de activación de
+Odoo Partner fija su embudo, sus objetivos de año 1 y una rutina de gobernanza mensual sobre 8
+métricas en semáforo. Cuatro consecuencias para este módulo. Aviso previo: la plantilla está **sin
+rellenar** (el objetivo €XXK, los nombres y las fechas están en blanco), así que sus cifras son la
+proyección que propone Odoo, **no objetivos aprobados** — razón de más para que las metas se
+configuren y no se cableen.
+
+1. **El embudo es por línea de negocio, no por marca.** El de Odoo es Leads/Calificación →
+   **Demo** → Propuestas → Nuevos proyectos (88/44/22/9 en el año 1, con rampa trimestral
+   12/6/3/1 → 20/10/5/2 → 28/14/7/3 ×2). Esa etapa **Demo** no existe en el funnel de la
+   estrategia (§7.1). Gigson pasa a tener **dos embudos** (Integraciones/IA y Odoo) y LaTroupe el
+   suyo. El modelo ya lo soporta —los funnels se espejan de Holded con sus etapas—, pero la capa
+   de KPIs debe agregarse **por funnel**, no con un único juego de conversiones. La navegación se
+   organiza por marca y, dentro de Gigson, por línea.
+2. **Metas configurables con semáforo.** La gobernanza es una revisión mensual de 30 min sobre 8
+   métricas en Verde (meta alcanzada) / Amarillo (70-99%) / Rojo (<70%). Ni el ERP ni este plan
+   tenían modelo de objetivos: se añade `KpiTarget` (F7). Como la rampa es trimestral, la meta
+   lleva periodo.
+3. **La mitad de esas métricas no son del CRM.** Las de entrega (% a tiempo, desviación de horas,
+   CSAT) son de Proyectos y las de negocio (ratio 3x servicios/licencias, usuarios vendidos) de
+   Facturación/P&L. Ver matriz y la sección "Fuera del CRM".
+4. **Falta el origen del lead.** El deck separa captación *Inside-Out* (base instalada: 5~6
+   migraciones) de *Outside-In* (mercado abierto: 3~4 nuevos), con objetivos distintos. Sin un
+   campo de origen no se puede reportar ese mix — y LaTroupe lo necesita igual para su "tasa de
+   referidos >50%".
+
+### Dónde vive cada métrica
+
+| Métrica | Sección | Fuente | Estado |
+|---|---|---|---|
+| Leads/mes, por origen | CRM | `CrmLead` (espejo Holded) | Nuevo (F1/F2) |
+| Demos/mes | CRM | entrada en etapa Demo → `CrmLeadStageEvent` | Nuevo; requiere el funnel de Odoo en Holded |
+| Propuestas enviadas | CRM | `Budget` + `documensoStatus` | Existe; falta `crmLeadId` (F6) |
+| Conversión por etapa, ciclo de venta | CRM | `CrmLeadStageEvent` | Nuevo (F7) |
+| Pipeline ponderado | CRM → Previsiones | `amount × probability` | Nuevo (F7) |
+| Nuevos proyectos | CRM → Proyectos | lead ganado → `JiraProject` | Nuevo el enlace |
+| Nuevos usuarios / seats (~75) | Facturación | `CrmLead.seats` + línea de factura | **Hueco**: no existe el concepto de usuario vendido |
+| Ratio 3x servicios/licencias | P&L / Facturación | `InvoiceLine` + `Classification` | Datos sí; **falta distinguir servicio de licencia** |
+| % proyectos a tiempo | Proyectos | — | **Hueco**: `JiraProject` no guarda fecha comprometida; Giro sí |
+| Desviación horas vs presupuesto | Proyectos | `HourBucket.totalHours` + `BudgetLine.estimatedHours` vs horas reales (Tempo/Giro) | Datos sí; falta el informe |
+| CSAT (>80%) | Proyectos / Clientes | — | **Hueco total**: no hay captura |
+| Metas y semáforo | Transversal | `KpiTarget` | Nuevo (F7) |
+| CAC / CPA por canal | Marketing | Adspirer / Google Ads | Fuera del ERP |
+
+### Propuesta de métricas por marca
+
+**Gigson — Integraciones/IA** (ya fijadas en §8.1 de la estrategia): leads fríos
+contactados/semana (15-20), contacto→respuesta >15%, respuesta→discovery >60%,
+discovery→propuesta >70%, propuesta→cierre >40%, ticket medio €20-35K, ciclo 30-60 días, leads
+orgánicos/mes (10-15 en Q4).
+
+**Gigson — Odoo** (del deck): funnel 88/44/22/9 con rampa trimestral, 9 implantaciones y ~75
+usuarios en el año 1, ratio 3x servicios/licencias, mix inside-out (5~6 migraciones) vs outside-in
+(3~4 nuevos), y nº de cuentas de la base instalada auditadas.
+
+**LaTroupe** (§8.2 + su modelo de negocio): estudios contactados/semana (10-15),
+contacto→conversación >10%, **videollamadas reservadas/mes ≥4** (su equivalente a la "demo" de
+Odoo, vía Cal.com), propuestas enviadas, 2-3 proyectos cerrados por semestre, ticket medio
+€20-30K, **tasa de referidos >50%** (necesita origen), **retención de clientes activos >90%** (no
+es CRM: sale de facturación recurrente por cuenta) y **pipeline por mercado**
+UK/US/ES/Nórdicos/Sudáfrica (necesita mercado en el lead, porque su paid está segmentado así). En
+entrega, su métrica crítica es la **desviación de horas por perfil**, porque factura de €13/h
+(junior) a €45/h (lead) y el margen depende de que el perfil real coincida con el presupuestado.
 
 ## Arquitectura objetivo
 
@@ -173,6 +246,12 @@ model CrmFunnel {
   name           String
   stages         Json    // [{ id, name, order }] tal cual viene de Holded
   lastSyncedAt   DateTime?
+
+  // ── Propio del ERP: es el eje por el que se agregan los KPIs ──────────────
+  marca          String?
+  lineOfBusiness String? // "INTEGRACIONES" | "ODOO" | "BIM". Cada línea tiene su
+                         // embudo y sus metas; agregar solo por marca mezcla las dos
+                         // líneas de Gigson e invalida las conversiones.
   leads          CrmLead[]
 
   @@unique([companyId, holdedFunnelId])
@@ -213,6 +292,11 @@ model CrmLead {
   account           CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   expectedCloseDate DateTime?
   probability       Int?     // % para el pipeline ponderado (F7)
+  origin            String?  // INSIDE_OUT | OUTSIDE_IN | REFERRAL | INBOUND | PARTNER — mix
+                             // del plan de Odoo y tasa de referidos de LaTroupe. Si Holded ya
+                             // trae origen o tags equivalentes, se mapean en vez de duplicar.
+  market            String?  // UK | US | ES | NORDICS | ZA — pipeline por mercado (LaTroupe)
+  seats             Int?     // usuarios propuestos (objetivo de ~75 usuarios de Odoo)
   notes             String?
   projectId         String?  // se rellena al ganar
   project           JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -341,6 +425,8 @@ desemboca en nada.
    asume `x-documenso-signature` + HMAC-SHA256, sin confirmar).
 4. Confirmar el esquema de creación de documentos contra una cuenta real (API pública de
    Documenso migrando al modelo "envelope").
+5. Actualizar §7.1 de la estrategia en Confluence, que sigue diciendo "Holded / DocuSign", para
+   que refleje Documenso (D5).
 
 ### F1 — Cliente de CRM de Holded + espejo (3-4 j)
 - `src/lib/holded.ts`: añadir base `api/crm/v1` y métodos `getLeads()`, `getFunnels()`
@@ -368,13 +454,16 @@ desemboca en nada.
 - Rellenar la subsección CRM del sidebar (`src/components/sidebar.tsx:55`) y actualizar el
   comentario de l.43-44 que hoy dice que está vacía a propósito.
 
-### F3 — Escritura hacia Holded, si la API lo permite (1-3 j · depende de F1)
-Decisión gobernada por lo que se confirme en F1:
-- **Si `crm/v1/leads` acepta escritura**: arrastrar en el tablero cambia la etapa en Holded
-  (idempotente, con relectura posterior para confirmar y `source: "ERP"` en el historial).
-- **Si es solo lectura**: el tablero queda de consulta, el cambio de etapa se hace en Holded
-  (enlace profundo ya previsto en F2) y se documenta la limitación. Nada de simular en el ERP
-  un estado que Holded no tiene: sería un segundo pipeline divergente.
+### F3 — Escritura hacia Holded (1-2 j)
+Confirmado que la API escribe, el tablero es editable:
+- Arrastrar una tarjeta llama a `…/leads/{leadId}/stages`, **relee el lead** para confirmar y
+  escribe `CrmLeadStageEvent { source: "ERP" }` + `AuditLog`. Idempotente: repetir la misma
+  llamada no duplica eventos.
+- Si la escritura falla, **no se escribe el evento** y se devuelve el error: nunca dejar el
+  espejo divergente respecto a Holded.
+- Contrato del endpoint (`POST /api/crm/leads/[id]/stage`, códigos y payload) en
+  `docs/api-erp.md` §4.1.
+- Nada de simular en el ERP un estado que Holded no tiene: sería un segundo pipeline.
 
 ### F4 — Ficha de cliente 360 (2 j)
 - `/crm/cuentas` y `/crm/cuentas/[id]`: contactos, leads, presupuestos, proformas, facturas y
@@ -405,10 +494,19 @@ Amplía el contrato de `docs/proposals-plan-v2.md`. Los consumidores todavía no
   (y mover etapa en Holded si F3 concluyó que hay escritura).
 - Actualizar `docs/proposals-plan-v2.md` con el contrato resultante.
 
-### F7 — KPIs comerciales y enlace con previsiones (2-3 j)
-- Los KPIs no hay que inventarlos: están en §8 de la estrategia. Implementar en `/crm` las
-  conversiones contacto→respuesta, respuesta→discovery, discovery→propuesta, propuesta→cierre,
-  ticket medio y ciclo de venta (desde `CrmLeadStageEvent`), por marca.
+### F7 — KPIs comerciales, metas y semáforo (3-4 j)
+- **Reutilizar el framework de KPIs que ya existe**: `src/lib/kpis/` (`KPIFilters`, grupos
+  P&L/Cashflow/Derived/Projections, `getAllKPIs()`), expuesto en `/api/kpis` y por MCP
+  (`src/lib/mcp/tools/kpis.ts`). Se añade `getCommercialKPIs()` como un grupo más — no un módulo
+  nuevo — y se amplía `KPIFilters` con `lineOfBusiness` / `funnelId`.
+- Los KPIs no hay que inventarlos: están en §8 de la estrategia y en el deck de Odoo. Métricas:
+  leads/mes por origen, demos/mes, propuestas, conversiones por etapa, ciclo de venta (desde
+  `CrmLeadStageEvent`), ticket medio, win rate, pipeline ponderado y seats. Cada marca/línea usa
+  las suyas según la propuesta de arriba.
+- **`KpiTarget`** (modelo nuevo, transversal — no solo CRM): `metric`, `marca`,
+  `lineOfBusiness?`, `periodType` (MONTH|QUARTER|YEAR), `periodKey`, `value`. Alimenta el
+  semáforo Verde (≥meta) / Amarillo (70-99%) / Rojo (<70%) de la rutina mensual, y sirve igual
+  para métricas de entrega y financieras. Se editan en `/settings`, no se cablean.
 - **E10 de la reunión**: el CRM aporta la capa que faltaba por delante. Comprometido =
   proformas activas (ya existe); pipeline ponderado (`amount × probability`) = capa nueva
   anterior, como entrada opcional del escenario en `/forecasts`.
@@ -418,8 +516,26 @@ Amplía el contrato de `docs/proposals-plan-v2.md`. Los consumidores todavía no
   posterior queda **fuera** de cualquier filtro de periodo actual. El pipeline necesita su
   propio horizonte hacia adelante (p.ej. "próximos N meses"), no el rango de tesorería.
 
-**Estimación total: ~16-21 jornadas.** F0 y F1 son prerrequisito del resto; F3 depende de lo
-que se confirme de la API en F1; F4, F5 y F6 son independientes entre sí.
+**Estimación total: ~17-22 jornadas.** F0 y F1 son prerrequisito del resto; F3 depende de F2;
+F4, F5 y F6 son independientes entre sí.
+
+## Fuera del CRM, para planificar aparte
+
+Las métricas de entrega y negocio del deck de Odoo no son de este módulo. Cada una tiene su hueco
+propio y conviene decidirlas por separado, no colarlas en el CRM:
+
+- **% proyectos a tiempo** → Proyectos. Hueco real: `JiraProject` no guarda fecha comprometida de
+  entrega (solo `status`); Giro sí tiene fechas y `giroProjectId` ya enlaza. Decidir origen del
+  dato.
+- **Desviación de horas vs presupuesto** → Proyectos. Los datos ya están: `HourBucket.totalHours`
+  y `BudgetLine.estimatedHours` frente a horas reales de Tempo/Giro. Falta el informe. Para
+  LaTroupe, desglosado **por perfil** (tarifas de €13 a €45/h).
+- **CSAT >80%** → hueco total, no hay captura. Requiere encuesta post-proyecto y modelo propio.
+- **Ratio 3x servicios/licencias y usuarios vendidos** → Facturación/P&L. `InvoiceLine` +
+  `Classification` ya clasifican por línea, marca y proyecto, pero **no distinguen servicio de
+  licencia**: hace falta una cuenta contable dedicada o una marca de tipo de línea.
+- **CAC/CPA por canal** → vive en Adspirer/Google Ads. Dejarlo fuera salvo que se quiera importar
+  el coste por canal para calcular CAC contra los leads del CRM.
 
 ## Verificación
 
@@ -436,27 +552,30 @@ que se confirme de la API en F1; F4, F5 y F6 son independientes entre sí.
 
 ## Riesgos y decisiones abiertas
 
-1. **Escritura en `crm/v1/leads` sin confirmar** — es el riesgo que más cambia el resultado
-   (kanban editable vs. de consulta). Confirmar en F1 antes de prometer tablero editable.
-2. **Sin webhooks + cuotas mensuales**: el espejo llega con el retraso del cron y cada
-   refresco cuesta cuota. No prometer tiempo real.
-3. **DocuSign vs Documenso**: la estrategia (§7.1, "Cierre") dice **Holded / DocuSign**,
-   mientras el código del ERP implementa **Documenso** (`src/lib/documenso.ts`). Hay que
-   zanjar cuál es la herramienta de firma antes de F0, o se está probando un contrato que la
-   estrategia no reconoce.
-4. **Las propuestas hoy son "Figma → PDF"** (§7.1). Las apps de marca (D2) tienen que
-   sustituir ese flujo manual; hasta entonces el tramo propuesta→firma del ERP no tiene
-   productor real.
+1. **Sin webhooks + cuotas mensuales**: el espejo llega con el retraso del cron y cada refresco
+   cuesta cuota (SL y OU tienen cuotas independientes). No prometer tiempo real.
+2. **Doble edición**: el ERP escribe etapas (F3) y alguien puede moverlas en Holded a la vez. La
+   disciplina de espejo (Holded manda en sus campos) lo limita, pero hay que decidir qué gana si
+   el sync encuentra divergencia.
+3. **Campos exactos de la API de CRM sin confirmar**: la referencia antigua de Holded redirige al
+   portal nuevo, que documenta auth Bearer mientras v1 usa cabecera `key:`. El cliente del repo ya
+   conmuta ambos (`authHeaders()`), pero los nombres de campo hay que confirmarlos en F1 contra
+   una cuenta real.
+4. **Las propuestas hoy son "Figma → PDF"** (§7.1). Las apps de marca (D2) tienen que sustituir
+   ese flujo manual; hasta entonces el tramo propuesta→firma del ERP no tiene productor real.
 5. **`Budget.projectId` nullable** toca `/budgets`, sus server actions, la tabla y la tool MCP:
    transversal aunque pequeño, mejor aislado en su propio commit.
 6. **Sin roles**: la auth es allowlist SSO (`SsoAllowedEmail`) sin RBAC, así que el pipeline
    comercial será visible a cualquier usuario con acceso al ERP. Si eso no vale, hace falta una
    fase previa de roles.
-7. **Doble edición**: si el ERP escribe etapas (F3) y alguien las mueve en Holded a la vez, hay
-   conflicto. La disciplina de espejo (Holded manda en sus campos) lo limita, pero conviene
-   decidir qué gana si el sync encuentra divergencia.
-8. **PII**: el ERP pasará a espejar datos de contacto de personas que aún no son clientes.
-   Menor que en un CRM propio (el dato vive en Holded), pero hay que revisar base legal y
-   retención del espejo.
-9. **`marca` sigue siendo un string** (`MARCA_OPTIONS`), no un enum, y `CrmLead.marca` hereda
-   esa debilidad. No se arregla aquí para no ampliar el alcance.
+7. **PII**: el ERP pasará a espejar datos de contacto de personas que aún no son clientes. Menor
+   que en un CRM propio (el dato vive en Holded), pero hay que revisar base legal y retención.
+8. **`marca` no distingue líneas de negocio**: Gigson tendrá Integraciones/IA y Odoo con embudos y
+   metas distintas. Si se agrega solo por `marca`, se mezclan y las conversiones no significan
+   nada. De ahí `lineOfBusiness` en el funnel. Además `marca` sigue siendo un string
+   (`MARCA_OPTIONS`), no un enum — no se arregla aquí para no ampliar el alcance.
+9. **Las cifras de Odoo (88/44/22/9, 9 proyectos, 75 usuarios, 3x) salen de una plantilla sin
+   rellenar**: son la proyección que propone Odoo, no objetivos aprobados. Confirmarlos antes de
+   cargarlos como `KpiTarget`.
+10. **Prerrequisito operativo de F2/F7**: el funnel de Odoo (con etapa Demo) tiene que existir en
+    Holded. Si el equipo no lo crea, no hay demos que contar por mucho código que se escriba.
