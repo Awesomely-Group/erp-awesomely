@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { SyncButton } from "./sync-button";
 import { SyncTable, type SyncLogRow } from "./sync-table";
 import { LocalDateTime } from "@/components/local-datetime";
-import { SyncSource } from "@prisma/client";
+import { SyncResult, SyncSource } from "@prisma/client";
 
 export default async function SyncPage(): Promise<React.JSX.Element> {
   const logs = await prisma.syncLog.findMany({
@@ -19,10 +19,14 @@ export default async function SyncPage(): Promise<React.JSX.Element> {
     source: log.source,
     entityName: log.company?.name ?? log.workspace?.name ?? "—",
     records: log.source === SyncSource.HOLDED ? log.invoicesSynced : log.projectsSynced,
+    // Una ejecución abierta aún no ha escrito su recuento: enseñar "0 facturas" haría
+    // pensar que terminó y no trajo nada, que es justo la confusión que se quiere evitar.
     recordsLabel:
-      log.source === SyncSource.HOLDED
-        ? `${log.invoicesSynced} facturas`
-        : `${log.projectsSynced} proyectos`,
+      log.result === SyncResult.RUNNING
+        ? "En curso…"
+        : log.source === SyncSource.HOLDED
+          ? `${log.invoicesSynced} facturas`
+          : `${log.projectsSynced} proyectos`,
     result: log.result,
     errorMessage: log.errorMessage,
     triggeredBy: log.triggeredBy,

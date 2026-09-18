@@ -5,7 +5,7 @@ import { LocalDateTime } from "@/components/local-datetime";
 import { ChevronUp, ChevronDown, ChevronsUpDown, X, Search } from "lucide-react";
 
 type SyncSource = "HOLDED" | "JIRA";
-type SyncResult = "SUCCESS" | "PARTIAL" | "ERROR";
+type SyncResult = "SUCCESS" | "PARTIAL" | "ERROR" | "RUNNING";
 
 export interface SyncLogRow {
   id: string;
@@ -40,12 +40,14 @@ const RESULT_LABELS: Record<SyncResult, string> = {
   SUCCESS: "OK",
   PARTIAL: "Parcial",
   ERROR: "Error",
+  RUNNING: "En curso",
 };
 
 const RESULT_COLORS: Record<SyncResult, string> = {
   SUCCESS: "bg-green-100 text-green-700",
   PARTIAL: "bg-amber-100 text-amber-700",
   ERROR: "bg-red-100 text-red-700",
+  RUNNING: "bg-indigo-100 text-indigo-700",
 };
 
 type SortKey = "startedAt" | "source" | "entityName" | "records" | "result";
@@ -365,6 +367,7 @@ export function SyncTable({ rows }: { rows: SyncLogRow[] }): React.JSX.Element {
             <option value="SUCCESS">OK</option>
             <option value="PARTIAL">Parcial</option>
             <option value="ERROR">Error</option>
+            <option value="RUNNING">En curso</option>
           </select>
           {(sourceFilter || resultFilter) && (
             <button

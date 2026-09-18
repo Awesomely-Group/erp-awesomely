@@ -19,6 +19,102 @@ import { JiraClient } from "./jira";
 import { InvoiceType, Prisma, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
 import { inferInvoiceRecurrence } from "./invoice-recurrence";
+import { syncStaleCutoff } from "./sync-timing";
+
+// ─── Ciclo de vida del SyncLog ─────────────────────────────────────────────────
+//
+// La fila se abre al EMPEZAR (result RUNNING, finishedAt null) y se cierra al acabar.
+// Antes se escribía una sola vez, al final: si la función moría por el límite de tiempo
+// de Vercel no quedaba ninguna fila, así que un sync a medias era indistinguible de un
+// sync que nunca se lanzó. El síntoma real (Awesomely OU, 17/09/2026) fue "he
+// sincronizado varias veces y no pasa nada": las dos ejecuciones manuales murieron sin
+// dejar rastro y las facturas de esa entidad no llegaron nunca. Una fila que se queda
+// en RUNNING es justo esa prueba que faltaba.
+
+/** Se lanza cuando ya hay una sincronización viva y se intenta arrancar otra. */
+export class SyncAlreadyRunningError extends Error {
+  constructor(public readonly runningSince: Date) {
+    super(
+      `Ya hay una sincronización en curso (empezó a las ${runningSince.toISOString()}). ` +
+        "Espera a que termine antes de lanzar otra.",
+    );
+    this.name = "SyncAlreadyRunningError";
+  }
+}
+
+async function openSyncLog(params: {
+  source: SyncSource;
+  companyId?: string;
+  workspaceId?: string;
+  triggeredBy?: string;
+  startedAt: Date;
+}): Promise<string> {
+  const log = await prisma.syncLog.create({
+    data: {
+      source: params.source,
+      result: SyncResult.RUNNING,
+      companyId: params.companyId ?? null,
+      workspaceId: params.workspaceId ?? null,
+      triggeredBy: params.triggeredBy ?? null,
+      startedAt: params.startedAt,
+      finishedAt: null,
+    },
+    select: { id: true },
+  });
+  return log.id;
+}
+
+async function closeSyncLog(
+  logId: string,
+  params: {
+    errorMessage?: string;
+    /** Terminó, pero a medias (p. ej. un listado truncado de Holded) → PARCIAL. */
+    warningMessage?: string;
+    invoicesSynced?: number;
+    projectsSynced?: number;
+    details?: Prisma.InputJsonValue;
+  },
+): Promise<void> {
+  await prisma.syncLog.update({
+    where: { id: logId },
+    data: {
+      result: params.errorMessage
+        ? SyncResult.ERROR
+        : params.warningMessage
+          ? SyncResult.PARTIAL
+          : SyncResult.SUCCESS,
+      invoicesSynced: params.invoicesSynced ?? 0,
+      projectsSynced: params.projectsSynced ?? 0,
+      errorMessage: params.errorMessage ?? params.warningMessage ?? null,
+      details: params.details,
+      finishedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Cierra como ERROR las ejecuciones que se quedaron colgadas en RUNNING. Se llama al
+ * principio de cada sync: recoge los cadáveres de la vez anterior antes de comprobar
+ * si hay alguna viva.
+ */
+async function reapStaleSyncLogs(): Promise<number> {
+  const { count } = await prisma.syncLog.updateMany({
+    where: {
+      result: SyncResult.RUNNING,
+      startedAt: { lt: syncStaleCutoff() },
+    },
+    data: {
+      result: SyncResult.ERROR,
+      errorMessage:
+        "Sincronización interrumpida: el proceso murió sin terminar (probable límite de tiempo de la función).",
+      finishedAt: new Date(),
+    },
+  });
+  if (count > 0) {
+    console.warn(`[sync] ${count} ejecución(es) colgadas marcadas como interrumpidas`);
+  }
+  return count;
+}
 
 // ─── Contexto de sincronización ────────────────────────────────────────────────
 //
@@ -49,6 +145,12 @@ export async function syncJiraWorkspace(
   });
 
   const startedAt = new Date();
+  const logId = await openSyncLog({
+    source: SyncSource.JIRA,
+    workspaceId,
+    triggeredBy,
+    startedAt,
+  });
   let projectsSynced = 0;
   let errorMessage: string | undefined;
 
@@ -93,18 +195,7 @@ export async function syncJiraWorkspace(
     errorMessage = err instanceof Error ? err.message : String(err);
   }
 
-  await prisma.syncLog.create({
-    data: {
-      source: SyncSource.JIRA,
-      result: errorMessage ? SyncResult.ERROR : SyncResult.SUCCESS,
-      workspaceId,
-      projectsSynced,
-      errorMessage,
-      triggeredBy: triggeredBy ?? null,
-      startedAt,
-      finishedAt: new Date(),
-    },
-  });
+  await closeSyncLog(logId, { errorMessage, projectsSynced });
 
   if (errorMessage) throw new Error(errorMessage);
 }
@@ -157,6 +248,12 @@ export async function syncHoldedCompany(
 
   const { scope } = ctx;
   const startedAt = new Date();
+  const logId = await openSyncLog({
+    source: SyncSource.HOLDED,
+    companyId,
+    triggeredBy,
+    startedAt,
+  });
   let invoicesSynced = 0;
   let errorMessage: string | undefined;
 
@@ -376,45 +473,6 @@ export async function syncHoldedCompany(
     console.error("[sync] Error in recurrence backfill sweep:", err);
   }
 
-  const combinedError =
-    errorMessage ??
-    (upsertErrors.length > 0
-      ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0].error}`
-      : undefined);
-
-  // Un listado truncado no es un error de ejecución —los documentos recibidos se
-  // han guardado— pero sí deja el sync a medias: se registra como PARCIAL para
-  // que se vea en /sync, en vez de quedar solo en los logs de la función.
-  const truncationWarning =
-    truncations.length > 0
-      ? `Listado(s) incompleto(s) de Holded — reconciliación de borrados omitida: ${truncations.join(" | ")}`
-      : undefined;
-
-  const syncLog = await prisma.syncLog.create({
-    data: {
-      source: SyncSource.HOLDED,
-      result: combinedError
-        ? SyncResult.ERROR
-        : truncationWarning
-          ? SyncResult.PARTIAL
-          : SyncResult.SUCCESS,
-      companyId,
-      invoicesSynced,
-      errorMessage: combinedError ?? truncationWarning ?? null,
-      details: {
-        mode: scope.mode,
-        fromDate: scope.fromDate.toISOString(),
-        ...(truncations.length > 0 ? { truncations } : {}),
-        ...(fetchedIds.length > 0 ? { fetchedIds } : {}),
-        ...(upsertErrors.length > 0 ? { upsertErrors } : {}),
-      },
-      triggeredBy: triggeredBy ?? null,
-      startedAt,
-      finishedAt: new Date(),
-    },
-    select: { id: true },
-  });
-
   await syncSuppliers(companyId, ctx).catch((err: unknown) => {
     console.error("[sync] Error syncing suppliers:", err);
   });
@@ -452,33 +510,44 @@ export async function syncHoldedCompany(
     console.error("[sync] Error syncing employees/salary records:", err);
   });
 
-  // Coste real de la ejecución. La cuota de Holded se mide en llamadas, así que
-  // queda registrado para poder comparar incremental vs full desde /sync-logs.
+  // El log se cierra AQUÍ, después de todas las fases. Antes se escribía en dos pasos —
+  // un create justo tras las facturas y un update al final solo para el coste de API —
+  // y eso dejaba `finishedAt` midiendo un tramo parcial: Awesomely OU marcaba ~262 s
+  // mientras la función seguía trabajando en proveedores, proformas, asientos y nóminas.
+  // Ese tramo invisible era justo el que se comía el presupuesto de tiempo.
   console.log(
     `[sync] company=${companyId} mode=${scope.mode} desde=${scope.fromDate
       .toISOString()
       .slice(0, 10)} → ${ctx.stats.total} llamadas a la API de Holded`,
   );
-  await prisma.syncLog
-    .update({
-      where: { id: syncLog.id },
-      data: {
-        details: {
-          mode: scope.mode,
-          fromDate: scope.fromDate.toISOString(),
-          apiCalls: {
-            total: ctx.stats.total,
-            byEndpoint: ctx.stats.byEndpoint,
-          },
-          ...(truncations.length > 0 ? { truncations } : {}),
-          ...(fetchedIds.length > 0 ? { fetchedIds } : {}),
-          ...(upsertErrors.length > 0 ? { upsertErrors } : {}),
-        },
-      },
-    })
-    .catch((err: unknown) => {
-      console.error("[sync] No se pudo registrar el coste de API:", err);
-    });
+
+  const combinedError =
+    errorMessage ??
+    (upsertErrors.length > 0
+      ? `${upsertErrors.length} upsert errors — first: ${upsertErrors[0].error}`
+      : undefined);
+
+  // Un listado truncado no es un error de ejecución —los documentos recibidos se
+  // han guardado— pero sí deja el sync a medias: se registra como PARCIAL para
+  // que se vea en /sync, en vez de quedar solo en los logs de la función.
+  const truncationWarning =
+    truncations.length > 0
+      ? `Listado(s) incompleto(s) de Holded — reconciliación de borrados omitida: ${truncations.join(" | ")}`
+      : undefined;
+
+  await closeSyncLog(logId, {
+    errorMessage: combinedError,
+    warningMessage: truncationWarning,
+    invoicesSynced,
+    details: {
+      mode: scope.mode,
+      fromDate: scope.fromDate.toISOString(),
+      apiCalls: { total: ctx.stats.total, byEndpoint: ctx.stats.byEndpoint },
+      ...(truncations.length > 0 ? { truncations } : {}),
+      ...(fetchedIds.length > 0 ? { fetchedIds } : {}),
+      ...(upsertErrors.length > 0 ? { upsertErrors } : {}),
+    },
+  });
 
   if (errorMessage) throw new Error(errorMessage);
 }
@@ -1650,6 +1719,22 @@ export async function syncAll(
   apiCalls: number;
   errors: string[];
 }> {
+  // Antes de nada: cerrar lo que quedó colgado y rechazar si hay una viva. Lanzar un
+  // segundo sync encima de uno en curso duplica la carga contra la API de Holded y
+  // ralentiza a los dos — fue lo que remató la ejecución del 17/09/2026 (dos syncs
+  // solapados con 2 min de diferencia; el de Awesomely SL pasó de 148 s a 243 s y el de
+  // Awesomely OU no llegó a terminar).
+  await reapStaleSyncLogs();
+  // Solo bloquea un HOLDED en curso: es el que compite por el rate limit y el que tarda.
+  // Jira dura ~0 s y lo dispara también su propio webhook, así que bloquear por él solo
+  // acoplaría dos cosas que no se estorban.
+  const alreadyRunning = await prisma.syncLog.findFirst({
+    where: { result: SyncResult.RUNNING, source: SyncSource.HOLDED },
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true },
+  });
+  if (alreadyRunning) throw new SyncAlreadyRunningError(alreadyRunning.startedAt);
+
   const [companies, workspaces] = await Promise.all([
     prisma.company.findMany({ where: { active: true } }),
     prisma.jiraWorkspace.findMany({ where: { active: true } }),
@@ -1679,32 +1764,9 @@ export async function syncAll(
 
   const errors: string[] = [];
 
-  await Promise.allSettled([
-    ...companies.map((c) => {
-      const stats = createHoldedApiStats();
-      statsByCompany.set(c.id, stats);
-      return syncHoldedCompany(c.id, triggeredBy, { scope, stats })
-        .then(() => {
-          onProgress?.({
-            type: "update",
-            source: "HOLDED",
-            entityId: c.id,
-            status: "done",
-          });
-        })
-        .catch((e: unknown) => {
-          const msg = e instanceof Error ? e.message : String(e);
-          errors.push(`Holded ${c.name}: ${msg}`);
-          onProgress?.({
-            type: "update",
-            source: "HOLDED",
-            entityId: c.id,
-            status: "error",
-            error: msg,
-          });
-        });
-    }),
-    ...workspaces.map((w) =>
+  // Jira va en paralelo con todo lo demás: tarda ~0 s y no toca la API de Holded.
+  const jiraDone = Promise.allSettled(
+    workspaces.map((w) =>
       syncJiraWorkspace(w.id, triggeredBy)
         .then(() => {
           onProgress?.({
@@ -1726,7 +1788,42 @@ export async function syncAll(
           });
         }),
     ),
-  ]);
+  );
+
+  // Las empresas, EN SERIE. En paralelo compiten por el mismo rate limit de Holded y
+  // cada una tarda más que sola: en las dos ejecuciones solapadas del 17/09 Awesomely SL
+  // pasó de 148 s a 243 s y Awesomely OU no llegó a terminar. En serie el total es la
+  // suma de las partes, pero es predecible y ninguna se queda a medias.
+  //
+  // Medido el 18/09 con el ámbito incremental de #35: las llamadas a Holded son ~10 s
+  // para las dos empresas (32 llamadas), y lo que domina son las escrituras — 834
+  // upserts de factura, ~190-250 s extrapolando el coste por factura de los syncs
+  // anteriores. El `?mode=full` de los domingos sigue costando ~410 s en serie.
+  for (const c of companies) {
+    const stats = createHoldedApiStats();
+    statsByCompany.set(c.id, stats);
+    try {
+      await syncHoldedCompany(c.id, triggeredBy, { scope, stats });
+      onProgress?.({
+        type: "update",
+        source: "HOLDED",
+        entityId: c.id,
+        status: "done",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`Holded ${c.name}: ${msg}`);
+      onProgress?.({
+        type: "update",
+        source: "HOLDED",
+        entityId: c.id,
+        status: "error",
+        error: msg,
+      });
+    }
+  }
+
+  await jiraDone;
 
   let apiCalls = 0;
   for (const stats of statsByCompany.values()) apiCalls += stats.total;
