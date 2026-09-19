@@ -19,7 +19,7 @@ import { JiraClient } from "./jira";
 import { InvoiceType, Prisma, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
 import { inferInvoiceRecurrence } from "./invoice-recurrence";
-import { syncStaleCutoff } from "./sync-timing";
+import { syncDeadline, syncStaleCutoff } from "./sync-timing";
 import { resolveFxRateToEur } from "./exchange-rates";
 
 // ─── Ciclo de vida del SyncLog ─────────────────────────────────────────────────
@@ -1796,10 +1796,36 @@ export async function syncAll(
   // Medido el 18/09 con el ámbito incremental de #35: las llamadas a Holded son ~10 s
   // para las dos empresas (32 llamadas), y lo que domina son las escrituras — 834
   // upserts de factura, ~190-250 s extrapolando el coste por factura de los syncs
-  // anteriores. El `?mode=full` de los domingos sigue costando ~410 s en serie.
+  // anteriores. Eso cabe en los 300 s de la función. El `?mode=full` de los domingos
+  // cuesta ~410 s en serie y NO cabe: hasta que el proyecto admita un maxDuration mayor
+  // (hoy Vercel rechaza el despliegue con 800), la última empresa se queda fuera.
+  //
+  // Por eso no se arranca una empresa si no queda presupuesto para ella: más vale
+  // dejarla sin sincronizar y decirlo, que empezarla y que la plataforma corte a mitad
+  // de escritura dejando el log abierto y el trabajo a medias. Se estima el coste de la
+  // siguiente con el de la más lenta que ya ha corrido en esta misma ejecución.
+  const deadline = syncDeadline(new Date());
+  let slowestCompanyMs = 0;
+
   for (const c of companies) {
+    const remainingMs = deadline.getTime() - Date.now();
+    if (slowestCompanyMs > 0 && remainingMs < slowestCompanyMs) {
+      const msg = `No se ha sincronizado: quedaban ${Math.round(remainingMs / 1000)} s del presupuesto de la función y la empresa anterior tardó ${Math.round(slowestCompanyMs / 1000)} s`;
+      console.warn(`[sync] ${c.name}: ${msg}`);
+      errors.push(`Holded ${c.name}: ${msg}`);
+      onProgress?.({
+        type: "update",
+        source: "HOLDED",
+        entityId: c.id,
+        status: "error",
+        error: msg,
+      });
+      continue;
+    }
+
     const stats = createHoldedApiStats();
     statsByCompany.set(c.id, stats);
+    const companyStartedAt = Date.now();
     try {
       await syncHoldedCompany(c.id, triggeredBy, { scope, stats });
       onProgress?.({
@@ -1819,6 +1845,7 @@ export async function syncAll(
         error: msg,
       });
     }
+    slowestCompanyMs = Math.max(slowestCompanyMs, Date.now() - companyStartedAt);
   }
 
   await jiraDone;
