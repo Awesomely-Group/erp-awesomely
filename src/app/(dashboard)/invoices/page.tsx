@@ -83,7 +83,16 @@ type InvoicePageParams = {
   recurrence?: string;
   cols?: string;
   holdedStatus?: string;
+  /** Solo facturas cuyo vencimiento es anterior a esta fecha (ISO, "2026-08-19"). */
+  dueBefore?: string;
 };
+
+/** Parsea una fecha ISO de la query string; descarta lo que no sea una fecha válida. */
+function parseIsoDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 function parseHoldedPresence(v: string | undefined): HoldedPresence {
   if (v === "all" || v === "removed") return v;
@@ -137,6 +146,10 @@ async function loadInvoicesPageData(params: InvoicePageParams) {
     andConditions.push({ holdedStatus: parseInt(params.holdedStatus, 10) });
   }
   if (params.project) andConditions.push({ lines: { some: { classification: { projectId: params.project } } } });
+  // Vencimiento, no fecha de emisión: es lo que hace que una factura esté "vencida".
+  // Lo usan los enlaces de las alertas del dashboard, que cuentan justo eso.
+  const dueBefore = parseIsoDate(params.dueBefore);
+  if (dueBefore) andConditions.push({ dueDate: { lt: dueBefore } });
   if (dateRange.gte || dateRange.lte) andConditions.push({ date: dateRange });
 
   const baseWhere: Prisma.InvoiceWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
@@ -248,6 +261,7 @@ export default async function InvoicesPage({
       recurrence: q.recurrence,
       cols: q.cols,
       holdedStatus: q.holdedStatus,
+      dueBefore: q.dueBefore,
       ...overrides,
     };
     for (const [k, v] of Object.entries(merged)) {
@@ -359,6 +373,7 @@ export default async function InvoicesPage({
             projects={activeProjects}
             visibleCols={[...visibleCols] as ColumnKey[]}
             invoiceType={activeType}
+            dueBefore={q.dueBefore}
           />
         </div>
       </div>
