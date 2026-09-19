@@ -177,3 +177,40 @@ export function yearsInScope(scope: SyncScope, now: Date = new Date()): number[]
   }
   return years;
 }
+
+/** Empresa candidata a la pasada completa, con la fecha de la última que tuvo. */
+export interface FullSyncCandidate {
+  id: string;
+  name: string;
+  /** Inicio de su última pasada completa correcta, o null si nunca ha tenido una. */
+  lastFullSyncAt: Date | null;
+}
+
+/**
+ * En modo full se sincroniza UNA sola empresa por ejecución.
+ *
+ * Releer toda la historia de todas no cabe en el tiempo de la función (300 s en el plan
+ * actual): la última se quedaba fuera siempre, y como la consulta de empresas no fijaba
+ * orden, era siempre la misma la que se quedaba sin releer nunca.
+ *
+ * Se elige la que lleve más tiempo sin pasada completa, y las que no han tenido ninguna
+ * van primero. Así van rotando y todas acaban releídas —con dos empresas, cada una cada
+ * quince días—. El desempate es por nombre para que la elección sea estable y no dependa
+ * del orden en que la base de datos devuelva las filas.
+ */
+export function pickCompanyForFullSync<T extends FullSyncCandidate>(
+  companies: readonly T[],
+): T | null {
+  if (companies.length === 0) return null;
+
+  return [...companies].sort((a, b) => {
+    if (a.lastFullSyncAt === null && b.lastFullSyncAt === null) {
+      return a.name.localeCompare(b.name);
+    }
+    if (a.lastFullSyncAt === null) return -1;
+    if (b.lastFullSyncAt === null) return 1;
+
+    const byDate = a.lastFullSyncAt.getTime() - b.lastFullSyncAt.getTime();
+    return byDate !== 0 ? byDate : a.name.localeCompare(b.name);
+  })[0];
+}
