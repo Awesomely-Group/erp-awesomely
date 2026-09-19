@@ -4,6 +4,7 @@ import {
   buildScopeWindow,
   buildQuarterlyWindows,
   parseSyncMode,
+  pickCompanyForFullSync,
   resolveSyncScope,
   yearsInScope,
 } from "./sync-scope";
@@ -204,5 +205,89 @@ describe("buildScopeWindow", () => {
 
   it("devuelve null si no hay nada que cubrir", () => {
     expect(buildScopeWindow(new Date(2026, 8, 16), new Date(2026, 6, 1))).toBeNull();
+  });
+});
+
+describe("pickCompanyForFullSync", () => {
+  const empresa = (name: string, lastFullSyncAt: Date | null) => ({
+    id: name.toLowerCase(),
+    name,
+    lastFullSyncAt,
+  });
+
+  it("elige la que lleva más tiempo sin pasada completa", () => {
+    const elegida = pickCompanyForFullSync([
+      empresa("Awesomely SL", new Date("2026-09-13T06:00:00Z")),
+      empresa("Awesomely OU", new Date("2026-09-06T06:00:00Z")),
+    ]);
+
+    expect(elegida?.name).toBe("Awesomely OU");
+  });
+
+  it("prioriza la que no ha tenido ninguna", () => {
+    const elegida = pickCompanyForFullSync([
+      empresa("Awesomely SL", new Date("2020-01-01T00:00:00Z")),
+      empresa("Awesomely OU", null),
+    ]);
+
+    expect(elegida?.name).toBe("Awesomely OU");
+  });
+
+  it("desempata por nombre, no por el orden de entrada", () => {
+    const porNombre = pickCompanyForFullSync([
+      empresa("Awesomely SL", null),
+      empresa("Awesomely OU", null),
+    ]);
+    const alReves = pickCompanyForFullSync([
+      empresa("Awesomely OU", null),
+      empresa("Awesomely SL", null),
+    ]);
+
+    expect(porNombre?.name).toBe("Awesomely OU");
+    expect(alReves?.name).toBe("Awesomely OU");
+  });
+
+  it("con la misma fecha también desempata por nombre", () => {
+    const misma = new Date("2026-09-13T06:00:00Z");
+    const elegida = pickCompanyForFullSync([
+      empresa("Awesomely SL", misma),
+      empresa("Awesomely OU", misma),
+    ]);
+
+    expect(elegida?.name).toBe("Awesomely OU");
+  });
+
+  it("no altera la lista que recibe", () => {
+    const lista = [
+      empresa("Awesomely SL", new Date("2026-09-13T06:00:00Z")),
+      empresa("Awesomely OU", null),
+    ];
+    pickCompanyForFullSync(lista);
+
+    expect(lista.map((c) => c.name)).toEqual(["Awesomely SL", "Awesomely OU"]);
+  });
+
+  it("devuelve null sin empresas", () => {
+    expect(pickCompanyForFullSync([])).toBeNull();
+  });
+
+  it("rota: la elegida deja de serlo en la siguiente pasada", () => {
+    const empresas = [
+      empresa("Awesomely SL", null),
+      empresa("Awesomely OU", null),
+    ];
+
+    const primera = pickCompanyForFullSync(empresas)!;
+    expect(primera.name).toBe("Awesomely OU");
+
+    // Tras su pasada, le toca a la otra.
+    const segunda = pickCompanyForFullSync(
+      empresas.map((c) =>
+        c.name === primera.name
+          ? { ...c, lastFullSyncAt: new Date("2026-09-20T06:00:00Z") }
+          : c,
+      ),
+    )!;
+    expect(segunda.name).toBe("Awesomely SL");
   });
 });

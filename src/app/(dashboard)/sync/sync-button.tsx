@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, Loader2, MinusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SyncProgressEvent } from "@/lib/sync";
 
-type SourceStatus = "running" | "done" | "error";
+// "skipped": no le tocaba en esta ejecución (rotación de la pasada completa). No es un
+// fallo, así que no pinta en rojo ni cuenta para "completada con errores".
+type SourceStatus = "running" | "done" | "error" | "skipped";
 
 interface SourceItem {
   source: "HOLDED" | "JIRA";
@@ -159,6 +161,9 @@ export function SyncButton(): React.JSX.Element {
                   {item.status === "error" && (
                     <XCircle className="h-4 w-4 text-red-500" />
                   )}
+                  {item.status === "skipped" && (
+                    <MinusCircle className="h-4 w-4 text-gray-400" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-gray-800">
@@ -179,6 +184,14 @@ export function SyncButton(): React.JSX.Element {
                       title={item.error}
                     >
                       {item.error}
+                    </p>
+                  )}
+                  {item.status === "skipped" && (
+                    <p
+                      className="text-xs text-gray-400 mt-0.5 line-clamp-2"
+                      title={item.error}
+                    >
+                      {item.error ?? "No le tocaba en esta ejecución"}
                     </p>
                   )}
                 </div>

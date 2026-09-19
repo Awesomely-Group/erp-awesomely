@@ -14,6 +14,7 @@ import {
   yearsInScope,
   type SyncMode,
   type SyncScope,
+  pickCompanyForFullSync,
 } from "./sync-scope";
 import { JiraClient } from "./jira";
 import { InvoiceType, Prisma, SyncResult, SyncSource } from "@prisma/client";
@@ -91,6 +92,34 @@ async function closeSyncLog(
       finishedAt: new Date(),
     },
   });
+}
+
+/**
+ * Inicio de la última pasada completa correcta de cada empresa. Se reconoce por
+ * `details.mode === "full"`, que es lo que graba closeSyncLog. Una empresa sin fila
+ * no aparece en el mapa: para la rotación cuenta como "nunca".
+ */
+async function lastFullSyncByCompany(
+  companyIds: readonly string[],
+): Promise<Map<string, Date>> {
+  const logs = await prisma.syncLog.findMany({
+    where: {
+      source: SyncSource.HOLDED,
+      companyId: { in: [...companyIds] },
+      result: { in: [SyncResult.SUCCESS, SyncResult.PARTIAL] },
+      details: { path: ["mode"], equals: "full" },
+    },
+    select: { companyId: true, startedAt: true },
+    orderBy: { startedAt: "desc" },
+  });
+
+  const lastByCompany = new Map<string, Date>();
+  for (const log of logs) {
+    if (log.companyId && !lastByCompany.has(log.companyId)) {
+      lastByCompany.set(log.companyId, log.startedAt);
+    }
+  }
+  return lastByCompany;
 }
 
 /**
@@ -1688,7 +1717,8 @@ export type SyncProgressEvent =
       type: "update";
       source: "HOLDED" | "JIRA";
       entityId: string;
-      status: "done" | "error";
+      // "skipped": no le tocaba (rotación de la pasada completa). No es un fallo.
+      status: "done" | "error" | "skipped";
       error?: string;
     }
   | {
@@ -1734,7 +1764,9 @@ export async function syncAll(
   if (alreadyRunning) throw new SyncAlreadyRunningError(alreadyRunning.startedAt);
 
   const [companies, workspaces] = await Promise.all([
-    prisma.company.findMany({ where: { active: true } }),
+    // Orden fijado a propósito: sin él, el orden lo decidía Postgres y con él, qué
+    // empresa se quedaba fuera cuando no daba tiempo a todas.
+    prisma.company.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.jiraWorkspace.findMany({ where: { active: true } }),
   ]);
 
@@ -1761,6 +1793,45 @@ export async function syncAll(
   });
 
   const errors: string[] = [];
+
+  // En modo full se relee toda la historia y eso no cabe para todas las empresas en una
+  // sola ejecución: se hace UNA por pasada, la que lleve más tiempo sin ella (ver
+  // pickCompanyForFullSync). Con dos empresas, cada una se relee entera cada quince días.
+  // El incremental sí las hace todas: cabe de sobra.
+  let companiesToSync = companies;
+  if (scope.mode === "full" && companies.length > 1) {
+    const lastFull = await lastFullSyncByCompany(companies.map((c) => c.id));
+    const picked = pickCompanyForFullSync(
+      companies.map((c) => ({
+        id: c.id,
+        name: c.name,
+        lastFullSyncAt: lastFull.get(c.id) ?? null,
+      })),
+    );
+
+    if (picked) {
+      companiesToSync = companies.filter((c) => c.id === picked.id);
+      for (const c of companies) {
+        if (c.id === picked.id) continue;
+        const last = lastFull.get(c.id);
+        const msg = last
+          ? `No le toca esta vez: su última pasada completa fue el ${last.toISOString().slice(0, 10)}. Le tocará en la siguiente.`
+          : "No le toca esta vez: la pasada completa va rotando una empresa por ejecución.";
+        console.log(`[sync] ${c.name}: ${msg}`);
+        // No va a `errors`: no es un fallo, es el turno.
+        onProgress?.({
+          type: "update",
+          source: "HOLDED",
+          entityId: c.id,
+          status: "skipped",
+          error: msg,
+        });
+      }
+      console.log(
+        `[sync] pasada completa de esta ejecución: ${picked.name} (última: ${picked.lastFullSyncAt?.toISOString().slice(0, 10) ?? "nunca"})`,
+      );
+    }
+  }
 
   // Jira va en paralelo con todo lo demás: tarda ~0 s y no toca la API de Holded.
   const jiraDone = Promise.allSettled(
@@ -1807,7 +1878,7 @@ export async function syncAll(
   const deadline = syncDeadline(new Date());
   let slowestCompanyMs = 0;
 
-  for (const c of companies) {
+  for (const c of companiesToSync) {
     const remainingMs = deadline.getTime() - Date.now();
     if (slowestCompanyMs > 0 && remainingMs < slowestCompanyMs) {
       const msg = `No se ha sincronizado: quedaban ${Math.round(remainingMs / 1000)} s del presupuesto de la función y la empresa anterior tardó ${Math.round(slowestCompanyMs / 1000)} s`;
