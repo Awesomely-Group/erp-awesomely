@@ -105,3 +105,66 @@ Ambas empresas dentro de ~0,05% del PyG real — se da por resuelto. Residuales 
 ### Nota de entorno
 
 `HOLDED_API_VERSION` en `.env` local aparece sustituido por el placeholder `"[SENSITIVE]"` (sanitización del entorno sandbox — mismo problema ya documentado en [[forecasts-followups]] para otras variables). Hay que forzarlo explícitamente por línea de comandos (`HOLDED_API_VERSION=v2 npx tsx ...`) para que el cliente de Holded use v2 en vez de caer en v1 silenciosamente (v1 no tiene `/ledger-entries`, `getJournalEntries` hace no-op sin avisar — ver `if (!IS_V2) return [];` en `src/lib/holded.ts`).
+
+---
+
+## Revisión del criterio de FX (2026-09-18): banda de paridad
+
+El 1:1 de la sección anterior estaba validado **solo contra GBP y USD**. Al mirar un pico
+de gasto en el dashboard (abril-junio 2025) apareció el caso que rompe ese criterio: tres
+facturas de compra en **pesos filipinos** de un colaborador de LaTroupe (Awesomely OU),
+guardadas con `fxRateToEur = 1`.
+
+| Factura | Importe real | Contabilizado | Tipo BCE del día |
+|---|---|---|---|
+| 2025-004 0007 (30/04/2025) | 180.043,18 PHP | 180.043,18 € | 0,01574 → 2.833,88 € |
+| 2025-005 (30/05/2025) | 131.673,99 PHP | 131.673,99 € | 0,01582 → 2.083,08 € |
+| 2025-005 0009 (30/06/2025) | 202.690,44 PHP | 202.690,44 € | 0,01511 → 3.062,65 € |
+
+**514.407,61 € contabilizados donde había ~7.980 €**: el 64% de todas las compras de 2025
+y suficiente para que el margen bruto del grupo apareciera en −362.977,42 € cuando en
+realidad es positivo. Que la cifra correcta es la convertida lo confirma el propio
+proveedor: sus demás facturas están en EUR, a 35 €/h, entre 600 y 4.000 € al mes — las
+tres convertidas salen a ~80 h/mes, justo su patrón.
+
+La causa es que el argumento que justificaba el 1:1 ("el error es lo bastante pequeño para
+que el PyG siga cuadrando") es **cuantitativo**: solo se sostiene mientras el tipo esté
+cerca de 1. Con GBP (≈1,17) y USD (≈0,92) se sostiene; con PHP (≈64 PHP/EUR) multiplica el
+importe por 64.
+
+### Criterio actual
+
+`resolveFxRateToEur` en `src/lib/exchange-rates.ts` (lo usan `upsertInvoice` y
+`syncProformas` en la rama sin `currencyChange`):
+
+- Tipo real dentro de la **banda de paridad** `[0,5 – 2,0]` → se mantiene el 1:1. GBP y USD
+  caen dentro, así que **la conciliación 2026 de esta sección no se mueve**.
+- Fuera de la banda → conversión real con el tipo del BCE del día del documento.
+- Sin tipo disponible (API caída, divisa no cubierta por Frankfurter) → 1:1 y traza en el
+  log. Degradar al comportamiento anterior, nunca romper un sync por una petición HTTP.
+
+De paso se arregló un fallo latente en la caché: `exchange_rates.date` es `@db.Date` pero
+se consultaba con la hora del timestamp de Holded, así que nunca acertaba y cada consulta
+iba a la API.
+
+### Contrapartida asumida
+
+Para divisas lejanas de la paridad el PyG del ERP **ya no reproduce el de Holded**, porque
+Holded sigue contabilizando el importe sin convertir. Hoy solo afecta al ejercicio 2025 de
+OU (~506 k). Se prefiere un dashboard económicamente cierto a cuadrar con un dato que es
+erróneo en origen — pero conviene saberlo si hay que justificar la diferencia.
+
+### Corrección de los datos ya sincronizados
+
+`scripts/backfill-fx-rates.ts` recalcula `fxRateToEur`/`totalEur` (cabecera y líneas) de
+los documentos en divisa con `fxRateToEur = 1`. Usa el mismo `resolveFxRateToEur` que el
+sync, así que un resync posterior no lo deshace, y es idempotente. Dry-run por defecto,
+`--apply` para escribir:
+
+```
+npx tsx scripts/backfill-fx-rates.ts            # dry-run
+npx tsx scripts/backfill-fx-rates.ts --apply    # aplica
+```
+
+Ejecutado el 18/09/2026: 3 facturas corregidas, −506.428,00 €. Las 57 facturas en GBP y
+las 283 en USD quedaron intactas, como se pretendía.

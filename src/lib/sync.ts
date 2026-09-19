@@ -20,6 +20,7 @@ import { InvoiceType, Prisma, SyncResult, SyncSource } from "@prisma/client";
 import { tagToBrand } from "./utils";
 import { inferInvoiceRecurrence } from "./invoice-recurrence";
 import { syncStaleCutoff } from "./sync-timing";
+import { resolveFxRateToEur } from "./exchange-rates";
 
 // ─── Ciclo de vida del SyncLog ─────────────────────────────────────────────────
 //
@@ -618,18 +619,14 @@ async function upsertInvoice(
   } else {
     // Holded omite currency_change SIEMPRE en el endpoint de listado (/invoices,
     // /purchases) que usamos en el sync en bloque — solo lo devuelve el endpoint de
-    // detalle de un documento individual. Antes caíamos aquí a un tipo BCE (Frankfurter)
-    // calculado por nosotros, pero verificado contra el PyG real de Holded (ver
-    // docs/PLAN-fix-pl-reconciliation.md, "Estado tras verificación real"): el propio
-    // asiento contable que Holded genera para estas facturas guarda el importe en la
-    // divisa original de la factura, no convertido — es decir, Holded tampoco aplica
-    // una conversión real aquí, trata el importe como si ya fuera EUR. El BCE producía
-    // una cifra de ventas ~7.000€ por encima de la real para una empresa con toda su
-    // facturación en GBP/USD; con fxRateToEur=1 el PyG cuadra exacto.
-    fxRateToEur = 1;
+    // detalle de un documento individual, así que los importes que llegan aquí están en
+    // la divisa del documento. `resolveFxRateToEur` decide si se convierten o se
+    // contabilizan 1:1; el razonamiento completo (y por qué el 1:1 a secas no valía)
+    // está documentado ahí.
+    ({ fxRateToEur } = await resolveFxRateToEur(currency, date));
     toForeign = 1;
     invTotalForeign = inv.total ?? 0;
-    invTotalEur = invTotalForeign;
+    invTotalEur = invTotalForeign * fxRateToEur;
     invSubtotalForeign = inv.subtotal ?? 0;
     invTaxForeign = inv.tax ?? 0;
   }
@@ -748,7 +745,8 @@ async function upsertInvoice(
         lineTotalStored = lineTotalEur * holdedRate;
         lineTaxStored = lineTotalStored - lineSubtotalStored;
       } else {
-        // EUR invoice or Frankfurter fallback: amounts are already in the storage currency
+        // EUR invoice, or documento en divisa sin currency_change: los importes ya están
+        // en la divisa de almacenamiento y solo falta llevar el total a EUR.
         const lineSubtotal = qty * price * (1 - discountPct / 100);
         // Distribute total proportionally so retentions/extra taxes are accounted for
         const lineTotal =
@@ -1167,14 +1165,14 @@ export async function syncProformas(
       taxForeign = (pf.tax ?? 0) * holdedRate;
       totalForeign = (pf.total ?? 0) * holdedRate;
     } else {
-      // Mismo criterio que upsertInvoice: Holded no da currency_change en el listado
-      // de proformas y, para esta cuenta, tampoco aplica conversión real — se trata el
-      // importe como si ya fuera EUR en vez de recalcularlo con el tipo BCE.
-      fxRateToEur = 1;
-      totalEur = pf.total ?? 0;
+      // Mismo criterio que upsertInvoice: Holded no da currency_change en el listado de
+      // proformas, así que el importe viene en la divisa del documento y es
+      // `resolveFxRateToEur` quien decide si se convierte o se contabiliza 1:1.
+      ({ fxRateToEur } = await resolveFxRateToEur(currency, date));
+      totalForeign = pf.total ?? 0;
+      totalEur = totalForeign * fxRateToEur;
       subtotalForeign = pf.subtotal ?? 0;
       taxForeign = pf.tax ?? 0;
-      totalForeign = pf.total ?? 0;
     }
 
     const tags = pf.tags ?? [];
