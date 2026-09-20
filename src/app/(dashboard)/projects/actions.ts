@@ -89,7 +89,7 @@ export async function updateGiroProjectId(
   });
   if (!project) return { error: "El proyecto no existe" };
   if (!project.workspace.giroOrgSlug || !project.workspace.giroApiKey) {
-    return { error: "Este workspace no tiene Giro configurado — ver Configuración → Workspaces Jira" };
+    return { error: "Este workspace no tiene Giro configurado — ver Configuración → Workspaces Jira / Giro" };
   }
   if (!process.env.GIRO_BASE_URL) {
     return { error: "GIRO_BASE_URL no está configurado en el entorno del ERP" };
