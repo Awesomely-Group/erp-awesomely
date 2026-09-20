@@ -24,7 +24,15 @@ export default auth((req) => {
     p === "/api/cashflow" ||
     p === "/api/forecasts" ||
     p === "/api/suppliers/verifications" ||
-    p.startsWith("/api/webhooks/");
+    p.startsWith("/api/webhooks/") ||
+    // Portal de cliente (2026-09-20): lo lee gigsonapps.com con un secreto por marca
+    // (x-webhook-secret, ver src/lib/portal-auth.ts). Prefijo propio y no /api/webhooks/
+    // a propósito — esto es SALIDA de datos de cliente, no eventos de entrada, y este
+    // allowlist es donde se audita qué se puede leer sin sesión.
+    p.startsWith("/api/portal/") ||
+    // Cron que recalcula el consumo de las bolsas contra Giro. Va aparte porque
+    // "/api/sync" de arriba es coincidencia exacta y no cubre las subrutas.
+    p === "/api/sync/hours";
 
   if (isApiAuth || isApiInternal) return NextResponse.next();
   // En desarrollo local (NODE_ENV !== "production") se omite el login para agilizar las

@@ -267,3 +267,36 @@ export async function assignIssueToBucket(
   }
   revalidatePath(`/projects/${projectId}/timesheet`);
 }
+
+/**
+ * Asigna el proyecto a una cuenta de cliente del CRM (portal de cliente, 2026-09-20).
+ *
+ * Es el mecanismo de verdad: el script de backfill solo propone lo que se puede deducir
+ * de las proformas ya clasificadas, y sin un sitio donde corregirlo a mano la columna se
+ * pudriría en cuanto entrara un proyecto nuevo. Un proyecto sin cliente no sale en
+ * ningún portal, así que dejarlo vacío es una opción válida y no un error.
+ */
+export async function setProjectCrmAccount(
+  projectId: string,
+  crmAccountId: string | null,
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  if (crmAccountId !== null) {
+    const account = await prisma.crmAccount.findUnique({
+      where: { id: crmAccountId },
+      select: { lifecycle: true },
+    });
+    if (!account) return { error: "La cuenta no existe" };
+    // Enlazar a un lead todavía no ganado dejaría un portal a medias: cuando pase a
+    // cliente se vuelve a enlazar desde aquí.
+    if (account.lifecycle !== "CUSTOMER") {
+      return { error: "Esa cuenta todavía no es un cliente" };
+    }
+  }
+
+  await prisma.jiraProject.update({ where: { id: projectId }, data: { crmAccountId } });
+  revalidatePath(`/projects/${projectId}`);
+  return {};
+}

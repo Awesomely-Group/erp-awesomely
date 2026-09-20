@@ -9,8 +9,9 @@
  * El "proyecto de Giro" y las credenciales para llamarlo son opt-in por proyecto
  * (`JiraProject.giroProjectId`) y por workspace (`JiraWorkspace.giroOrgSlug`/
  * `giroApiKey`) — mientras no se rellenen, el proyecto no aparece aquí. Es
- * deliberadamente **más estrecho** que el Bloque E completo del plan: no toca
- * `hour-buckets`, `user-roles` ni `suppliers`, que siguen leyendo de Tempo.
+ * deliberadamente **más estrecho** que el Bloque E completo del plan. Desde el
+ * 2026-09-20 `hour-buckets` ya lee de Giro (ver `src/lib/hour-buckets.ts`); `user-roles`
+ * y `suppliers` siguen pendientes y leyendo de Tempo.
  */
 import { InvoiceType } from "@prisma/client";
 import { prisma } from "./prisma";
