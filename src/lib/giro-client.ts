@@ -24,6 +24,30 @@ export type GiroProjectCost = {
   billableCost: string | null;
 };
 
+/**
+ * Un parte de Giro. Sustituye a `TempoWorklog` como fuente de horas (Bloque E del plan
+ * del 28-ago, pendiente hasta ahora: solo se había migrado la conciliación).
+ *
+ * Tres campos que Tempo nunca dio y de los que depende el saldo que ve el cliente:
+ * `issueKey` (la llave de atribución a bolsa — Giro no expone el id numérico de Jira),
+ * `billable` y `timesheetStatus`.
+ */
+export type GiroWorklog = {
+  id: string;
+  issueId: string;
+  issueKey: string;
+  projectId: string;
+  authorId: string;
+  authorEmail: string;
+  timeSpentSeconds: number;
+  /** El día imputado, "YYYY-MM-DD" — no un instante. */
+  startDate: string;
+  description: string | null;
+  billable: boolean;
+  /** `null` = imputada y todavía sin enviar a ningún parte. */
+  timesheetStatus: "OPEN" | "SUBMITTED" | "APPROVED" | "REJECTED" | null;
+};
+
 export type GiroProject = {
   id: string;
   key: string;
@@ -64,6 +88,15 @@ export class GiroClient {
    * `JiraProject.giroProjectId` — nadie ve ese id en ningún sitio de la UI de Giro,
    * así que vincular por id a mano no era viable.
    */
+  /**
+   * Partes de un proyecto en un rango de días. `from`/`to` son obligatorios en la API
+   * de Giro y son el **único** freno: el endpoint no pagina ni acepta límite, así que
+   * el rango lo acota quien llama (ver `worklogFloorDate` en `hour-buckets.ts`).
+   */
+  async listWorklogs(projectId: string, from: string, to: string): Promise<GiroWorklog[]> {
+    return (await this.get("/worklogs", { projectId, from, to })) as GiroWorklog[];
+  }
+
   async listProjects(): Promise<GiroProject[]> {
     return (await this.get("/projects", {})) as GiroProject[];
   }

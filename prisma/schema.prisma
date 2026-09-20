@@ -164,6 +164,15 @@ model JiraProject {
   /// migración (Tempo sigue siendo la fuente para todo lo demás).
   giroProjectId String? @unique
 
+  /// Cliente al que pertenece el proyecto (portal de cliente, 2026-09-20). Es el único
+  /// camino de "cliente X" → "sus bolsas de horas": `JiraProject` no tenía ningún
+  /// vínculo con el cliente, y lo único que quedaba era inferirlo por las proformas
+  /// clasificadas a mano (`classifyProforma`) — un proyecto cuya proforma nadie
+  /// clasificó daría un saldo de CERO, que es un número equivocado y no un error.
+  /// Nullable: hay proyectos internos, y uno sin cliente no sale en ningún portal.
+  crmAccountId String?
+  crmAccount   CrmAccount? @relation(fields: [crmAccountId], references: [id], onDelete: SetNull)
+
   // Tipos de proyecto (no exclusivos entre sí)
   isPrecioCerrado Boolean @default(false)
   isBolsasHoras   Boolean @default(false)
@@ -184,6 +193,7 @@ model JiraProject {
   regularFeeEntries          RegularFeeEntry[]
   issueHourBucketAssignments IssueHourBucketAssignment[]
   budgets                    Budget[]
+  hoursSnapshot              ProjectHoursSnapshot?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -192,6 +202,7 @@ model JiraProject {
   @@index([workspaceId])
   @@index([status])
   @@index([fixedPriceInvoiceId])
+  @@index([crmAccountId])
   @@map("jira_projects")
 }
 
@@ -213,6 +224,7 @@ model HourBucket {
   updatedAt      DateTime     @updatedAt
 
   issueAssignments IssueHourBucketAssignment[]
+  consumption      HourBucketConsumption?
 
   @@index([projectId])
   @@index([invoiceId])
@@ -235,6 +247,52 @@ model IssueHourBucketAssignment {
   @@index([hourBucketId])
   @@index([issueNumericId])
   @@map("issue_hour_bucket_assignments")
+}
+
+/// Foto del consumo de una bolsa, recalculada por el cron `/api/sync/hours`.
+///
+/// El portal de cliente no puede pedir las horas en caliente: `GET /api/v1/worklogs` de
+/// Giro no pagina ni acepta límite —el rango de fechas es el único freno— y
+/// `docs/consumo-api-holded.md` es la crónica de haber perdido ya esta pelea con Holded.
+/// Tabla propia y no dos columnas en `HourBucket` a propósito: allí `updatedAt` pasaría a
+/// significar "corrió el cron" en vez de "alguien tocó la bolsa".
+model HourBucketConsumption {
+  bucketId String     @id
+  bucket   HourBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+
+  /// Horas que consumen saldo: facturables, aprobadas y dentro de la ventana de la bolsa.
+  consumedHours        Float @default(0)
+  /// Imputadas a esta bolsa pero con el parte aún sin aprobar. No restan saldo; se
+  /// enseñan aparte para que al cliente no le baje de golpe cuando se aprueben.
+  pendingApprovalHours Float @default(0)
+
+  computedAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("hour_bucket_consumptions")
+}
+
+/// Lo que el cron no pudo repartir en ninguna bolsa del proyecto, y si la última pasada
+/// funcionó. `lastError` existe para que una caída de Giro se vea como "no pudimos
+/// actualizar" y nunca como un consumo de cero recién calculado.
+model ProjectHoursSnapshot {
+  projectId String      @id
+  project   JiraProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  pendingAttributionHours Float   @default(0)
+  nonBillableHours        Float   @default(0)
+  /// Desde qué día se pidieron los partes, para poder interpretar las cifras de arriba.
+  worklogFloorDate        String
+  /// "GIRO" | "TEMPO" — de dónde salieron estas horas. Durante la convivencia importa.
+  source                  String
+  lastError               String?
+
+  computedAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("project_hours_snapshots")
 }
 
 model RegularFeeEntry {
@@ -579,6 +637,12 @@ model ProjectUserRole {
   projectId     String
   project       JiraProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   jiraAccountId String
+  /// Email con el que esa misma persona imputa en Giro (portal de cliente, 2026-09-20).
+  /// Giro devuelve `authorEmail` en sus partes, nunca el `accountId` de Jira, así que sin
+  /// esto el reparto por rol no funciona al cambiar la fuente de horas. Para la gente
+  /// importada y no casada, Giro usa un email sombra del que el accountId se recupera
+  /// parseando; para la registrada de forma nativa no hay más camino que este campo.
+  giroUserEmail String?
   roleId        String
   role          RoleTemplate @relation(fields: [roleId], references: [id], onDelete: Cascade)
   ratePerHour   Decimal?
@@ -1415,6 +1479,7 @@ model CrmAccount {
   leads      CrmLead[]
   contacts   CrmContact[]
   activities CrmActivity[]
+  projects   JiraProject[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1438,6 +1503,8 @@ model CrmContact {
   updatedAt DateTime @updatedAt
 
   @@index([accountId])
+  /// El portal de cliente resuelve qué cliente es por el email de la persona.
+  @@index([email])
   @@map("crm_contacts")
 }
 

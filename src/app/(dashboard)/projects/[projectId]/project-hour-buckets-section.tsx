@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HourBucketEntry, HourBucketsResponse, UnassignedUser } from "@/app/api/projects/[projectId]/hour-buckets/route";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
+import { bucketStatus, type BucketStatus } from "@/lib/hour-bucket-consumption";
 import { formatCurrency, formatHourlyRate, formatHours, formatPercent } from "@/lib/utils";
 
 interface Props {
@@ -18,22 +19,46 @@ function fmtDate(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
+const STATUS_LABEL: Record<BucketStatus, string> = {
+  ACTIVE: "Activa",
+  NEAR_EXHAUSTION: "⚠ Casi agotada",
+  EXHAUSTED: "⚠ Agotada",
+  EXPIRED: "Caducada",
+};
+
+const STATUS_CLASS: Record<BucketStatus, string> = {
+  ACTIVE: "bg-green-100 text-green-700",
+  NEAR_EXHAUSTION: "bg-amber-100 text-amber-700",
+  EXHAUSTED: "bg-red-100 text-red-700",
+  EXPIRED: "bg-gray-200 text-gray-600",
+};
+
+const BAR_CLASS: Record<BucketStatus, string> = {
+  ACTIVE: "bg-green-500",
+  NEAR_EXHAUSTION: "bg-amber-500",
+  EXHAUSTED: "bg-red-500",
+  EXPIRED: "bg-gray-400",
+};
+
+const BORDER_CLASS: Record<BucketStatus, string> = {
+  ACTIVE: "border-gray-200",
+  NEAR_EXHAUSTION: "border-amber-200",
+  EXHAUSTED: "border-red-200",
+  EXPIRED: "border-gray-300",
+};
+
 function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId: string }): React.JSX.Element {
   const router = useRouter();
   const pct = bucket.totalHours > 0 ? (bucket.consumedHours / bucket.totalHours) * 100 : 0;
-  const threshold = bucket.alertThreshold * 100;
-  const isOver = pct >= 100;
-  const isNear = pct >= threshold && !isOver;
-
-  const barColor = isOver ? "bg-red-500" : isNear ? "bg-amber-500" : "bg-green-500";
-  const thresholdColor = isOver ? "text-red-600" : isNear ? "text-amber-600" : "text-gray-400";
-
-  const statusLabel = isOver ? "⚠ Agotada" : isNear ? "⚠ Casi agotada" : "Activa";
-  const statusClass = isOver
-    ? "bg-red-100 text-red-700"
-    : isNear
-    ? "bg-amber-100 text-amber-700"
-    : "bg-green-100 text-green-700";
+  // Mismo veredicto que da la API del portal: la función vive en @/lib para que la
+  // pantalla interna y lo que ve el cliente no puedan discrepar.
+  const status = bucketStatus({
+    consumedHours: bucket.consumedHours,
+    totalHours: bucket.totalHours,
+    alertThreshold: bucket.alertThreshold,
+    endDate: bucket.endDate,
+    today: new Date().toISOString().slice(0, 10),
+  });
 
   function handleClick(): void {
     router.push(`/projects/${projectId}/timesheet?bucketId=${bucket.id}`);
@@ -42,7 +67,7 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
   return (
     <div
       onClick={handleClick}
-      className={`bg-white rounded-xl border p-4 space-y-3 cursor-pointer hover:shadow-md transition-shadow ${isOver ? "border-red-200" : isNear ? "border-amber-200" : "border-gray-200"}`}
+      className={`bg-white rounded-xl border p-4 space-y-3 cursor-pointer hover:shadow-md transition-shadow ${BORDER_CLASS[status]}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -61,15 +86,15 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
             </p>
           )}
         </div>
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${statusClass}`}>
-          {statusLabel}
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${STATUS_CLASS[status]}`}>
+          {STATUS_LABEL[status]}
         </span>
       </div>
 
       <div className="space-y-1.5">
         <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
           <div
-            className={`h-2.5 rounded-full transition-all ${barColor}`}
+            className={`h-2.5 rounded-full transition-all ${BAR_CLASS[status]}`}
             style={{ width: `${Math.min(pct, 100)}%` }}
           />
         </div>
@@ -77,9 +102,14 @@ function BucketCard({ bucket, projectId }: { bucket: HourBucketEntry; projectId:
           <span className="text-gray-500">
             {formatHours(bucket.consumedHours)} / {formatHours(bucket.totalHours)}
           </span>
-          <span className={`font-medium ${thresholdColor}`}>{formatPercent(pct)}</span>
+          <span className="font-medium text-gray-400">{formatPercent(pct)}</span>
         </div>
-        <p className="text-xs text-gray-400">Alerta al {Math.round(threshold)}%</p>
+        {bucket.pendingApprovalHours > 0 && (
+          <p className="text-xs text-amber-600">
+            + {formatHours(bucket.pendingApprovalHours)} pendientes de aprobar
+          </p>
+        )}
+        <p className="text-xs text-gray-400">Alerta al {Math.round(bucket.alertThreshold * 100)}%</p>
       </div>
 
       <div className="flex justify-between text-xs text-gray-500 pt-1 border-t border-gray-100">
@@ -123,14 +153,20 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
     setResponse(null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
-    fetch(`/api/projects/${projectId}/hour-buckets?from=${from}&to=${to}`)
+    // Sin `from`/`to`: el consumo de una bolsa es el de toda su ventana, no el del
+    // periodo que se esté mirando en pantalla.
+    fetch(`/api/projects/${projectId}/hour-buckets`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Error cargando bolsas");
         return res.json() as Promise<HourBucketsResponse>;
       })
       .then(setResponse)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Error desconocido"));
-  }, [projectId, from, to]);
+  }, [projectId]);
+
+  // Solo avisa si de verdad no hay de dónde leer: un proyecto ya vinculado a Giro no
+  // necesita token de Tempo para nada.
+  const sinFuente = response !== null && response.source === "TEMPO" && !hasTempoToken;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -141,8 +177,11 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
           </svg>
           Bolsas de horas
         </span>
-        {!hasTempoToken && (
-          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Sin Tempo configurado — consumo no disponible</span>
+        {response !== null && response.source === "GIRO" && (
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Horas de Giro</span>
+        )}
+        {sinFuente && (
+          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Sin Tempo ni Giro configurado — consumo no disponible</span>
         )}
       </div>
 
@@ -169,6 +208,13 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
               <BucketCard key={b.id} bucket={b} projectId={projectId} />
             ))}
           </div>
+
+          {response.pendingAttributionHours > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <span className="font-semibold">{formatHours(response.pendingAttributionHours)}</span> facturables
+              no han caído en ninguna bolsa. Hasta repartirlas, el saldo de arriba es un techo y no un dato cerrado.
+            </div>
+          )}
 
           {response.unassignedUsers.length > 0 && (
             <UnassignedAlert users={response.unassignedUsers} />

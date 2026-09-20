@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { TempoClient } from "@/lib/tempo";
+import { getProjectConsumption, type HoursSource } from "@/lib/hour-buckets";
 import { JiraClient } from "@/lib/jira";
+import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export interface HourBucketEntry {
@@ -12,6 +12,8 @@ export interface HourBucketEntry {
   ratePerHour: number;
   totalHours: number;
   consumedHours: number;
+  /** Imputadas a la bolsa con el parte aún sin aprobar. Solo llega con fuente Giro. */
+  pendingApprovalHours: number;
   alertThreshold: number;
   startDate: string | null;
   endDate: string | null;
@@ -26,6 +28,14 @@ export interface UnassignedUser {
 export interface HourBucketsResponse {
   buckets: HourBucketEntry[];
   unassignedUsers: UnassignedUser[];
+  /**
+   * Horas facturables que no cayeron en ninguna bolsa, por cualquiera de los tres
+   * motivos (autor sin rol, rol sin bolsa que cubra la fecha, o issue asignado a una
+   * bolsa ya inactiva). Antes dos de esos tres casos desaparecían sin dejar rastro.
+   */
+  pendingAttributionHours: number;
+  nonBillableHours: number;
+  source: HoursSource;
 }
 
 export async function GET(
@@ -36,127 +46,57 @@ export async function GET(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { projectId } = await params;
-  const { searchParams } = new URL(request.url);
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
 
-  if (!from || !to) return NextResponse.json({ error: "Missing from/to" }, { status: 400 });
+  const consumption = await getProjectConsumption(projectId);
+  if (consumption === null) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const project = await prisma.jiraProject.findUnique({
-    where: { id: projectId },
-    include: {
-      workspace: true,
-      hourBuckets: {
-        where: { active: true },
-        include: { role: true },
-      },
-      userRoles: true,
-    },
-  });
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({
+    buckets: consumption.buckets,
+    unassignedUsers: await resolveUnassigned(projectId, consumption.unattributedByAuthor, consumption.source),
+    pendingAttributionHours: consumption.pendingAttributionHours,
+    nonBillableHours: consumption.nonBillableHours,
+    source: consumption.source,
+  } satisfies HourBucketsResponse);
+}
 
-  if (project.hourBuckets.length === 0) {
-    return NextResponse.json({ buckets: [], unassignedUsers: [] } satisfies HourBucketsResponse);
-  }
+/**
+ * Pone nombre a quien imputó sin rol asignado.
+ *
+ * Ya no se recorta al periodo que se está viendo en pantalla: el aviso se calculaba
+ * dentro de la ventana `from`/`to` mientras el consumo era de todo el histórico, así que
+ * avisaba de menos horas de las que realmente faltaban por repartir. Ahora cubre lo
+ * mismo que el saldo al que acompaña.
+ */
+async function resolveUnassigned(
+  projectId: string,
+  hoursByAuthor: Map<string, number>,
+  source: HoursSource
+): Promise<UnassignedUser[]> {
+  if (hoursByAuthor.size === 0) return [];
+  const authors = [...hoursByAuthor.keys()];
 
-  // Get Tempo worklogs if token exists; otherwise all consumed = 0
-  // Fetch all history so consumption is not date-restricted (bucket dates are informational only)
-  type WorklogEntry = { accountId: string; issueNumericId: number; hours: number; date: string };
-  let worklogs: WorklogEntry[] = [];
-
-  if (project.workspace.tempoApiToken) {
-    const today = new Date().toISOString().slice(0, 10);
-    const tempo = new TempoClient(project.workspace.tempoApiToken);
-    const raw = await tempo.getWorklogs(project.jiraId, "2020-01-01", today);
-    worklogs = raw.map((w) => ({
-      accountId: w.author.accountId,
-      issueNumericId: w.issue.id,
-      hours: w.timeSpentSeconds / 3600,
-      date: w.startDate,
-    }));
-  }
-
-  // Map accountId → roleId via ProjectUserRole
-  const accountToRole = new Map<string, string>();
-  for (const ur of project.userRoles) {
-    accountToRole.set(ur.jiraAccountId, ur.roleId);
-  }
-
-  // Map roleId → bucketId for role-based fallback
-  const roleToBucket = new Map<string, string>();
-  for (const bucket of project.hourBuckets) {
-    roleToBucket.set(bucket.roleId, bucket.id);
-  }
-
-  // Load explicit issue → bucket assignments
-  const issueAssignments = await prisma.issueHourBucketAssignment.findMany({
-    where: { projectId },
-    select: { issueNumericId: true, hourBucketId: true },
-  });
-  const assignmentByIssueNumericId = new Map<number, string>();
-  for (const a of issueAssignments) {
-    assignmentByIssueNumericId.set(a.issueNumericId, a.hourBucketId);
-  }
-
-  // Detect unassigned users within the current view period only (not all history)
-  const hoursPerUnassigned = new Map<string, number>();
-  for (const w of worklogs) {
-    if (!accountToRole.has(w.accountId) && w.date >= from && w.date <= to) {
-      hoursPerUnassigned.set(w.accountId, (hoursPerUnassigned.get(w.accountId) ?? 0) + w.hours);
+  // Con fuente Giro el autor ya ES el email, que es un nombre legible de por sí; ir a
+  // Jira a resolverlo no llevaría a ninguna parte.
+  let names = new Map<string, string>();
+  if (source === "TEMPO") {
+    const workspace = await prisma.jiraProject
+      .findUnique({ where: { id: projectId }, select: { workspace: true } })
+      .then((p) => p?.workspace ?? null);
+    if (workspace !== null) {
+      try {
+        const jira = new JiraClient(workspace.domain, workspace.email, workspace.apiToken);
+        names = await jira.getUsersByAccountIds(authors);
+      } catch {
+        // Sin nombre nos quedamos con el accountId: es feo, pero es peor perder el aviso.
+      }
     }
   }
 
-  // Resolve display names for unassigned users
-  let unassignedUsers: UnassignedUser[] = [];
-  if (hoursPerUnassigned.size > 0) {
-    const unassignedIds = [...hoursPerUnassigned.keys()];
-    let nameMap = new Map<string, string>();
-    try {
-      const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-      nameMap = await jira.getUsersByAccountIds(unassignedIds);
-    } catch {
-      // Fall back to accountId as display name
-    }
-    unassignedUsers = unassignedIds.map((accountId) => ({
+  return authors
+    .map((accountId) => ({
       accountId,
-      displayName: nameMap.get(accountId) ?? accountId,
-      hours: Math.round((hoursPerUnassigned.get(accountId) ?? 0) * 100) / 100,
-    })).sort((a, b) => b.hours - a.hours);
-  }
-
-  // Sum hours per bucket:
-  // - Issues with explicit assignment → assigned bucket
-  // - Issues without assignment → role-based bucket (fallback)
-  const hoursPerBucket = new Map<string, number>(project.hourBuckets.map((b) => [b.id, 0]));
-  for (const w of worklogs) {
-    const assignedBucketId = assignmentByIssueNumericId.get(w.issueNumericId);
-    if (assignedBucketId !== undefined) {
-      if (hoursPerBucket.has(assignedBucketId)) {
-        hoursPerBucket.set(assignedBucketId, (hoursPerBucket.get(assignedBucketId) ?? 0) + w.hours);
-      }
-    } else {
-      const roleId = accountToRole.get(w.accountId);
-      if (roleId !== undefined) {
-        const bucketId = roleToBucket.get(roleId);
-        if (bucketId !== undefined) {
-          hoursPerBucket.set(bucketId, (hoursPerBucket.get(bucketId) ?? 0) + w.hours);
-        }
-      }
-    }
-  }
-
-  const buckets: HourBucketEntry[] = project.hourBuckets.map((bucket) => ({
-    id: bucket.id,
-    roleId: bucket.roleId,
-    roleName: bucket.role.name,
-    code: bucket.code ?? null,
-    ratePerHour: Number(bucket.role.ratePerHour),
-    totalHours: bucket.totalHours,
-    consumedHours: Math.round((hoursPerBucket.get(bucket.id) ?? 0) * 100) / 100,
-    alertThreshold: bucket.alertThreshold,
-    startDate: bucket.startDate ? bucket.startDate.toISOString().slice(0, 10) : null,
-    endDate: bucket.endDate ? bucket.endDate.toISOString().slice(0, 10) : null,
-  }));
-
-  return NextResponse.json({ buckets, unassignedUsers } satisfies HourBucketsResponse);
+      displayName: names.get(accountId) ?? accountId,
+      hours: hoursByAuthor.get(accountId) ?? 0,
+    }))
+    .sort((a, b) => b.hours - a.hours);
 }

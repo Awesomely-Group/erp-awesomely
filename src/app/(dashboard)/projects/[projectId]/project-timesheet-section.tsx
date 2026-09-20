@@ -169,9 +169,9 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   const [allTimeBucketConsumed, setAllTimeBucketConsumed] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (!hasTempoToken) return;
-    const today = new Date().toISOString().slice(0, 10);
-    fetch(`/api/projects/${projectId}/hour-buckets?from=2020-01-01&to=${today}`)
+    // Sin guarda de Tempo: el endpoint elige la fuente (Giro o Tempo) por su cuenta, y
+    // un proyecto ya migrado a Giro tiene consumo aunque su workspace no tenga token.
+    fetch(`/api/projects/${projectId}/hour-buckets`)
       .then(async (r) => {
         if (!r.ok) return;
         const body = await r.json() as { buckets: Array<{ id: string; consumedHours: number }> };
@@ -180,7 +180,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
         setAllTimeBucketConsumed(map);
       })
       .catch(() => { /* ignore */ });
-  }, [projectId, hasTempoToken]);
+  }, [projectId]);
 
   const roleIdToBucketId = useMemo(() => {
     const map: Record<string, string> = {};
