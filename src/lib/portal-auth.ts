@@ -40,11 +40,17 @@ export function authenticatePortalRequest(req: Request, brand: unknown): brand i
 }
 
 /**
- * Una foto más vieja que esto se marca `stale`. Por defecto 26 h: el cron corre dos
- * veces al día, así que una sola pasada fallida todavía no alarma, pero un día entero
- * sin actualizar sí tiene que verse en el portal.
+ * Una foto más vieja que esto se marca `stale`.
+ *
+ * Por defecto 30 h y no 24: el cron es diario, pero en el plan Hobby los crons tienen una
+ * **ventana flexible de una hora**, así que dos pasadas seguidas pueden separarse hasta
+ * ~25 h sin que pase nada raro. Marcar eso como viejo sería enseñarle al cliente un aviso
+ * falso un día de cada dos. Un fallo de verdad (una pasada entera perdida) pasa de 48 h y
+ * sí se ve.
  */
+export const DEFAULT_SNAPSHOT_STALE_HOURS = 30;
+
 export function snapshotStaleHours(): number {
   const raw = Number(process.env.PORTAL_SNAPSHOT_STALE_HOURS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 26;
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_SNAPSHOT_STALE_HOURS;
 }

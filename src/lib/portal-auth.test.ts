@@ -53,16 +53,19 @@ describe("authenticatePortalRequest", () => {
 });
 
 describe("snapshotStaleHours", () => {
-  it("por defecto aguanta una pasada fallida del cron", () => {
+  it("por defecto deja margen a la ventana flexible de los crons de Hobby", () => {
+    // Diario + hasta 1 h de deriva = ~25 h entre pasadas buenas. Con 24 h el portal
+    // enseñaría "desactualizado" un día de cada dos sin que pase nada.
     delete process.env.PORTAL_SNAPSHOT_STALE_HOURS;
-    expect(snapshotStaleHours()).toBe(26);
+    expect(snapshotStaleHours()).toBe(30);
+    expect(snapshotStaleHours()).toBeGreaterThan(25);
   });
 
   it("ignora un valor inservible en vez de dar por viejo todo", () => {
     process.env.PORTAL_SNAPSHOT_STALE_HOURS = "nada";
-    expect(snapshotStaleHours()).toBe(26);
+    expect(snapshotStaleHours()).toBe(30);
     process.env.PORTAL_SNAPSHOT_STALE_HOURS = "0";
-    expect(snapshotStaleHours()).toBe(26);
+    expect(snapshotStaleHours()).toBe(30);
     process.env.PORTAL_SNAPSHOT_STALE_HOURS = "6";
     expect(snapshotStaleHours()).toBe(6);
   });

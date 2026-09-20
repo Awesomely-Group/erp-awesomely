@@ -14,6 +14,7 @@ const SYNC_ROUTES = [
   "src/app/api/sync/route.ts",
   "src/app/api/sync/stream/route.ts",
   "src/app/api/webhooks/holded/route.ts",
+  "src/app/api/sync/hours/route.ts",
 ];
 
 describe("sync-timing", () => {

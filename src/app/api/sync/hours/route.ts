@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getProjectConsumption } from "@/lib/hour-buckets";
+import { syncDeadline } from "@/lib/sync-timing";
 
 /**
  * Recalcula el consumo de todas las bolsas y lo deja en `HourBucketConsumption` /
@@ -29,10 +30,20 @@ async function handle(req: Request): Promise<NextResponse> {
     select: { id: true, name: true },
   });
 
+  // El tope de 300 s lo pone el plan Hobby, no la configuración, y cada proyecto cuesta
+  // una llamada a Giro. Mejor dejar proyectos sin recalcular —conservan su foto anterior,
+  // que es un dato viejo pero cierto— que morir a medias sin escribir nada.
+  const deadline = syncDeadline(new Date());
+
   let ok = 0;
   const failed: { projectId: string; name: string; error: string }[] = [];
+  const skipped: string[] = [];
 
   for (const project of projects) {
+    if (new Date() >= deadline) {
+      skipped.push(project.name);
+      continue;
+    }
     try {
       const consumption = await getProjectConsumption(project.id);
       if (consumption === null) continue;
@@ -90,7 +101,16 @@ async function handle(req: Request): Promise<NextResponse> {
     }
   }
 
-  return NextResponse.json({ ok: true, projects: projects.length, updated: ok, failed });
+  return NextResponse.json({
+    ok: true,
+    projects: projects.length,
+    updated: ok,
+    failed,
+    // Si esto deja de estar vacío de forma habitual, el cron se ha quedado corto de
+    // tiempo y toca repartir los proyectos entre ejecuciones (como hace el full de
+    // /api/sync, que rota una empresa por pasada).
+    skipped,
+  });
 }
 
 export async function GET(req: Request): Promise<NextResponse> {

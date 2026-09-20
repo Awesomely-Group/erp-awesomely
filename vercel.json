@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/sync/hours",
-      "schedule": "30 6,14 * * *"
+      "schedule": "30 7 * * *"
     }
   ]
 }

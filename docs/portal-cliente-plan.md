@@ -123,7 +123,7 @@ en la base de datos.
 
 ## Snapshot
 
-`/api/sync/hours` (cron a las 06:30 y 14:30) recalcula y deja el resultado en
+`/api/sync/hours` (cron diario a las 07:30) recalcula y deja el resultado en
 `HourBucketConsumption` y `ProjectHoursSnapshot`. El portal lee de ahí y **no** llama a Giro
 en caliente: `/api/v1/worklogs` no pagina ni acepta límite, y `docs/consumo-api-holded.md`
 cuenta cómo acabó la última pelea por volumen de llamadas.
@@ -132,13 +132,21 @@ Si un proyecto falla se guarda `lastError` y **se deja la foto anterior**: nunca
 un cero, porque un cero recién calculado es indistinguible de "este cliente no ha consumido
 nada".
 
+El proyecto está en **Vercel Hobby**: el tope de 300 s lo pone el plan y los crons tienen
+una ventana flexible de una hora. Por eso el cron respeta `syncDeadline()` y prefiere dejar
+proyectos sin recalcular (conservan su foto anterior, vieja pero cierta) antes que morir a
+medias; los devuelve en `skipped`. **Si `skipped` deja de estar vacío de forma habitual**,
+toca repartir los proyectos entre ejecuciones, como ya hace el full de `/api/sync` rotando
+una empresa por pasada. Y por eso el umbral de `stale` son 30 h y no 24: con la ventana
+flexible, dos pasadas buenas pueden separarse ~25 h.
+
 La pantalla interna del proyecto sigue leyendo en vivo — el equipo quiere el dato fresco y
 acepta esperar — pero por el mismo orquestador, para que no puedan divergir.
 
 ## Variables de entorno nuevas
 
 `GIGSONAPPS_PORTAL_SECRET`, `LTTOOLS_PORTAL_SECRET`, `PORTAL_SNAPSHOT_STALE_HOURS`
-(opcional, 26 por defecto). **Pendiente de añadir a `.env.example` y a Vercel** (Production y
+(opcional, 30 por defecto). **Pendiente de añadir a `.env.example` y a Vercel** (Production y
 Preview).
 
 ## Precondiciones antes de que esto sirva de algo
