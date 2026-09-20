@@ -55,6 +55,16 @@ async function main(): Promise<void> {
   const soloJson = process.argv.includes("--json");
   const applyIdx = process.argv.indexOf("--apply");
 
+  /**
+   * Con `--json` el listado va a stderr y solo el JSON a stdout, para que
+   * `--json > mapa.json` deje un fichero parseable sin perder de vista la tabla.
+   * Escribiendo las dos cosas a stdout el fichero sale roto — pasó al estrenarlo.
+   */
+  const log = (msg: string): void => {
+    if (soloJson) process.stderr.write(`${msg}\n`);
+    else console.log(msg);
+  };
+
   if (applyIdx !== -1) {
     const file = process.argv[applyIdx + 1];
     if (!file) { console.error("Uso: --apply <fichero.json>"); process.exit(1); }
@@ -99,7 +109,7 @@ async function main(): Promise<void> {
         horasPorCorreo.set(email, (horasPorCorreo.get(email) ?? 0) + w.timeSpentSeconds / 3600);
       }
     } catch (error) {
-      console.log(`\n${project.jiraKey}: no se pudo consultar Giro — ${error instanceof Error ? error.message : error}`);
+      log(`\n${project.jiraKey}: no se pudo consultar Giro — ${error instanceof Error ? error.message : error}`);
       continue;
     }
 
@@ -110,12 +120,12 @@ async function main(): Promise<void> {
         .getUsersByAccountIds(project.userRoles.map((r) => r.jiraAccountId));
     } catch { /* se sigue sin nombres */ }
 
-    console.log(`\n── ${project.jiraKey} — ${project.name} ──`);
-    console.log("  ERP (rol de proyecto):");
+    log(`\n── ${project.jiraKey} — ${project.name} ──`);
+    log("  ERP (rol de proyecto):");
     for (const ur of project.userRoles) {
       const nombre = nombres.get(ur.jiraAccountId) ?? "(nombre no resuelto)";
       const ya = ur.giroUserEmail === null ? "" : `  → ya mapeado: ${ur.giroUserEmail}`;
-      console.log(`    ${nombre.padEnd(24)} ${ur.role.name.padEnd(14)} ${ur.jiraAccountId}${ya}`);
+      log(`    ${nombre.padEnd(24)} ${ur.role.name.padEnd(14)} ${ur.jiraAccountId}${ya}`);
 
       // Propuesta: el correo sombra lleva dentro el accountId, así que es exacto. Si no,
       // se compara el nombre de Jira con la parte local del correo.
@@ -143,11 +153,11 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log("  Giro (quién ha imputado en este proyecto):");
+    log("  Giro (quién ha imputado en este proyecto):");
     const ordenados = [...horasPorCorreo].sort((a, b) => b[1] - a[1]);
-    if (ordenados.length === 0) console.log("    (ningún parte)");
+    if (ordenados.length === 0) log("    (ningún parte)");
     for (const [email, horas] of ordenados) {
-      console.log(`    ${email.padEnd(44)} ${horas.toFixed(2).padStart(8)} h${SHADOW.test(email) ? "  (importado, sin casar en Giro)" : ""}`);
+      log(`    ${email.padEnd(44)} ${horas.toFixed(2).padStart(8)} h${SHADOW.test(email) ? "  (importado, sin casar en Giro)" : ""}`);
     }
   }
 
