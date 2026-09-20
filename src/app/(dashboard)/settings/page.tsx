@@ -53,10 +53,10 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
         <CompanyForm />
       </section>
 
-      {/* Jira workspaces */}
+      {/* Workspaces de Jira y su equivalente en Giro */}
       <section className="space-y-4 max-w-3xl">
         <h2 className="text-base font-semibold text-gray-900">
-          Workspaces Jira
+          Workspaces Jira / Giro
         </h2>
         <div className="space-y-3">
           {workspaces.map((w) => (
