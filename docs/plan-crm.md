@@ -53,6 +53,10 @@ Este plan conecta ese proceso ya definido con el ERP, sin inventar un CRM parale
 | D4 | **Holded CRM es el sistema de registro del pipeline; el ERP lo espeja y lo enriquece** | Se deriva de §10 de la estrategia ("CRM: Holded") y del patrón que ya usa todo el ERP (facturas, proformas, asientos, empleados). Alternativa descartada por defecto: que el ERP sea dueño del pipeline y Holded solo el buzón de entrada — contradice la estrategia vigente y crearía dos pipelines |
 | D5 | **La firma se queda en Documenso** (lo ya implementado); se actualiza la estrategia, no el código | Decisión del 2026-09-17. Cierra la contradicción con §7.1, que decía "Holded / DocuSign" |
 | D6 | **Alcance: solo `erp-awesomely`** | Decisión del 2026-09-18. `lt-tools` y `holded-mcp` quedan para sesión propia (ver final del documento) |
+| D7 | **La carga inicial entra directamente en el ERP**, no en Holded | Decisión del 2026-09-20. **Matiza D4**: el pipeline pasa a tener dos orígenes. Ver "Carga inicial" para las reglas que impiden que el sync se lleve por delante los leads propios del ERP |
+| D8 | **Las sociedades relacionadas son cuentas separadas, unidas por una relación tipada** | Decisión del 2026-09-20. Sustituye a la propuesta del artifact ("una cuenta con dos sociedades"): los casos reales son de tres tipos distintos (hermanas, holding→filial, proveedor-de) y no caben en una jerarquía única |
+| D9 | **Una oportunidad por frente de trabajo**, también dentro de un retainer | Decisión del 2026-09-20. Obliga a distinguir negocio nuevo de ampliación para que las métricas no se inflen (`dealType`) |
+| D10 | **En el CRM entran clientes, leads y partners/prescriptores; no proveedores** | Decisión del 2026-09-20. El ERP ya tiene el modelo `Supplier`; duplicarlo daría dos fuentes de verdad para el mismo tercero |
 
 ### Reconciliación de D3 con la estrategia (no hay conflicto)
 
@@ -196,6 +200,60 @@ UK/US/ES/Nórdicos/Sudáfrica (necesita mercado en el lead, porque su paid está
 entrega, su métrica crítica es la **desviación de horas por perfil**, porque factura de €13/h
 (junior) a €45/h (lead) y el margen depende de que el perfil real coincida con el presupuestado.
 
+## Carga inicial de datos (revisión del 2026-09-20)
+
+Existe un inventario previo a la carga, extraído del buzón de jaume@somosgigson.com (sep 2025 –
+sep 2026) y del selector de cuentas de Holded: **25 cuentas (16 cliente + 9 lead), 22
+oportunidades, 55 contactos y 11 facturas localizadas**, normalizados a cuenta / contacto /
+oportunidad. No es una especificación del módulo —no trae pantallas, sincronización ni KPIs—
+sino el *qué metemos dentro*. Nada se ha escrito todavía.
+
+Lo que aporta al diseño:
+
+- **Valida el modelo de tres entidades** y su "línea de servicio" es nuestro `lineOfBusiness`.
+- **El volumen es diminuto.** 25 cuentas y 22 oportunidades: la paginación y los índices son
+  irrelevantes a esta escala. Lo que sí importa sigue siendo la cuota de la API de Holded.
+- **El embudo de Odoo ya tiene tracción real**, no es una proyección: ZZEN Labs ganada (10
+  usuarios), Boby Brands fase 1 cobrada (+ comisión de partner PO298405), HO Soccer en riesgo
+  (15 usuarios), Vidacharmy con propuesta enviada, Visionharbor evaluando.
+- **LaTroupe casi no aparece** — solo Marlo en co-branding. Su sección del CRM nace vacía; no
+  prometer su cuadro de métricas hasta que haya datos.
+
+### Destino y reglas de reconciliación (D7)
+
+La carga entra **directamente en el ERP**. `CrmAccount` y `CrmContact` no existen en Holded, así
+que ahí no hay conflicto; el problema son las 22 oportunidades, que en el modelo de espejo
+deberían nacer con `holdedLeadId`. Reglas que lo hacen seguro:
+
+1. **`CrmLead.holdedLeadId` pasa a ser nullable.** Un lead con `holdedLeadId = null` es de origen
+   ERP. (Postgres admite varios NULL en un índice único, así que
+   `@@unique([companyId, holdedLeadId])` sigue valiendo.)
+2. **El barrido de borrados del sync solo toca leads con `holdedLeadId`.** Un lead propio del ERP
+   nunca se borra por "no está en Holded" — es exactamente el fallo que ya arregla el PR #25 para
+   los listados de Holded.
+3. **Promoción a Holded**: cuando un lead del ERP llega a propuesta —el mismo momento en que D3
+   crea el contacto fiscal— se crea también en Holded (`POST /api/crm/v1/leads`) y se guarda su
+   `holdedLeadId`. A partir de ahí es un lead espejado normal. *Propuesta a confirmar: si
+   prefieres que los leads del ERP nunca suban a Holded, hay que asumir divergencia permanente
+   entre los dos pipelines.*
+4. La carga se hace con un **script idempotente** (`scripts/import-crm-inventory.ts`), con
+   `--dry-run` por defecto, deduplicando por dominio y por CIF.
+
+### Decisiones de datos ya resueltas
+
+- **Charming Concept y Only Charming**: sociedades **hermanas** → dos cuentas, relación `SIBLING_OF`.
+- **Boby Brands y ZZEN Labs**: Boby es el **holding**, ZZEN una empresa dentro → `HOLDING_OF`.
+- **Iknoga y Dream España**: el cliente es **Dream España**; Iknoga es **proveedor de Dream** →
+  `SUPPLIER_OF`, y la cuenta facturable es Dream.
+- **Z1 Gestión, Holded y Odoo**: cuentas de tipo `PARTNER` (D10), con `referredByAccountId` en los
+  leads que trajeron (Z1 aportó al menos Dental de la Vega, Control de Obras Públicas y Raméntol).
+- **Comisión de partner de Odoo**: no es cliente ni oportunidad —Odoo nos paga a nosotros—, así
+  que va a Facturación, no al CRM (ver "Fuera del CRM").
+
+Quedan sin responder las decisiones por registro del propio artifact (estado de Colvin, contacto
+de Bourne Estates, horas vivas de Quick Smile, cierre o no de HO Soccer, titularidad de Kimia
+Hogar…). Son datos, no modelo: no bloquean el desarrollo, sí la carga.
+
 ## Arquitectura objetivo
 
 ```
@@ -265,7 +323,8 @@ model CrmLead {
   id           String  @id @default(cuid())
   companyId    String
   company      Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  holdedLeadId String
+  holdedLeadId String?  // null = lead de origen ERP (carga inicial o alta manual), D7.
+                        // El barrido de borrados del sync NUNCA toca estos.
 
   // ── Campos que posee Holded (solo lectura en el ERP) ──────────────────────
   name          String
@@ -297,6 +356,9 @@ model CrmLead {
                              // trae origen o tags equivalentes, se mapean en vez de duplicar.
   market            String?  // UK | US | ES | NORDICS | ZA — pipeline por mercado (LaTroupe)
   seats             Int?     // usuarios propuestos (objetivo de ~75 usuarios de Odoo)
+  dealType          String?  // NEW_BUSINESS | EXPANSION | RENEWAL. Necesario por D9: si cada
+                             // frente de un retainer es una oportunidad, sin esto los 7 frentes
+                             // de Moda re- cuentan como 7 ventas nuevas e inflan el embudo.
   notes             String?
   projectId         String?  // se rellena al ganar
   project           JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -304,6 +366,7 @@ model CrmLead {
   budgets      Budget[]
   activities   CrmActivity[]
   stageHistory CrmLeadStageEvent[]
+  contactRoles CrmLeadContact[]
 
   @@unique([companyId, holdedLeadId])
   @@index([stageId]) @@index([ownerId]) @@index([marca]) @@index([expectedCloseDate])
@@ -329,6 +392,7 @@ model CrmLeadStageEvent {
 }
 
 enum CrmLifecycle { LEAD QUALIFIED CUSTOMER CHURNED DISQUALIFIED }
+enum CrmAccountType { CLIENT LEAD PARTNER }
 
 /// Cuenta de cliente canónica del ERP: la columna vertebral de la ficha 360.
 /// No existe en Holded como tal (Holded tiene leads y contactos, no cuentas).
@@ -337,10 +401,22 @@ model CrmAccount {
   name      String
   domain    String? @unique
   vatNumber String?
-  lifecycle CrmLifecycle @default(LEAD)
+  type      CrmAccountType @default(LEAD) // D10: PARTNER para Z1, Holded y Odoo. Los
+                                          // proveedores NO entran: ya existe `Supplier`.
+  lifecycle CrmLifecycle   @default(LEAD)
+  sector    String?
   marca     String?
   ownerId   String?
   owner     User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  /// Quién trajo esta cuenta (prescriptor). Sin esto no se puede medir cuánto
+  /// negocio aporta cada partner — Z1 ha traído al menos tres clientes.
+  referredByAccountId String?
+  referredBy          CrmAccount?  @relation("CrmReferrals", fields: [referredByAccountId], references: [id], onDelete: SetNull)
+  referrals           CrmAccount[] @relation("CrmReferrals")
+
+  relationsFrom CrmAccountRelation[] @relation("CrmRelationFrom")
+  relationsTo   CrmAccountRelation[] @relation("CrmRelationTo")
 
   // Enlace fiscal: null hasta que se prepara la primera propuesta (D3)
   companyId       String?
@@ -357,6 +433,27 @@ model CrmAccount {
   @@map("crm_accounts")
 }
 
+/// Relación tipada entre cuentas (D8). Los casos reales no son una jerarquía única:
+/// Charming Concept ↔ Only Charming son hermanas; Boby Brands es el holding de ZZEN
+/// Labs; Iknoga es proveedor de Dream España. Cada par es una relación distinta, y
+/// cada cuenta mantiene sus propias oportunidades y su propio `holdedContactId`.
+enum CrmRelationType { HOLDING_OF SUBSIDIARY_OF SIBLING_OF SUPPLIER_OF ADVISOR_OF }
+
+model CrmAccountRelation {
+  id            String          @id @default(cuid())
+  fromAccountId String
+  fromAccount   CrmAccount      @relation("CrmRelationFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  toAccountId   String
+  toAccount     CrmAccount      @relation("CrmRelationTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+  type          CrmRelationType
+  note          String?
+
+  @@unique([fromAccountId, toAccountId, type])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@map("crm_account_relations")
+}
+
 model CrmContact {
   id        String     @id @default(cuid())
   accountId String
@@ -365,13 +462,35 @@ model CrmContact {
   email     String?
   phone     String?
   title     String?
+  language  String?
   linkedinUrl String?
   isPrimary Boolean @default(false)
   activities CrmActivity[]
+  leadRoles  CrmLeadContact[]
 
   @@unique([accountId, email])
   @@index([accountId])
   @@map("crm_contacts")
+}
+
+/// Participación de un contacto en una oportunidad, con su papel en la decisión.
+/// Resuelve los asesores externos, que son gente de OTRA cuenta pero mandan en
+/// ésta: David Castany (aspeadvisors) en ZZEN, Javier Granado (zinco.ai) en Quick
+/// Smile, E. Martín (Veltian) en LUVI. Sin esto habría que duplicarlos como
+/// contactos de la cuenta del cliente, falseando a quién pertenecen.
+enum CrmDecisionRole { DECISOR PRESCRIPTOR ASESOR_EXTERNO TECNICO ADMINISTRATIVO USUARIO }
+
+model CrmLeadContact {
+  id        String          @id @default(cuid())
+  leadId    String
+  lead      CrmLead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   CrmContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role      CrmDecisionRole @default(USUARIO)
+
+  @@unique([leadId, contactId])
+  @@index([leadId])
+  @@map("crm_lead_contacts")
 }
 
 enum CrmActivityType { NOTE CALL EMAIL MEETING TASK }
@@ -438,6 +557,10 @@ desemboca en nada.
   incremental por `updatedAt`/`updatedHash`, con presupuesto de peticiones y registro en
   `SyncLog` (nuevo valor de `SyncSource`). Detecta cambios de etapa y escribe
   `CrmLeadStageEvent`.
+- **Regla innegociable (D7)**: el barrido de borrados filtra por `holdedLeadId: { not: null }`.
+  Un lead de origen ERP no puede desaparecer porque no esté en Holded. Es el mismo fallo que el
+  PR #25 arregla para los listados de Holded, y aquí se llevaría por delante la carga inicial
+  entera. Cubrirlo con un test antes de tocar producción.
 - **`Budget.projectId` a nullable** + arreglar los call sites del hueco 2 (commit aparte).
 - Backfill `scripts/backfill-crm-accounts.ts`: `CrmAccount` con `lifecycle: CUSTOMER` a partir
   de `(companyId, holdedContactId)` ya presentes en `Invoice`/`Proforma`/`Budget`, nombre desde
@@ -516,7 +639,17 @@ Amplía el contrato de `docs/proposals-plan-v2.md`. Los consumidores todavía no
   posterior queda **fuera** de cualquier filtro de periodo actual. El pipeline necesita su
   propio horizonte hacia adelante (p.ej. "próximos N meses"), no el rango de tesorería.
 
-**Estimación total: ~17-22 jornadas.** F0 y F1 son prerrequisito del resto; F3 depende de F2;
+### F8 — Carga inicial del inventario (1-2 j · después de F1)
+- `scripts/import-crm-inventory.ts`: lee el inventario ya revisado, deduplica por dominio y CIF,
+  crea cuentas, relaciones (D8), contactos con su papel en la decisión, y oportunidades con
+  `holdedLeadId: null` y `dealType`. Idempotente y con `--dry-run` por defecto, como el resto de
+  scripts del repo.
+- Requisito previo: responder las decisiones por registro que el propio inventario deja abiertas.
+  El script no inventa datos que faltan (CIF, importes, fechas de cierre, propietario).
+- Ejecutar primero contra la base de `staging` (`refresh-staging-db.yml`) y comprobar que un ciclo
+  completo de `/api/sync` **no borra ni modifica** ninguno de los registros cargados.
+
+**Estimación total: ~18-24 jornadas.** F0 y F1 son prerrequisito del resto; F3 depende de F2;
 F4, F5 y F6 son independientes entre sí.
 
 ## Fuera del CRM, para planificar aparte
@@ -579,3 +712,17 @@ propio y conviene decidirlas por separado, no colarlas en el CRM:
    cargarlos como `KpiTarget`.
 10. **Prerrequisito operativo de F2/F7**: el funnel de Odoo (con etapa Demo) tiene que existir en
     Holded. Si el equipo no lo crea, no hay demos que contar por mucho código que se escriba.
+11. **Dos pipelines conviviendo (consecuencia de D7)**: tras la carga habrá leads de origen ERP
+    (`holdedLeadId = null`) y leads espejados. Mientras no se promuevan a Holded, el embudo del
+    ERP y el de Holded no cuadran, y quien mire uno u otro verá cifras distintas. La promoción al
+    preparar propuesta lo reduce, pero no lo elimina: decidir si se acepta la divergencia o se
+    sube todo a Holded de una vez.
+12. **El conteo de oportunidades se infla (consecuencia de D9)**: los 7 frentes de Moda re- son 7
+    oportunidades. Sin filtrar por `dealType`, las conversiones del embudo y el objetivo de "9
+    implantaciones" de Odoo mezclan negocio nuevo con ampliaciones de retainer. Los KPIs de F7
+    deben filtrar por `dealType: NEW_BUSINESS` salvo que se pida lo contrario.
+13. **La sección de LaTroupe nace vacía**: en el inventario solo aparece Marlo, y en co-branding.
+    No prometer su cuadro de métricas hasta que tenga datos propios.
+14. **PII de la carga**: el inventario trae nombres, teléfonos y correos de personas de empresas
+    que aún no son clientes, extraídos de un buzón. Revisar base legal y retención **antes** de
+    ejecutar la carga, no después — es distinto de espejar datos que ya viven en Holded.

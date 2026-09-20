@@ -136,9 +136,24 @@ Listado con `marca`, `lifecycle`, `ownerId`, `q` (nombre/dominio/CIF) + paginaci
 El detalle es la ficha 360: contactos, leads, presupuestos, proformas, facturas y proyectos,
 resueltos por `(companyId, holdedContactId)`.
 
+#### `GET|POST|DELETE /api/crm/accounts/[id]/relations`
+Relaciones tipadas entre cuentas (`HOLDING_OF`, `SUBSIDIARY_OF`, `SIBLING_OF`, `SUPPLIER_OF`,
+`ADVISOR_OF`). Body: `{ toAccountId, type, note? }`. `409` si ya existe la misma terna.
+La ficha 360 (`GET /api/crm/accounts/[id]`) devuelve las relaciones para poder pintar el grupo
+—Charming ↔ Only Charming, Boby Brands → ZZEN Labs— sin que el cliente tenga que recomponerlo.
+
+#### `PUT|DELETE /api/crm/leads/[id]/contacts/[contactId]`
+Papel de un contacto en la oportunidad (`DECISOR`, `PRESCRIPTOR`, `ASESOR_EXTERNO`, `TECNICO`,
+`ADMINISTRATIVO`, `USUARIO`). Permite que un contacto de **otra** cuenta participe en esta
+oportunidad —los asesores externos— sin duplicarlo ni falsear a qué empresa pertenece.
+
 #### `GET|POST /api/crm/activities` · `PATCH /api/crm/activities/[id]`
 Filtros: `ownerId`, `leadId`, `accountId`, `dueBefore`, `pending=true`.
 `POST` crea nota/llamada/reunión/tarea; `PATCH` marca `completedAt`.
+
+> **Nota sobre `holdedLeadId` nullable**: los leads de la carga inicial son de origen ERP y no
+> tienen `holdedLeadId`. Los listados deben permitir filtrarlos (`origin=erp|holded`) y el
+> barrido de borrados del sync no puede tocarlos. Ver D7 en `docs/plan-crm.md`.
 
 #### Sincronización — sin endpoint propio
 `syncHoldedCrm(companyId)` se engancha en `syncAll()` (`src/lib/sync.ts`), que ya corre en el
