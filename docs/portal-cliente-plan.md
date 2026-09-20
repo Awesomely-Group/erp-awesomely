@@ -146,16 +146,32 @@ acepta esperar — pero por el mismo orquestador, para que no puedan divergir.
 ## Variables de entorno nuevas
 
 `GIGSONAPPS_PORTAL_SECRET`, `LTTOOLS_PORTAL_SECRET`, `PORTAL_SNAPSHOT_STALE_HOURS`
-(opcional, 30 por defecto). **Pendiente de añadir a `.env.example` y a Vercel** (Production y
-Preview).
+(opcional, 30 por defecto).
+
+`GIGSONAPPS_PORTAL_SECRET` **ya está puesta** en Vercel (Production y Preview, 2026-09-20),
+con el mismo valor que `ERP_PORTAL_SECRET` en el proyecto `portal-cliente`. Falta reflejarlas
+en `.env.example`. `LTTOOLS_PORTAL_SECRET` no hace falta hasta que exista el portal de
+La Troupe.
 
 ## Precondiciones antes de que esto sirva de algo
 
-1. **`GIRO_BASE_URL` configurada y proyectos vinculados.** El plan del 28-ago dejó escrito
-   que no había ningún `giroProjectId` vinculado ni `GIRO_BASE_URL` puesta, y que
-   `/reconciliation` nunca se había visto con datos reales. Cada proyecto con bolsas necesita
-   su `giroProjectId` (se pone en la ficha del proyecto, tecleando la key de Giro). Sin esto
-   no hay horas.
+1. **Proyectos vinculados a Giro.** `GIRO_BASE_URL` **ya está configurada** en Vercel
+   (Production, Preview y Development) desde el 2026-08-29 — la nota del plan del 28-ago que
+   decía lo contrario se quedó vieja. Lo que falta es, por workspace, una **API key de Giro**
+   (`JiraWorkspace.giroApiKey` + `giroOrgSlug`) y el `giroProjectId` de cada proyecto.
+
+   La API key hay que crearla **a mano en Giro** (Configuración → API keys, solo ADMIN, el
+   valor en claro se enseña una sola vez) y pegarla en el ERP (Configuración → Workspaces
+   Jira). Con eso hecho, vincular los proyectos ya no es trabajo manual:
+
+   ```bash
+   pnpm tsx scripts/link-projects-to-giro.ts            # enseña lo que haría
+   pnpm tsx scripts/link-projects-to-giro.ts --apply    # escribe
+   ```
+
+   Casa por *key* (la "FIN" de "FIN-73"), que es la misma a ambos lados porque el importador
+   de Giro mantiene paridad con Jira. Avisa de los que no tienen equivalente y de los
+   conflictos, en vez de elegir por su cuenta.
 2. **API key de Giro por workspace** (`JiraWorkspace.giroApiKey` + `giroOrgSlug`). En Giro la
    key *es* la frontera de organización: una de `gigson` no ve nada de `latroupe`.
 3. **Datos de CRM.** Los clientes tienen que existir como `CrmAccount` con
