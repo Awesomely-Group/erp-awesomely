@@ -8,6 +8,7 @@ import { ProjectInvoicesSection } from "./project-invoices-section";
 import { StatusBadge } from "./status-badge";
 import { ProjectSettingsPanel } from "./project-settings-panel";
 import { GiroLinkForm } from "./giro-link-form";
+import { ProjectClientForm } from "./project-client-form";
 import { ProjectTypesDashboard } from "./project-types-dashboard";
 import { ProjectBucketTeamSection } from "./project-bucket-team-section";
 import { ProjectTimesheetSection } from "./project-timesheet-section";
@@ -57,7 +58,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   const fromStr = format(from, "yyyy-MM-dd");
   const toStr = format(to, "yyyy-MM-dd");
 
-  const [project, relatedInvoices, availableRoles, userRoles] = await Promise.all([
+  const [project, relatedInvoices, availableRoles, userRoles, clientOptions] = await Promise.all([
     prisma.jiraProject.findUnique({
       where: { id: projectId },
       include: {
@@ -88,6 +89,12 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
     activeTab === "timesheet"
       ? prisma.projectUserRole.findMany({ where: { projectId } })
       : Promise.resolve([]),
+    // Solo clientes: enlazar un lead dejaría un portal a medias (ver setProjectCrmAccount).
+    prisma.crmAccount.findMany({
+      where: { lifecycle: "CUSTOMER" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   if (!project) notFound();
@@ -151,6 +158,11 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             <ProjectDateFilters from={fromStr} to={toStr} projectId={projectId} />
           )}
           {activeTab === "timesheet" && <TimesheetSummarySlot />}
+          <ProjectClientForm
+            projectId={project.id}
+            crmAccountId={project.crmAccountId}
+            options={clientOptions}
+          />
           <GiroLinkForm projectId={project.id} giroProjectId={project.giroProjectId} />
           <ProjectSettingsPanel
             projectId={project.id}
