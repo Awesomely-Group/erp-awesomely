@@ -220,7 +220,7 @@ export function WorkspaceForm(): React.JSX.Element {
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
       >
-        <Plus className="h-4 w-4" /> Añadir workspace Jira
+        <Plus className="h-4 w-4" /> Añadir workspace
       </button>
     );
   }
@@ -230,7 +230,7 @@ export function WorkspaceForm(): React.JSX.Element {
       onSubmit={handleSubmit}
       className="bg-white rounded-xl border border-gray-200 p-5 space-y-4"
     >
-      <h3 className="font-medium text-gray-900">Nuevo workspace Jira</h3>
+      <h3 className="font-medium text-gray-900">Nuevo workspace</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
