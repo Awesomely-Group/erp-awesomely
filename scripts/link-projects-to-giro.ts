@@ -40,15 +40,18 @@ async function main(): Promise<void> {
         select: { id: true, jiraKey: true, name: true },
         orderBy: { jiraKey: "asc" },
       },
+      _count: { select: { projects: { where: { active: true, giroProjectId: { not: null } } } } },
     },
   });
 
   let vinculados = 0;
   let sinEquivalente = 0;
   let yaOcupado = 0;
+  let yaVinculados = 0;
 
   for (const workspace of workspaces) {
     console.log(`\n── ${workspace.name} ──`);
+    yaVinculados += workspace._count.projects;
 
     if (!workspace.giroApiKey || !workspace.giroOrgSlug) {
       console.log("  Sin API key de Giro configurada — se salta.");
@@ -56,8 +59,9 @@ async function main(): Promise<void> {
       console.log("  el ERP: Configuración → Workspaces Jira.");
       continue;
     }
+    console.log(`  Ya vinculados: ${workspace._count.projects}. Pendientes: ${workspace.projects.length}.`);
     if (workspace.projects.length === 0) {
-      console.log("  No hay proyectos activos pendientes de vincular.");
+      console.log("  Nada que hacer.");
       continue;
     }
 
@@ -71,6 +75,8 @@ async function main(): Promise<void> {
 
     // Una key por proyecto y sin distinguir mayúsculas, igual que el formulario manual.
     const byKey = new Map(giroProjects.map((p) => [p.key.toUpperCase(), p]));
+
+    console.log(`  ${giroProjects.length} proyectos visibles en Giro con esta clave: ${giroProjects.map((p) => p.key).join(", ") || "(ninguno)"}`);
 
     for (const project of workspace.projects) {
       const match = byKey.get(project.jiraKey.toUpperCase());
@@ -102,8 +108,31 @@ async function main(): Promise<void> {
 
   console.log(
     `\n${APPLY ? "Vinculados" : "Se vincularían"}: ${vinculados} · sin equivalente: ${sinEquivalente}` +
-      (yaOcupado > 0 ? ` · conflictos: ${yaOcupado}` : ""),
+      (yaOcupado > 0 ? ` · conflictos: ${yaOcupado}` : "") +
+      ` · ya estaban vinculados: ${yaVinculados}`,
   );
+
+  if (vinculados === 0 && yaVinculados > 0) {
+    // El caso normal una vez hecho el trabajo: lo que queda sin vincular son los
+    // proyectos administrativos de Jira (JIRA Admin, TEST, plantillas) que nunca han
+    // tenido equivalente en Giro ni lo van a tener. Decirlo evita leer un "0" como un
+    // fallo, que es justo lo que pasó la primera vez que se ejecutó esto.
+    console.log("\nNada nuevo que vincular: los pendientes son proyectos de administración de Jira sin equivalente en Giro.");
+  }
+
+  if (vinculados === 0 && sinEquivalente > 0 && yaVinculados === 0) {
+    // Un workspace del ERP guarda UNA sola clave de Giro, pero un sitio de Jira puede
+    // alimentar varias organizaciones de Giro (el sitio de Gigson alimenta `gigson` y
+    // `awesomely`, donde viven los proyectos con prefijo "AW -"). Si la clave es de una
+    // sola, los proyectos de la otra no se ven desde aquí y salen todos como "sin
+    // equivalente" sin que nada esté roto.
+    console.log(
+      "\nNinguno ha casado. Compara arriba las keys del ERP con las visibles en Giro:\n" +
+        "  · si las de Giro son pocas y de otra familia, la clave es de una organización\n" +
+        "    distinta a la que tiene esos proyectos (un sitio de Jira puede alimentar dos);\n" +
+        "  · si la lista de Giro sale vacía, esa organización todavía no tiene proyectos.",
+    );
+  }
   await prisma.$disconnect();
 }
 

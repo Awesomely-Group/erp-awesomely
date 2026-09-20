@@ -153,30 +153,46 @@ con el mismo valor que `ERP_PORTAL_SECRET` en el proyecto `portal-cliente`. Falt
 en `.env.example`. `LTTOOLS_PORTAL_SECRET` no hace falta hasta que exista el portal de
 La Troupe.
 
-## Precondiciones antes de que esto sirva de algo
+## Estado real de los datos (comprobado en producción el 2026-09-20)
 
-1. **Proyectos vinculados a Giro.** `GIRO_BASE_URL` **ya está configurada** en Vercel
-   (Production, Preview y Development) desde el 2026-08-29 — la nota del plan del 28-ago que
-   decía lo contrario se quedó vieja. Lo que falta es, por workspace, una **API key de Giro**
-   (`JiraWorkspace.giroApiKey` + `giroOrgSlug`) y el `giroProjectId` de cada proyecto.
+| | |
+|---|---|
+| Proyectos vinculados a Giro | **59 de 76** — hecho. Los 11 + 4 pendientes son proyectos de administración de Jira (JIRA Admin, TEST, plantillas) sin equivalente en Giro |
+| Claves de API de Giro | Configuradas en los dos workspaces (`gigson`, `latroupe`) |
+| `GIRO_BASE_URL` | Configurada desde el 2026-08-29 en los tres entornos |
+| Proyectos con bolsas | **4**, con 14 bolsas y 27 issues asignados |
+| Proyectos con cliente (`crmAccountId`) | **0** |
+| `CrmAccount` / `CrmContact` | **0 / 0 — el CRM está vacío** |
 
-   La API key hay que crearla **a mano en Giro** (Configuración → API keys, solo ADMIN, el
-   valor en claro se enseña una sola vez) y pegarla en el ERP (Configuración → Workspaces
-   Jira). Con eso hecho, vincular los proyectos ya no es trabajo manual:
+**El único bloqueo que queda es el CRM.** Mientras no haya cuentas, ningún correo resuelve a
+ningún cliente y el portal no puede enseñar nada, por mucho que las horas y las bolsas estén
+bien.
 
-   ```bash
-   pnpm tsx scripts/link-projects-to-giro.ts            # enseña lo que haría
-   pnpm tsx scripts/link-projects-to-giro.ts --apply    # escribe
-   ```
+Los cuatro proyectos que hoy tienen bolsas facturan a estos contactos de Holded — son las
+cuatro cuentas que hay que crear para que el portal sirva de algo. Todas con
+`lifecycle = CUSTOMER`, `marca = "Gigson Solutions"` y la entidad **Awesomely SL**:
 
-   Casa por *key* (la "FIN" de "FIN-73"), que es la misma a ambos lados porque el importador
-   de Giro mantiene paridad con Jira. Avisa de los que no tienen equivalente y de los
-   conflictos, en vez de elegir por su cuenta.
-2. **API key de Giro por workspace** (`JiraWorkspace.giroApiKey` + `giroOrgSlug`). En Giro la
-   key *es* la frontera de organización: una de `gigson` no ve nada de `latroupe`.
-3. **Datos de CRM.** Los clientes tienen que existir como `CrmAccount` con
-   `lifecycle = CUSTOMER`, `marca = "Gigson Solutions"`, `holdedContactId` y un `CrmContact`
-   con el correo correcto. Si esas filas están a medias, el bloqueo es de datos, no de código.
+| Proyecto | Cliente | `holdedContactId` |
+|---|---|---|
+| BUB — GS - Quicksmile | QUICK SMILE SL. | `68fa13d6a007a2270a03c2cc` |
+| GB — GS - Bourne | BOURNE ESTATES SL. | `69cb9b2dc367dfeba70c49df` |
+| GC — GS - Colvin | COLVIN EUROPE SL. | `693543dcc45d0cc6d3054941` |
+| GZG — GS - Z1 Gestión | Z1 GESTION ECONOMICA SL. | `69417531ee502867210c4b17` |
+
+Cada una necesita además un `CrmContact` con el correo de la persona que vaya a entrar: ese
+correo es la llave del portal.
+
+Con eso hecho, `pnpm tsx scripts/backfill-project-crm-account.ts --apply` enlaza los
+proyectos solo, cruzando por las proformas ya clasificadas.
+
+## Lo que sigue pendiente de una persona
+
+1. **Poblar el CRM** (arriba). Es el bloqueo.
+2. **SMTP del portal** (`SMTP_HOST/PORT/USER/PASS`, `MAIL_FROM`, `MAIL_REPLY_TO`). Sin ello
+   el circuito funciona pero no sale el correo.
+3. **Quitar la Deployment Protection** del proyecto `portal-cliente` en Vercel: hoy redirige
+   al SSO de Vercel y ningún cliente tiene cuenta. Es el interruptor de puesta en marcha.
+4. **Dominio** del portal. `gigsonapps.com` no está en la cuenta de Vercel.
 
 ## Riesgos abiertos
 
