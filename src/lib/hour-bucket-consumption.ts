@@ -42,6 +42,8 @@ export interface ConsumptionWorklog {
 export interface ConsumptionBucket {
   id: string;
   roleId: string;
+  /** Horas contratadas. Es el tope a partir del cual se desborda a la siguiente bolsa. */
+  totalHours: number;
   /** Límites de la bolsa, "YYYY-MM-DD". `null` = sin límite por ese lado. */
   startDate: string | null;
   endDate: string | null;
@@ -111,12 +113,21 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
   let pendingAttributionHours = 0;
   let nonBillableHours = 0;
 
+  // Las candidatas de un rol se recorren de la más antigua a la más nueva: es el orden
+  // en el que se consumen.
+  const porFecha = [...buckets].sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""));
   const bucketsByRole = new Map<string, ConsumptionBucket[]>();
-  for (const bucket of buckets) {
+  for (const bucket of porFecha) {
     const list = bucketsByRole.get(bucket.roleId);
     if (list === undefined) bucketsByRole.set(bucket.roleId, [bucket]);
     else list.push(bucket);
   }
+
+  /** Hueco que le queda a cada bolsa mientras se reparte. */
+  const restante = new Map<string, number>(buckets.map((b) => [b.id, b.totalHours]));
+
+  // En orden cronológico, porque el reparto depende de lo que ya se haya consumido antes.
+  const enOrden = [...worklogs].sort((a, b) => a.date.localeCompare(b.date));
 
   function leak(reason: AttributionReason, worklog: ConsumptionWorklog): void {
     pendingAttributionHours += worklog.hours;
@@ -124,7 +135,7 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
     if (reason === "NO_ROLE") addTo(unattributedByAuthor, worklog.authorId, worklog.hours);
   }
 
-  for (const worklog of worklogs) {
+  for (const worklog of enOrden) {
     if (!worklog.billable) {
       nonBillableHours += worklog.hours;
       continue;
@@ -140,21 +151,40 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
         continue;
       }
       bucketId = assigned;
-    } else {
-      const roleId = authorToRole.get(worklog.authorId);
-      if (roleId === undefined) {
-        leak("NO_ROLE", worklog);
-        continue;
-      }
-      const candidates = bucketsByRole.get(roleId) ?? [];
-      bucketId = candidates.find((b) => coversDate(b, worklog.date))?.id;
-      if (bucketId === undefined) {
-        leak("ROLE_WITHOUT_BUCKET", worklog);
-        continue;
-      }
+      addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, bucketId, worklog.hours);
+      restante.set(bucketId, (restante.get(bucketId) ?? 0) - worklog.hours);
+      continue;
     }
 
-    addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, bucketId, worklog.hours);
+    const roleId = authorToRole.get(worklog.authorId);
+    if (roleId === undefined) {
+      leak("NO_ROLE", worklog);
+      continue;
+    }
+    const candidatas = (bucketsByRole.get(roleId) ?? []).filter((b) => coversDate(b, worklog.date));
+    if (candidatas.length === 0) {
+      leak("ROLE_WITHOUT_BUCKET", worklog);
+      continue;
+    }
+
+    // Se reparte llenando la bolsa más antigua que aún tenga hueco y desbordando a la
+    // siguiente. Sin esto, la primera bolsa cuya ventana cubre la fecha se lo llevaba
+    // TODO: en Colvin, una bolsa de 65 h figuraba con 198,5 consumidas y las otras tres
+    // a cero. Un cliente que compra packs seguidos consume el que compró primero, y con
+    // caducidad de un año sus ventanas se solapan casi siempre, así que la fecha por sí
+    // sola no decide.
+    let porRepartir = worklog.hours;
+    for (let i = 0; i < candidatas.length && porRepartir > 0; i += 1) {
+      const b = candidatas[i];
+      const hueco = restante.get(b.id) ?? 0;
+      // En la última candidata cae el resto aunque se pase: el exceso tiene que verse
+      // como bolsa agotada, no desaparecer.
+      const cabe = i === candidatas.length - 1 ? porRepartir : Math.max(Math.min(hueco, porRepartir), 0);
+      if (cabe <= 0) continue;
+      addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, b.id, cabe);
+      restante.set(b.id, hueco - cabe);
+      porRepartir -= cabe;
+    }
   }
 
   return {
