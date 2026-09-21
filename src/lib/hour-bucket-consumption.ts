@@ -161,29 +161,39 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
       leak("NO_ROLE", worklog);
       continue;
     }
-    const candidatas = (bucketsByRole.get(roleId) ?? []).filter((b) => coversDate(b, worklog.date));
-    if (candidatas.length === 0) {
+    const delRol = bucketsByRole.get(roleId) ?? [];
+    // Primero las bolsas vivas en esa fecha, de la más antigua a la más nueva: se
+    // consume el pack que se compró primero.
+    const vivas = delRol.filter((b) => coversDate(b, worklog.date));
+    // Y detrás las que arrancan DESPUÉS. Una hora que no cabe en ninguna bolsa viva la
+    // cubre el siguiente pack que se compre, que es lo que pasa de verdad: te pasas de
+    // horas y el pack siguiente lo absorbe. Esto cubre también el trabajo hecho antes de
+    // que exista el pack, que es lo normal —se trabaja y luego se factura—: en Z1
+    // Gestión 31 de sus 37 h eran anteriores a su propia bolsa.
+    const futuras = delRol.filter((b) => b.startDate !== null && worklog.date < b.startDate);
+    const cadena = [...vivas, ...futuras];
+    if (cadena.length === 0) {
       leak("ROLE_WITHOUT_BUCKET", worklog);
       continue;
     }
 
-    // Se reparte llenando la bolsa más antigua que aún tenga hueco y desbordando a la
-    // siguiente. Sin esto, la primera bolsa cuya ventana cubre la fecha se lo llevaba
-    // TODO: en Colvin, una bolsa de 65 h figuraba con 198,5 consumidas y las otras tres
-    // a cero. Un cliente que compra packs seguidos consume el que compró primero, y con
-    // caducidad de un año sus ventanas se solapan casi siempre, así que la fecha por sí
-    // sola no decide.
     let porRepartir = worklog.hours;
-    for (let i = 0; i < candidatas.length && porRepartir > 0; i += 1) {
-      const b = candidatas[i];
+    for (const b of cadena) {
+      if (porRepartir <= 0) break;
       const hueco = restante.get(b.id) ?? 0;
-      // En la última candidata cae el resto aunque se pase: el exceso tiene que verse
-      // como bolsa agotada, no desaparecer.
-      const cabe = i === candidatas.length - 1 ? porRepartir : Math.max(Math.min(hueco, porRepartir), 0);
+      const cabe = Math.max(Math.min(hueco, porRepartir), 0);
       if (cabe <= 0) continue;
       addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, b.id, cabe);
       restante.set(b.id, hueco - cabe);
       porRepartir -= cabe;
+    }
+    // Si no cabe en ninguna, el resto sobrecarga la ÚLTIMA de la cadena: el exceso tiene
+    // que verse como bolsa agotada —y en la más reciente, que es donde el cliente mira—
+    // en vez de desaparecer.
+    if (porRepartir > 0) {
+      const ultima = cadena[cadena.length - 1];
+      addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, ultima.id, porRepartir);
+      restante.set(ultima.id, (restante.get(ultima.id) ?? 0) - porRepartir);
     }
   }
 

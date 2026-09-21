@@ -266,3 +266,58 @@ describe("varias bolsas del mismo rol se llenan por orden", () => {
     expect(res.hoursByBucketId.get("feb")).toBe(10);
   });
 });
+
+describe("el exceso lo absorbe el pack siguiente", () => {
+  const conRol = new Map([["ana", "backend"]]);
+
+  it("una hora que no cabe en la bolsa viva cae en la que se compra después", () => {
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 25, date: "2025-10-28", issueKey: null })],
+      buckets: [
+        { id: "oct", roleId: "backend", totalHours: 10, startDate: "2025-10-27", endDate: "2026-10-27" },
+        { id: "nov", roleId: "backend", totalHours: 20, startDate: "2025-11-03", endDate: "2026-11-03" },
+      ],
+      authorToRole: conRol, issueToBucket: new Map(),
+    });
+    // Sin arrastre, "oct" se comía las 25 h y "nov" quedaba a cero.
+    expect(res.hoursByBucketId.get("oct")).toBe(10);
+    expect(res.hoursByBucketId.get("nov")).toBe(15);
+  });
+
+  it("el trabajo anterior a que exista el pack lo cubre ese pack", () => {
+    // Caso de Z1 Gestión: 31 de sus 37 h se imputaron antes de su propia bolsa, porque
+    // se trabaja y luego se factura.
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 8, date: "2026-05-05", issueKey: null })],
+      buckets: [{ id: "mayo", roleId: "backend", totalHours: 45, startDate: "2026-05-18", endDate: "2027-05-18" }],
+      authorToRole: conRol, issueToBucket: new Map(),
+    });
+    expect(res.hoursByBucketId.get("mayo")).toBe(8);
+    expect(res.pendingAttributionHours).toBe(0);
+  });
+
+  it("si no cabe en ninguna, sobrecarga la más reciente y no se pierde nada", () => {
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 100, date: "2025-10-28", issueKey: null })],
+      buckets: [
+        { id: "oct", roleId: "backend", totalHours: 10, startDate: "2025-10-27", endDate: "2026-10-27" },
+        { id: "nov", roleId: "backend", totalHours: 20, startDate: "2025-11-03", endDate: "2026-11-03" },
+      ],
+      authorToRole: conRol, issueToBucket: new Map(),
+    });
+    expect(res.hoursByBucketId.get("oct")).toBe(10);
+    expect(res.hoursByBucketId.get("nov")).toBe(90); // 20 suyas + 70 de exceso
+    const total = [...res.hoursByBucketId.values()].reduce((a, b) => a + b, 0);
+    expect(total).toBe(100);
+  });
+
+  it("sigue sin haber bolsa si el rol no tiene ninguna, ni viva ni futura", () => {
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 4, date: "2026-01-01", issueKey: null })],
+      buckets: [{ id: "otra", roleId: "devops", totalHours: 10, startDate: null, endDate: null }],
+      authorToRole: conRol, issueToBucket: new Map(),
+    });
+    expect(res.pendingAttributionHours).toBe(4);
+    expect(res.unattributedByReason.get("ROLE_WITHOUT_BUCKET")).toBe(4);
+  });
+});
