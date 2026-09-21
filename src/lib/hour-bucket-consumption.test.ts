@@ -18,7 +18,7 @@ function worklog(over: Partial<ConsumptionWorklog> = {}): ConsumptionWorklog {
   };
 }
 
-const SIN_FECHAS: ConsumptionBucket = { id: "b1", roleId: "backend", startDate: null, endDate: null };
+const SIN_FECHAS: ConsumptionBucket = { id: "b1", roleId: "backend", totalHours: 1000, startDate: null, endDate: null };
 
 describe("computeBucketConsumption", () => {
   it("reparte por el rol del autor cuando el issue no está asignado", () => {
@@ -38,7 +38,7 @@ describe("computeBucketConsumption", () => {
       worklogs: [worklog({ hours: 2, issueKey: "FIN-9" })],
       buckets: [
         SIN_FECHAS,
-        { id: "b2", roleId: "consultoria", startDate: null, endDate: null },
+        { id: "b2", roleId: "consultoria", totalHours: 1000, startDate: null, endDate: null },
       ],
       authorToRole: new Map([["ana", "backend"]]),
       issueToBucket: new Map([["FIN-9", "b2"]]),
@@ -58,8 +58,8 @@ describe("computeBucketConsumption", () => {
         worklog({ hours: 7, date: "2026-03-10" }),
       ],
       buckets: [
-        { id: "vieja", roleId: "backend", startDate: "2025-01-01", endDate: "2025-12-31" },
-        { id: "nueva", roleId: "backend", startDate: "2026-01-01", endDate: "2026-12-31" },
+        { id: "vieja", roleId: "backend", totalHours: 1000, startDate: "2025-01-01", endDate: "2025-12-31" },
+        { id: "nueva", roleId: "backend", totalHours: 1000, startDate: "2026-01-01", endDate: "2026-12-31" },
       ],
       authorToRole: new Map([["ana", "backend"]]),
       issueToBucket: new Map(),
@@ -83,7 +83,7 @@ describe("computeBucketConsumption", () => {
   it("la asignación explícita no se filtra por fecha", () => {
     const res = computeBucketConsumption({
       worklogs: [worklog({ hours: 4, date: "2030-01-01", issueKey: "FIN-9" })],
-      buckets: [{ id: "b1", roleId: "backend", startDate: "2026-01-01", endDate: "2026-12-31" }],
+      buckets: [{ id: "b1", roleId: "backend", totalHours: 1000, startDate: "2026-01-01", endDate: "2026-12-31" }],
       authorToRole: new Map(),
       issueToBucket: new Map([["FIN-9", "b1"]]),
     });
@@ -110,7 +110,7 @@ describe("computeBucketConsumption", () => {
     it("rol sin bolsa activa que cubra la fecha", () => {
       const res = computeBucketConsumption({
         worklogs: [worklog({ hours: 3, date: "2027-01-01" })],
-        buckets: [{ id: "b1", roleId: "backend", startDate: "2026-01-01", endDate: "2026-12-31" }],
+        buckets: [{ id: "b1", roleId: "backend", totalHours: 1000, startDate: "2026-01-01", endDate: "2026-12-31" }],
         authorToRole: new Map([["ana", "backend"]]),
         issueToBucket: new Map(),
       });
@@ -177,7 +177,7 @@ describe("computeBucketConsumption", () => {
   it("toda bolsa aparece en el resultado aunque no tenga horas", () => {
     const res = computeBucketConsumption({
       worklogs: [],
-      buckets: [SIN_FECHAS, { id: "b2", roleId: "consultoria", startDate: null, endDate: null }],
+      buckets: [SIN_FECHAS, { id: "b2", roleId: "consultoria", totalHours: 1000, startDate: null, endDate: null }],
       authorToRole: new Map(),
       issueToBucket: new Map(),
     });
@@ -209,5 +209,60 @@ describe("bucketStatus", () => {
 
   it("una bolsa de 0 horas está sin configurar, no agotada", () => {
     expect(bucketStatus({ ...base, totalHours: 0, consumedHours: 0 })).toBe("ACTIVE");
+  });
+});
+
+describe("varias bolsas del mismo rol se llenan por orden", () => {
+  // El caso real de Colvin: nueve packs comprados seguidos, todos con ventana de un año,
+  // así que casi todas las fechas caen dentro de varias. Antes la primera se lo llevaba
+  // todo (65 h de bolsa con 198,5 consumidas) y el resto figuraban intactas.
+  const packs: ConsumptionBucket[] = [
+    { id: "dic", roleId: "backend", totalHours: 50, startDate: "2025-12-10", endDate: "2026-12-10" },
+    { id: "ene", roleId: "backend", totalHours: 20, startDate: "2026-01-08", endDate: "2027-01-08" },
+    { id: "feb", roleId: "backend", totalHours: 40, startDate: "2026-02-11", endDate: "2027-02-11" },
+  ];
+  const conRol = new Map([["ana", "backend"]]);
+
+  it("agota la más antigua antes de tocar la siguiente", () => {
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 30, date: "2026-03-01", issueKey: null })],
+      buckets: packs, authorToRole: conRol, issueToBucket: new Map(),
+    });
+    expect(res.hoursByBucketId.get("dic")).toBe(30);
+    expect(res.hoursByBucketId.get("ene")).toBe(0);
+  });
+
+  it("desborda a la siguiente cuando una se llena", () => {
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 60, date: "2026-03-01", issueKey: null })],
+      buckets: packs, authorToRole: conRol, issueToBucket: new Map(),
+    });
+    expect(res.hoursByBucketId.get("dic")).toBe(50);
+    expect(res.hoursByBucketId.get("ene")).toBe(10);
+    expect(res.hoursByBucketId.get("feb")).toBe(0);
+  });
+
+  it("lo que no cabe en ninguna sobrecarga la última, no se pierde", () => {
+    const res = computeBucketConsumption({
+      worklogs: [worklog({ hours: 150, date: "2026-03-01", issueKey: null })],
+      buckets: packs, authorToRole: conRol, issueToBucket: new Map(),
+    });
+    const total = [...res.hoursByBucketId.values()].reduce((a, b) => a + b, 0);
+    expect(total).toBe(150);
+    expect(res.hoursByBucketId.get("feb")).toBe(80); // 40 suyas + 40 de exceso
+  });
+
+  it("reparte en orden cronológico, no en el orden en que llegan los partes", () => {
+    const res = computeBucketConsumption({
+      worklogs: [
+        worklog({ hours: 40, date: "2026-06-01", issueKey: null }),
+        worklog({ hours: 40, date: "2026-01-01", issueKey: null }),
+      ],
+      buckets: packs, authorToRole: conRol, issueToBucket: new Map(),
+    });
+    // El de enero es anterior y la única bolsa viva entonces es "dic": se sirve primero.
+    expect(res.hoursByBucketId.get("dic")).toBe(50);
+    expect(res.hoursByBucketId.get("ene")).toBe(20);
+    expect(res.hoursByBucketId.get("feb")).toBe(10);
   });
 });

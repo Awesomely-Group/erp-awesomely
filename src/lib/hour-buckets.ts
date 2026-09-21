@@ -21,25 +21,26 @@ import {
 export type HoursSource = "GIRO" | "TEMPO";
 
 /**
- * Desde cuándo pedir partes.
+ * Desde cuándo pedir partes: **siempre desde el principio**.
  *
- * Giro no pagina `/worklogs` y el rango es el único freno, así que se arranca en la
- * fecha de inicio más temprana de las bolsas activas. Si alguna no tiene `startDate`
- * cubre todo el histórico y no queda más remedio que el suelo absoluto — el mismo
- * "2020-01-01" que la ruta usaba a pelo antes de esto.
+ * Arrancaba en la fecha de la bolsa más antigua, para no pedirle a Giro todo el
+ * histórico en un endpoint que no pagina. Era una optimización prematura y costaba
+ * corrección: las horas anteriores a la primera bolsa **no se pedían**, así que no
+ * llegaban ni a contarse como "sin repartir" — desaparecían en silencio, que es justo
+ * lo que este cálculo promete no hacer.
+ *
+ * No era teórico: Z1 Gestión tenía 31 de sus 37 h imputadas antes de su primera bolsa
+ * (trabajo de principios de mayo; la bolsa se dio de alta el día 18) y el ERP solo veía
+ * 6. Y trabajar antes de facturar el pack es lo normal, no la excepción, así que el caso
+ * se repetiría en cualquier cliente.
+ *
+ * El coste real de quitarlo es despreciable: el proyecto más grande de Giro ronda los
+ * cientos de partes, y el cron corre una vez al día.
  */
 export const ABSOLUTE_FLOOR_DATE = "2020-01-01";
 
-export function worklogFloorDate(
-  buckets: readonly { startDate: Date | null }[],
-  floor: string = ABSOLUTE_FLOOR_DATE,
-): string {
-  if (buckets.length === 0) return floor;
-  if (buckets.some((b) => b.startDate === null)) return floor;
-  const earliest = buckets
-    .map((b) => isoDay(b.startDate as Date))
-    .reduce((min, d) => (d < min ? d : min));
-  return earliest < floor ? floor : earliest;
+export function worklogFloorDate(): string {
+  return ABSOLUTE_FLOOR_DATE;
 }
 
 function isoDay(date: Date): string {
@@ -145,7 +146,7 @@ export async function getProjectConsumption(projectId: string): Promise<ProjectC
   if (project === null) return null;
 
   const source = pickSource(project);
-  const from = worklogFloorDate(project.hourBuckets);
+  const from = worklogFloorDate();
   const to = isoDay(new Date());
 
   let worklogs: ConsumptionWorklog[] = [];
@@ -185,6 +186,7 @@ export async function getProjectConsumption(projectId: string): Promise<ProjectC
     buckets: project.hourBuckets.map((b) => ({
       id: b.id,
       roleId: b.roleId,
+      totalHours: b.totalHours,
       startDate: b.startDate === null ? null : isoDay(b.startDate),
       endDate: b.endDate === null ? null : isoDay(b.endDate),
     })),
