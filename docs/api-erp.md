@@ -114,22 +114,23 @@ Lead + `funnel`, `account`, `activities`, `budgets` (con `documensoStatus`) y `s
 `404` si no existe.
 
 #### `PATCH /api/crm/leads/[id]`
-Body: **solo campos propios del ERP** — `marca`, `ownerId`, `accountId`, `expectedCloseDate`,
-`probability`, `origin`, `market`, `seats`, `notes`.
-Si el body trae campos espejados de Holded (`name`, `amount`, `stageId`, `email`…) → `400`
-indicando que se editan en Holded o, para la etapa, en el endpoint de abajo. Esto es lo que
-mantiene la disciplina de espejo: el sync nunca debe encontrarse valores del ERP en sus columnas.
+Body: `name`, `amount`, `currency`, `marca`, `ownerId`, `accountId`, `expectedCloseDate`,
+`probability`, `origin`, `market`, `seats`, `dealType`, `notes`, `externalRef`.
+`stageId` **no** se acepta aquí: el cambio de etapa tiene su propio endpoint porque escribe
+historial. Un body que lo traiga → `400`.
 
 #### `POST /api/crm/leads/[id]/stage`
-Body: `{ stageId: string }`. Efecto: escribe en Holded (`/leads/{leadId}/stages`), **relee el
-lead** para confirmar, guarda `CrmLeadStageEvent { source: "ERP" }` y `AuditLog`.
+Body: `{ stageId: string }`. Operación **local**: valida que la etapa pertenece al embudo del
+lead, actualiza `stageId`, aplica la `defaultProbability` de la etapa destino si el usuario no la
+ha fijado a mano, y guarda `CrmLeadStageEvent` + `AuditLog`.
 Idempotente: si ya está en esa etapa, `200` sin efectos secundarios.
-`409` si Holded rechaza la transición · `502` si la API de Holded falla (no dejar el espejo
-divergente: si falla la escritura, no se escribe el evento).
+`400` si la etapa no pertenece a ese embudo. No hay `502`: no sale a ningún sistema externo.
 
-#### `GET /api/crm/funnels`
-Query: `marca`, `companyId`, `lineOfBusiness`. Devuelve los embudos espejados con sus etapas
-(`stages` tal cual vienen de Holded) — es lo que alimenta las columnas del tablero.
+#### `GET|POST /api/crm/pipelines` · `PUT|DELETE /api/crm/pipelines/[id]` · `PUT /api/crm/pipelines/[id]/stages`
+Embudos y etapas, propiedad del ERP (D11). Query de listado: `marca`, `lineOfBusiness`, `active`.
+Cada embudo devuelve sus etapas ordenadas con `defaultProbability`, `isWon` e `isLost` — es lo que
+alimenta las columnas del tablero. `PUT …/stages` reordena y renombra en bloque; rechazar con
+`409` el borrado de una etapa que tenga leads.
 
 #### `GET /api/crm/accounts` · `GET /api/crm/accounts/[id]`
 Listado con `marca`, `lifecycle`, `ownerId`, `q` (nombre/dominio/CIF) + paginación.
@@ -151,14 +152,10 @@ oportunidad —los asesores externos— sin duplicarlo ni falsear a qué empresa
 Filtros: `ownerId`, `leadId`, `accountId`, `dueBefore`, `pending=true`.
 `POST` crea nota/llamada/reunión/tarea; `PATCH` marca `completedAt`.
 
-> **Nota sobre `holdedLeadId` nullable**: los leads de la carga inicial son de origen ERP y no
-> tienen `holdedLeadId`. Los listados deben permitir filtrarlos (`origin=erp|holded`) y el
-> barrido de borrados del sync no puede tocarlos. Ver D7 en `docs/plan-crm.md`.
-
-#### Sincronización — sin endpoint propio
-`syncHoldedCrm(companyId)` se engancha en `syncAll()` (`src/lib/sync.ts`), que ya corre en el
-cron de `/api/sync` (06:00, `vercel.json`). **No crear `/api/crm/sync`**: duplicaría orquestación
-y consumiría cuota de la API de Holded fuera de control.
+#### Sincronización — no hay
+El pipeline no se sincroniza con ningún sistema externo (D4, `docs/plan-crm.md`). El único
+contacto con Holded desde el CRM es el alta del contacto fiscal al preparar propuesta, que ya
+vive en `/api/webhooks/proposals/contacts`.
 
 ### 4.2 KPIs comerciales
 
@@ -212,7 +209,7 @@ por igualdad, así que `/api/kpis/targets` **no** quedaría cubierto.
 3. Respuesta con `json({ data, total })`; paginar si el listado puede crecer.
 4. Tipos de retorno explícitos; sin `any`.
 5. Si muta datos, escribir `AuditLog`.
-6. Si escribe en Holded, releer para confirmar y no dejar el espejo divergente.
+6. Si escribe en Holded (solo el alta de contacto fiscal), releer para confirmar.
 7. Documentar aquí la ruta nueva.
 
 ## 6. Verificación
