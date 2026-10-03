@@ -14,6 +14,7 @@ import {
   yearsInScope,
   type SyncMode,
   type SyncScope,
+  orderCompaniesByLastSync,
   pickCompanyForFullSync,
 } from "./sync-scope";
 import { JiraClient } from "./jira";
@@ -108,6 +109,35 @@ async function lastFullSyncByCompany(
       companyId: { in: [...companyIds] },
       result: { in: [SyncResult.SUCCESS, SyncResult.PARTIAL] },
       details: { path: ["mode"], equals: "full" },
+    },
+    select: { companyId: true, startedAt: true },
+    orderBy: { startedAt: "desc" },
+  });
+
+  const lastByCompany = new Map<string, Date>();
+  for (const log of logs) {
+    if (log.companyId && !lastByCompany.has(log.companyId)) {
+      lastByCompany.set(log.companyId, log.startedAt);
+    }
+  }
+  return lastByCompany;
+}
+
+/**
+ * Inicio del último sync correcto (SUCCESS o PARTIAL) de cada empresa, de cualquier
+ * modo. A diferencia de `lastFullSyncByCompany`, no filtra por `details.mode`: sirve
+ * para ordenar el incremental por antigüedad (`orderCompaniesByLastSync`), no para la
+ * rotación de la pasada completa. Una empresa sin fila no aparece en el mapa: para el
+ * orden cuenta como "nunca", y entra primero.
+ */
+async function lastSyncByCompany(
+  companyIds: readonly string[],
+): Promise<Map<string, Date>> {
+  const logs = await prisma.syncLog.findMany({
+    where: {
+      source: SyncSource.HOLDED,
+      companyId: { in: [...companyIds] },
+      result: { in: [SyncResult.SUCCESS, SyncResult.PARTIAL] },
     },
     select: { companyId: true, startedAt: true },
     orderBy: { startedAt: "desc" },
@@ -1764,8 +1794,13 @@ export async function syncAll(
   if (alreadyRunning) throw new SyncAlreadyRunningError(alreadyRunning.startedAt);
 
   const [companies, workspaces] = await Promise.all([
-    // Orden fijado a propósito: sin él, el orden lo decidía Postgres y con él, qué
-    // empresa se quedaba fuera cuando no daba tiempo a todas.
+    // El orden alfabético aquí es solo para que la consulta sea determinista entre
+    // ejecuciones. El orden real de sincronización —quién entra primero si no da tiempo
+    // a todas— se decide más abajo según el modo: `pickCompanyForFullSync` en full,
+    // `orderCompaniesByLastSync` en incremental. Antes este `orderBy` era también el
+    // orden de sincronización, y dejaba siempre fuera a la misma empresa cuando no
+    // llegaba el presupuesto (Awesomely SL, por ir después de "Awesomely OU" — ver
+    // incidente del 20/09 al 30/09 de 2026, diagnosticado por Emmelin).
     prisma.company.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.jiraWorkspace.findMany({ where: { active: true } }),
   ]);
@@ -1831,6 +1866,15 @@ export async function syncAll(
         `[sync] pasada completa de esta ejecución: ${picked.name} (última: ${picked.lastFullSyncAt?.toISOString().slice(0, 10) ?? "nunca"})`,
       );
     }
+  } else if (scope.mode === "incremental" && companies.length > 1) {
+    // El incremental sí intenta todas las empresas (cabe de sobra la mayoría de los
+    // días), pero cuando no llega el presupuesto para todas (ver el guard más abajo),
+    // que se quede fuera siempre sea la que lleve más tiempo sin un sync correcto, no
+    // siempre la misma por el orden alfabético.
+    const lastSync = await lastSyncByCompany(companies.map((c) => c.id));
+    companiesToSync = orderCompaniesByLastSync(
+      companies.map((c) => ({ ...c, lastSyncAt: lastSync.get(c.id) ?? null })),
+    );
   }
 
   // Jira va en paralelo con todo lo demás: tarda ~0 s y no toca la API de Holded.
@@ -1890,6 +1934,21 @@ export async function syncAll(
         entityId: c.id,
         status: "error",
         error: msg,
+      });
+      // `errors` no se persiste: antes este salto solo quedaba en los logs de consola
+      // de esa invocación, y la página de Sincronización no mostraba nada para esta
+      // empresa ese día — indistinguible de "no le tocaba" o de un cron que ni se
+      // ejecutó. Se deja una fila igual que un fallo cualquiera para que quede en el
+      // historial de `/sync` por empresa.
+      const skippedLogId = await openSyncLog({
+        source: SyncSource.HOLDED,
+        companyId: c.id,
+        triggeredBy,
+        startedAt: new Date(),
+      });
+      await closeSyncLog(skippedLogId, {
+        errorMessage: msg,
+        details: { mode, skipped: true },
       });
       continue;
     }

@@ -214,3 +214,43 @@ export function pickCompanyForFullSync<T extends FullSyncCandidate>(
     return byDate !== 0 ? byDate : a.name.localeCompare(b.name);
   })[0];
 }
+
+/** Empresa candidata al incremental, con la fecha de su último sync correcto. */
+export interface IncrementalSyncCandidate {
+  id: string;
+  name: string;
+  /** Inicio de su último SyncLog SUCCESS o PARTIAL (de cualquier modo), o null si nunca
+   *  tuvo uno. */
+  lastSyncAt: Date | null;
+}
+
+/**
+ * Ordena las empresas del incremental por antigüedad de su último sync correcto: la que
+ * lleve más tiempo sin sincronizar entra primero.
+ *
+ * Antes el incremental las sincronizaba en el orden alfabético fijo con el que se leían
+ * de la base de datos. Cuando el presupuesto de 300 s no llegaba para todas (el guard de
+ * `syncAll` corta antes de empezar una empresa si no queda tiempo), siempre se quedaba
+ * fuera la misma — "Awesomely SL" por ir después de "Awesomely OU" alfabéticamente—,
+ * y el salto no dejaba ninguna fila en `SyncLog` que lo delatara: del 20/09 al 30/09 de
+ * 2026 la SL no se sincronizó en incremental ni un solo día (diagnosticado por Emmelin).
+ * Con este orden, la que se queda fuera un día entra la primera al día siguiente: el
+ * presupuesto insuficiente deja de perjudicar siempre a la misma empresa.
+ *
+ * Mismo criterio de desempate que `pickCompanyForFullSync` (nulls primero, luego fecha,
+ * luego nombre) para que el comportamiento sea predecible y estable.
+ */
+export function orderCompaniesByLastSync<T extends IncrementalSyncCandidate>(
+  companies: readonly T[],
+): T[] {
+  return [...companies].sort((a, b) => {
+    if (a.lastSyncAt === null && b.lastSyncAt === null) {
+      return a.name.localeCompare(b.name);
+    }
+    if (a.lastSyncAt === null) return -1;
+    if (b.lastSyncAt === null) return 1;
+
+    const byDate = a.lastSyncAt.getTime() - b.lastSyncAt.getTime();
+    return byDate !== 0 ? byDate : a.name.localeCompare(b.name);
+  });
+}

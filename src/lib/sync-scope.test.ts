@@ -3,6 +3,7 @@ import {
   buildMonthlyWindows,
   buildScopeWindow,
   buildQuarterlyWindows,
+  orderCompaniesByLastSync,
   parseSyncMode,
   pickCompanyForFullSync,
   resolveSyncScope,
@@ -289,5 +290,92 @@ describe("pickCompanyForFullSync", () => {
       ),
     )!;
     expect(segunda.name).toBe("Awesomely SL");
+  });
+});
+
+// ─── orderCompaniesByLastSync ───────────────────────────────────────────────────
+
+describe("orderCompaniesByLastSync", () => {
+  const empresa = (name: string, lastSyncAt: Date | null) => ({
+    id: name.toLowerCase(),
+    name,
+    lastSyncAt,
+  });
+
+  it("entra primero la que lleva más tiempo sin un sync correcto", () => {
+    const orden = orderCompaniesByLastSync([
+      empresa("Awesomely SL", new Date("2026-09-19T06:00:00Z")),
+      empresa("Awesomely OU", new Date("2026-09-30T06:00:00Z")),
+    ]);
+
+    expect(orden.map((c) => c.name)).toEqual(["Awesomely SL", "Awesomely OU"]);
+  });
+
+  it("prioriza la que nunca ha tenido un sync correcto", () => {
+    const orden = orderCompaniesByLastSync([
+      empresa("Awesomely SL", new Date("2026-09-30T06:00:00Z")),
+      empresa("Awesomely OU", null),
+    ]);
+
+    expect(orden.map((c) => c.name)).toEqual(["Awesomely OU", "Awesomely SL"]);
+  });
+
+  it("desempata por nombre, no por el orden de entrada", () => {
+    const porNombre = orderCompaniesByLastSync([
+      empresa("Awesomely SL", null),
+      empresa("Awesomely OU", null),
+    ]);
+    const alReves = orderCompaniesByLastSync([
+      empresa("Awesomely OU", null),
+      empresa("Awesomely SL", null),
+    ]);
+
+    expect(porNombre.map((c) => c.name)).toEqual(["Awesomely OU", "Awesomely SL"]);
+    expect(alReves.map((c) => c.name)).toEqual(["Awesomely OU", "Awesomely SL"]);
+  });
+
+  it("con la misma fecha también desempata por nombre", () => {
+    const misma = new Date("2026-09-19T06:00:00Z");
+    const orden = orderCompaniesByLastSync([
+      empresa("Awesomely SL", misma),
+      empresa("Awesomely OU", misma),
+    ]);
+
+    expect(orden.map((c) => c.name)).toEqual(["Awesomely OU", "Awesomely SL"]);
+  });
+
+  it("no altera la lista que recibe", () => {
+    const lista = [
+      empresa("Awesomely OU", new Date("2026-09-30T06:00:00Z")),
+      empresa("Awesomely SL", new Date("2026-09-19T06:00:00Z")),
+    ];
+    orderCompaniesByLastSync(lista);
+
+    expect(lista.map((c) => c.name)).toEqual(["Awesomely OU", "Awesomely SL"]);
+  });
+
+  it("devuelve una lista vacía sin empresas", () => {
+    expect(orderCompaniesByLastSync([])).toEqual([]);
+  });
+
+  it("evita que la misma empresa se quede fuera siempre: la que se salta hoy entra primera mañana", () => {
+    // Reproduce el incidente del 20/09 al 30/09: Awesomely SL siempre se quedaba fuera
+    // del incremental por ir después de "Awesomely OU" en el orden alfabético.
+    const empresas = [
+      empresa("Awesomely OU", new Date("2026-09-19T06:00:00Z")),
+      empresa("Awesomely SL", new Date("2026-09-19T06:00:00Z")),
+    ];
+
+    // Las dos llegan al mismo tiempo: desempate por nombre, entra la OU primero.
+    const dia1 = orderCompaniesByLastSync(empresas);
+    expect(dia1[0].name).toBe("Awesomely OU");
+
+    // La OU se sincronizó hoy, la SL no (se quedó sin presupuesto) — mañana le toca
+    // a la SL entrar primero, no otra vez a la OU.
+    const dia2 = orderCompaniesByLastSync([
+      { ...empresas[0], lastSyncAt: new Date("2026-09-20T06:00:00Z") },
+      empresas[1],
+    ]);
+    expect(dia2[0].name).toBe("Awesomely SL");
   });
 });
