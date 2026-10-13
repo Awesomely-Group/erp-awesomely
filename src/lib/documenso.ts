@@ -1,12 +1,7 @@
 // Documenso API client — e-signature + open-tracking for client proposals.
 // Docs: https://docs.documenso.com/docs/developers/api/documents
 //       https://docs.documenso.com/docs/developers/webhooks/events
-//
-// NOTE: the exact webhook signature header/algorithm could not be confirmed from the
-// public docs during implementation (the verification sub-page wasn't reachable). Before
-// relying on `verifyWebhookSignature` in production, confirm the real header name and
-// algorithm against the webhook configured in the Documenso team settings, and adjust if
-// needed — see docs/proposals-plan-v2.md "Riesgos abiertos".
+//       https://docs.documenso.com/docs/developers/webhooks/verification
 import crypto from "node:crypto";
 
 const DOCUMENSO_BASE_URL = process.env.DOCUMENSO_BASE_URL ?? "https://app.documenso.com/api/v1";
@@ -131,18 +126,23 @@ export interface DocumensoWebhookPayload {
 }
 
 /**
- * Best-effort HMAC-SHA256 verification of the Documenso webhook secret.
- * TODO(verify): confirm the exact header name Documenso sends (assumed
- * `x-documenso-signature` below) against the live webhook config before trusting this in
- * production — see the module-level note at the top of this file.
+ * Documenso no firma el cuerpo: envía el secreto configurado tal cual en la cabecera
+ * `X-Documenso-Secret`, y el receptor lo compara con el suyo. No hay HMAC.
+ * Ver https://docs.documenso.com/docs/developers/webhooks/verification
+ *
+ * La comparación es en tiempo constante, como pide esa página. Se comparan los digests
+ * SHA-256 y no los valores en bruto porque `timingSafeEqual` exige operandos de la misma
+ * longitud: pasarle los valores directamente obligaría a comprobar la longitud antes, y
+ * esa rama filtraría por sí sola si la longitud del secreto coincide.
+ *
+ * Un secreto vacío se rechaza: Documenso manda la cabecera vacía cuando el webhook se
+ * configuró sin secreto, y eso no puede valer como válido.
  */
-export function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
-  const secret = process.env.DOCUMENSO_WEBHOOK_SECRET;
-  if (!secret || !signatureHeader) return false;
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
-  } catch {
-    return false;
-  }
+export function verifyWebhookSecret(secretHeader: string | null): boolean {
+  const expected = process.env.DOCUMENSO_WEBHOOK_SECRET;
+  if (!expected || !secretHeader) return false;
+  return crypto.timingSafeEqual(
+    crypto.createHash("sha256").update(secretHeader).digest(),
+    crypto.createHash("sha256").update(expected).digest(),
+  );
 }

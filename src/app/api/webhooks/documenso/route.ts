@@ -1,7 +1,7 @@
 import { unauthorized, json } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import { HoldedClient } from "@/lib/holded";
-import { verifyWebhookSignature, type DocumensoWebhookPayload } from "@/lib/documenso";
+import { verifyWebhookSecret, type DocumensoWebhookPayload } from "@/lib/documenso";
 import { BRAND_TO_MARCA, type ProposalBrand } from "@/lib/proposals-brand";
 import type { BudgetLineType } from "@prisma/client";
 
@@ -46,8 +46,7 @@ function buildHoldedProducts(
  */
 export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
-  const signature = req.headers.get("x-documenso-signature");
-  if (!verifyWebhookSignature(rawBody, signature)) return unauthorized();
+  if (!verifyWebhookSecret(req.headers.get("x-documenso-secret"))) return unauthorized();
 
   let payload: DocumensoWebhookPayload;
   try {

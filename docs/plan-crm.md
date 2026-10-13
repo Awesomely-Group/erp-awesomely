@@ -544,8 +544,10 @@ desemboca en nada.
    `GIGSONAPPS_PROPOSALS_SECRET`, `LTTOOLS_PROPOSALS_SECRET`.
 2. E2E con curl simulando una app de marca: crear propuesta → firmar → comprobar proforma real
    en Holded y `PaymentTerm.proformaId`.
-3. Confirmar la cabecera real de firma del webhook de Documenso (`src/lib/documenso.ts:140`
-   asume `x-documenso-signature` + HMAC-SHA256, sin confirmar).
+3. ~~Confirmar la cabecera real de firma del webhook de Documenso.~~ **Hecho el 2026-10-13**:
+   no hay firma. Documenso manda el secreto en claro en `X-Documenso-Secret`; el código
+   esperaba un HMAC en una cabecera inexistente y rechazaba con 401 todo webhook real.
+   Arreglado (`verifyWebhookSecret`) y cubierto con tests.
 4. Confirmar el esquema de creación de documentos contra una cuenta real (API pública de
    Documenso migrando al modelo "envelope").
 5. Actualizar §7.1 de la estrategia en Confluence, que sigue diciendo "Holded / DocuSign", para
