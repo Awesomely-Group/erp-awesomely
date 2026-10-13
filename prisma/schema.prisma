@@ -1320,6 +1320,59 @@ enum CrmActivityType {
   @@map("crm_activity_type")
 }
 
+/// Naturaleza de la cuenta (D10, revisión 2026-09-20). PARTNER es el prescriptor que
+/// trae negocio: Z1 Gestión ha aportado al menos tres clientes, Holded deriva leads y
+/// Odoo paga comisión de partner. `lifecycle` solo tiene sentido para CLIENT — un
+/// prescriptor no recorre el embudo. Los proveedores NO entran en el CRM: el ERP ya
+/// tiene `Supplier` y duplicarlos daría dos fuentes de verdad para el mismo tercero.
+enum CrmAccountType {
+  CLIENT
+  PARTNER
+
+  @@map("crm_account_type")
+}
+
+/// Relación entre dos cuentas (D8, revisión 2026-09-20). Los casos reales no caben en
+/// una jerarquía única: Charming Concept y Only Charming son sociedades hermanas, Boby
+/// Brands es el holding de ZZEN Labs, e Iknoga es proveedor de Dream España. Por eso la
+/// relación va tipada y no como un `parentAccountId`.
+enum CrmRelationType {
+  HOLDING_OF
+  SUBSIDIARY_OF
+  SIBLING_OF
+  SUPPLIER_OF
+  ADVISOR_OF
+
+  @@map("crm_relation_type")
+}
+
+/// Papel de una persona en la decisión de una oportunidad (revisión 2026-09-20). Quien
+/// manda no siempre trabaja en la cuenta: David Castany (aspeadvisors) decide en ZZEN
+/// Labs, Javier Granado (zinco.ai) en Quick Smile y E. Martín (Veltian) en LUVI 2000.
+enum CrmDecisionRole {
+  DECISOR
+  PRESCRIPTOR
+  ASESOR_EXTERNO
+  TECNICO
+  ADMINISTRATIVO
+  USUARIO
+
+  @@map("crm_decision_role")
+}
+
+/// Tipo de operación (D9, revisión 2026-09-20). Con una oportunidad por frente de
+/// trabajo un retainer genera varias —Moda re- tiene 7 frentes activos a la vez—, así
+/// que sin distinguir negocio nuevo de ampliación esos 7 contarían como 7 ventas nuevas
+/// e inflarían tanto las conversiones del embudo como el objetivo de "9 implantaciones"
+/// de la línea Odoo.
+enum CrmDealType {
+  NEW_BUSINESS
+  EXPANSION
+  RENEWAL
+
+  @@map("crm_deal_type")
+}
+
 /// Origen del lead (revisión 2026-09-18, impacto plan Odoo): distingue base
 /// instalada que se migra/amplía (INSIDE_OUT) de mercado abierto (OUTSIDE_IN) — el
 /// deck de Odoo separa objetivos por ese mix, y LaTroupe necesita lo mismo para su
@@ -1386,6 +1439,11 @@ model CrmLead {
   market String?
   seats  Int?
 
+  // Ver CrmDealType. Por defecto NEW_BUSINESS: la mayoría de oportunidades lo son y
+  // dejarlo nulo obligaría a tratar el nulo en cada consulta de KPIs. Las ampliaciones
+  // de retainer y las renovaciones se marcan a mano.
+  dealType CrmDealType @default(NEW_BUSINESS)
+
   stageId String
   stage   CrmStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
 
@@ -1418,10 +1476,11 @@ model CrmLead {
   // Se rellena al ganar el lead y convertirlo en proyecto real.
   projectId String?
 
-  stageEvents CrmLeadStageEvent[]
-  activities  CrmActivity[]
-  budgets     Budget[]
-  commissions Commission[]
+  stageEvents  CrmLeadStageEvent[]
+  activities   CrmActivity[]
+  budgets      Budget[]
+  commissions  Commission[]
+  contactRoles CrmLeadContact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1432,6 +1491,7 @@ model CrmLead {
   @@index([ownerId])
   @@index([accountId])
   @@index([source])
+  @@index([dealType])
   @@map("crm_leads")
 }
 
@@ -1466,8 +1526,16 @@ model CrmAccount {
   name      String
   domain    String?
   vatNumber String?
+  type      CrmAccountType      @default(CLIENT)
   lifecycle CrmAccountLifecycle @default(LEAD)
   marca     String?
+
+  /// Prescriptor que trajo esta cuenta. Sin esto no se puede medir cuánto negocio
+  /// aporta cada partner — Z1 Gestión trajo al menos Dental de la Vega, Control de
+  /// Obras Públicas y Raméntol.
+  referredByAccountId String?
+  referredBy          CrmAccount?  @relation("CrmAccountReferrals", fields: [referredByAccountId], references: [id], onDelete: SetNull)
+  referrals           CrmAccount[] @relation("CrmAccountReferrals")
 
   ownerId String?
   owner   User?   @relation("CrmAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
@@ -1481,12 +1549,37 @@ model CrmAccount {
   activities CrmActivity[]
   projects   JiraProject[]
 
+  relationsFrom CrmAccountRelation[] @relation("CrmRelationFrom")
+  relationsTo   CrmAccountRelation[] @relation("CrmRelationTo")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([companyId, holdedContactId])
   @@index([ownerId])
+  @@index([type])
+  @@index([referredByAccountId])
   @@map("crm_accounts")
+}
+
+/// Ver CrmRelationType. Cada cuenta conserva sus propios leads, contactos y
+/// `holdedContactId`: esto solo las enlaza, no las fusiona.
+model CrmAccountRelation {
+  id            String          @id @default(cuid())
+  fromAccountId String
+  fromAccount   CrmAccount      @relation("CrmRelationFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  toAccountId   String
+  toAccount     CrmAccount      @relation("CrmRelationTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+  type          CrmRelationType
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromAccountId, toAccountId, type])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@map("crm_account_relations")
 }
 
 model CrmContact {
@@ -1497,7 +1590,11 @@ model CrmContact {
   name  String
   email String?
   phone String?
+  /// Cargo en su empresa ("Finance Manager"). El papel que juega en una oportunidad
+  /// concreta es otra cosa y vive en CrmLeadContact.
   role  String?
+
+  leadRoles CrmLeadContact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1506,6 +1603,25 @@ model CrmContact {
   /// El portal de cliente resuelve qué cliente es por el email de la persona.
   @@index([email])
   @@map("crm_contacts")
+}
+
+/// Ver CrmDecisionRole. Un contacto puede participar en oportunidades de una cuenta
+/// distinta a la suya — es justo el caso de los asesores externos.
+model CrmLeadContact {
+  id        String          @id @default(cuid())
+  leadId    String
+  lead      CrmLead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   CrmContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role      CrmDecisionRole @default(USUARIO)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([leadId, contactId])
+  @@index([leadId])
+  @@index([contactId])
+  @@map("crm_lead_contacts")
 }
 
 model CrmActivity {

@@ -9,8 +9,17 @@ import {
   assignLeadOwner,
   createActivity,
   completeActivity,
+  updateLeadDealType,
+  setLeadContactRole,
+  removeLeadContact,
 } from "../../actions";
-import type { CrmActivityType, CrmLeadOrigin } from "@prisma/client";
+import type {
+  CrmActivityType,
+  CrmDealType,
+  CrmDecisionRole,
+  CrmLeadOrigin,
+} from "@prisma/client";
+import { DEAL_TYPE_OPTIONS, DECISION_ROLE_OPTIONS } from "@/lib/crm-relations";
 
 const ORIGIN_LABEL: Record<CrmLeadOrigin, string> = {
   INSIDE_OUT: "Base instalada (inside-out)",
@@ -19,6 +28,14 @@ const ORIGIN_LABEL: Record<CrmLeadOrigin, string> = {
   INBOUND: "Inbound",
   PARTNER: "Partner",
 };
+
+/** Persona que participa en la decisión — puede ser de otra cuenta (asesor externo). */
+export interface LeadDecisionContact {
+  contactId: string;
+  name: string;
+  accountName: string;
+  role: CrmDecisionRole;
+}
 
 export interface LeadDetail {
   id: string;
@@ -35,6 +52,8 @@ export interface LeadDetail {
   market: string | null;
   seats: number | null;
   qualified: boolean;
+  dealType: CrmDealType;
+  decisionContacts: LeadDecisionContact[];
   stageId: string;
   stageName: string;
   ownerId: string | null;
@@ -65,10 +84,12 @@ export function LeadDetailView({
   lead,
   stages,
   users,
+  contacts,
 }: {
   lead: LeadDetail;
   stages: { id: string; name: string; order: number }[];
   users: { id: string; label: string }[];
+  contacts: { id: string; label: string }[];
 }): React.JSX.Element {
   const [isPending, startTransition] = useTransition();
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -91,6 +112,18 @@ export function LeadDetailView({
   function handleOwnerChange(ownerId: string): void {
     startTransition(async () => {
       await assignLeadOwner(lead.id, ownerId || null);
+    });
+  }
+
+  function handleDealTypeChange(dealType: CrmDealType): void {
+    startTransition(async () => {
+      await updateLeadDealType(lead.id, dealType);
+    });
+  }
+
+  function handleContactRole(contactId: string, role: CrmDecisionRole): void {
+    startTransition(async () => {
+      await setLeadContactRole(lead.id, contactId, role);
     });
   }
 
@@ -189,6 +222,67 @@ export function LeadDetailView({
                 </div>
               )}
             </dl>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-900">Personas en la decisión</h2>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Pueden ser de otra cuenta: los asesores externos deciden sin trabajar en la
+              empresa cliente.
+            </p>
+            <ul className="mt-2 space-y-1.5 text-sm">
+              {lead.decisionContacts.map((c) => (
+                <li key={c.contactId} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-gray-900">
+                    {c.name} <span className="text-gray-400">· {c.accountName}</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <select
+                      value={c.role}
+                      disabled={isPending}
+                      onChange={(e) => handleContactRole(c.contactId, e.target.value as CrmDecisionRole)}
+                      className="rounded-md border border-gray-300 px-1.5 py-1 text-xs text-gray-900"
+                    >
+                      {DECISION_ROLE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() =>
+                        startTransition(async () => {
+                          await removeLeadContact(lead.id, c.contactId);
+                        })
+                      }
+                      disabled={isPending}
+                      title="Quitar de la decisión"
+                      className="text-gray-300 hover:text-gray-600"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </li>
+              ))}
+              {lead.decisionContacts.length === 0 && (
+                <li className="text-xs text-gray-400">Nadie asignado todavía.</li>
+              )}
+            </ul>
+            <select
+              value=""
+              disabled={isPending}
+              onChange={(e) => e.target.value && handleContactRole(e.target.value, "USUARIO")}
+              className="mt-2 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+            >
+              <option value="">+ Añadir persona…</option>
+              {contacts
+                .filter((c) => !lead.decisionContacts.some((d) => d.contactId === c.id))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+            </select>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -332,6 +426,26 @@ export function LeadDetailView({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-900">Tipo de operación</h2>
+            <select
+              value={lead.dealType}
+              disabled={isPending}
+              onChange={(e) => handleDealTypeChange(e.target.value as CrmDealType)}
+              className="mt-2 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            >
+              {DEAL_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Las ampliaciones de un retainer no son ventas nuevas: marcarlas evita inflar
+              las conversiones y los objetivos de captación.
+            </p>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">

@@ -3,7 +3,15 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireAdmin } from "@/lib/roles";
 import { revalidatePath } from "next/cache";
-import { CrmActivityType, CrmLeadOrigin, Prisma } from "@prisma/client";
+import {
+  CrmAccountType,
+  CrmActivityType,
+  CrmDealType,
+  CrmDecisionRole,
+  CrmLeadOrigin,
+  CrmRelationType,
+  Prisma,
+} from "@prisma/client";
 
 interface CreateLeadPayload {
   name: string;
@@ -19,6 +27,8 @@ interface CreateLeadPayload {
   origin?: CrmLeadOrigin | null;
   market?: string | null;
   seats?: number | null;
+  /** Ver CrmDealType — por defecto negocio nuevo. */
+  dealType?: CrmDealType;
 }
 
 /** Alta manual desde el ERP (D7) — source: MANUAL, a diferencia del webhook de leads. */
@@ -49,6 +59,7 @@ export async function createLeadManual(payload: CreateLeadPayload): Promise<{ id
       origin: payload.origin ?? null,
       market: payload.market ?? null,
       seats: payload.seats ?? null,
+      dealType: payload.dealType ?? "NEW_BUSINESS",
       stageId: firstStage.id,
       stageEvents: { create: { toStageId: firstStage.id, trigger: "MANUAL_DRAG" } },
     },
@@ -208,6 +219,118 @@ export async function linkLeadToAccount(leadId: string, accountId: string | null
   await requireSession();
   await prisma.crmLead.update({ where: { id: leadId }, data: { accountId } });
   revalidatePath(`/crm/leads/${leadId}`);
+}
+
+/**
+ * Marca la oportunidad como negocio nuevo, ampliación o renovación (D9). Importa para
+ * los KPIs: con una oportunidad por frente de trabajo, los 7 frentes de un retainer
+ * contarían como 7 ventas nuevas si todos quedaran en NEW_BUSINESS.
+ */
+export async function updateLeadDealType(leadId: string, dealType: CrmDealType): Promise<void> {
+  await requireSession();
+  await prisma.crmLead.update({ where: { id: leadId }, data: { dealType } });
+  revalidatePath(`/crm/leads/${leadId}`);
+  revalidatePath("/crm");
+}
+
+/** Papel de una persona en la decisión de esta oportunidad. Idempotente por (lead, contacto). */
+export async function setLeadContactRole(
+  leadId: string,
+  contactId: string,
+  role: CrmDecisionRole
+): Promise<void> {
+  await requireSession();
+  await prisma.crmLeadContact.upsert({
+    where: { leadId_contactId: { leadId, contactId } },
+    update: { role },
+    create: { leadId, contactId, role },
+  });
+  revalidatePath(`/crm/leads/${leadId}`);
+}
+
+export async function removeLeadContact(leadId: string, contactId: string): Promise<void> {
+  await requireSession();
+  await prisma.crmLeadContact.deleteMany({ where: { leadId, contactId } });
+  revalidatePath(`/crm/leads/${leadId}`);
+}
+
+interface AccountRelationPayload {
+  fromAccountId: string;
+  toAccountId: string;
+  type: CrmRelationType;
+  note?: string | null;
+}
+
+/**
+ * Enlaza dos cuentas sin fusionarlas (D8): cada una conserva sus leads, sus contactos y
+ * su `holdedContactId`. Se guarda en un solo sentido; la ficha de la otra cuenta la lee
+ * invertida (ver describeRelation en src/lib/crm-relations.ts).
+ */
+export async function addAccountRelation(payload: AccountRelationPayload): Promise<void> {
+  await requireSession();
+
+  if (payload.fromAccountId === payload.toAccountId) {
+    throw new Error("Una cuenta no puede relacionarse consigo misma");
+  }
+
+  try {
+    await prisma.crmAccountRelation.create({
+      data: {
+        fromAccountId: payload.fromAccountId,
+        toAccountId: payload.toAccountId,
+        type: payload.type,
+        note: payload.note ?? null,
+      },
+    });
+  } catch (err) {
+    // @@unique([fromAccountId, toAccountId, type]) — ya existía esa misma relación.
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;
+  }
+
+  revalidatePath(`/crm/cuentas/${payload.fromAccountId}`);
+  revalidatePath(`/crm/cuentas/${payload.toAccountId}`);
+}
+
+export async function removeAccountRelation(relationId: string): Promise<void> {
+  await requireSession();
+  const relation = await prisma.crmAccountRelation.delete({
+    where: { id: relationId },
+    select: { fromAccountId: true, toAccountId: true },
+  });
+  revalidatePath(`/crm/cuentas/${relation.fromAccountId}`);
+  revalidatePath(`/crm/cuentas/${relation.toAccountId}`);
+}
+
+interface UpdateAccountPayload {
+  accountId: string;
+  type?: CrmAccountType;
+  /** Prescriptor que trajo la cuenta — null la desvincula. */
+  referredByAccountId?: string | null;
+}
+
+/**
+ * Tipo de cuenta y prescriptor (D10). PARTNER es quien trae negocio —Z1 Gestión, Holded,
+ * Odoo—; los proveedores no entran en el CRM porque el ERP ya tiene `Supplier`.
+ */
+export async function updateAccountClassification(payload: UpdateAccountPayload): Promise<void> {
+  await requireSession();
+
+  if (payload.referredByAccountId === payload.accountId) {
+    throw new Error("Una cuenta no puede ser su propio prescriptor");
+  }
+
+  await prisma.crmAccount.update({
+    where: { id: payload.accountId },
+    data: {
+      ...(payload.type ? { type: payload.type } : {}),
+      ...(payload.referredByAccountId !== undefined
+        ? { referredByAccountId: payload.referredByAccountId }
+        : {}),
+    },
+  });
+
+  revalidatePath(`/crm/cuentas/${payload.accountId}`);
+  revalidatePath("/crm/cuentas");
 }
 
 interface UpdateCommissionRulePayload {

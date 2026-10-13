@@ -19,11 +19,15 @@ export default async function LeadDetailPage({
       activities: { orderBy: { createdAt: "desc" } },
       budgets: { select: { id: true, name: true, amount: true, status: true, documensoStatus: true } },
       commissions: true,
+      contactRoles: {
+        include: { contact: { include: { account: { select: { name: true } } } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!lead) notFound();
 
-  const [stages, users] = await Promise.all([
+  const [stages, users, contacts] = await Promise.all([
     // Solo las etapas del mismo funnel (marca + lineOfBusiness) — ver
     // CrmStage.lineOfBusiness, revisión 2026-09-18.
     prisma.crmStage.findMany({
@@ -31,6 +35,12 @@ export default async function LeadDetailPage({
       orderBy: { order: "asc" },
     }),
     prisma.user.findMany({ select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
+    // Todos los contactos, no solo los de la cuenta del lead: el asesor externo que
+    // decide trabaja en otra empresa (ver CrmDecisionRole).
+    prisma.crmContact.findMany({
+      include: { account: { select: { name: true } } },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const detail: LeadDetail = {
@@ -48,6 +58,13 @@ export default async function LeadDetailPage({
     market: lead.market,
     seats: lead.seats,
     qualified: lead.qualified,
+    dealType: lead.dealType,
+    decisionContacts: lead.contactRoles.map((r) => ({
+      contactId: r.contactId,
+      name: r.contact.name,
+      accountName: r.contact.account.name,
+      role: r.role,
+    })),
     stageId: lead.stageId,
     stageName: lead.stage.name,
     ownerId: lead.ownerId,
@@ -83,6 +100,7 @@ export default async function LeadDetailPage({
       lead={detail}
       stages={stages.map((s) => ({ id: s.id, name: s.name, order: s.order }))}
       users={users.map((u) => ({ id: u.id, label: u.name ?? u.email }))}
+      contacts={contacts.map((c) => ({ id: c.id, label: `${c.name} · ${c.account.name}` }))}
     />
   );
 }

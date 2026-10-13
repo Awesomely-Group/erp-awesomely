@@ -1,3 +1,5 @@
+import type { CrmDealType } from "@prisma/client"
+
 export interface KPIFilters {
   year?: number
   dateFrom?: Date
@@ -11,6 +13,13 @@ export interface KPIFilters {
    * getCommercialKPIs(). Una marca sin líneas de negocio distintas usa "GENERAL".
    */
   lineOfBusiness?: string
+  /**
+   * CrmLead.dealType (revisión 2026-09-20) — solo en getCommercialKPIs(). Los objetivos
+   * de captación ("9 implantaciones de Odoo en el año 1") cuentan ventas nuevas: con una
+   * oportunidad por frente de trabajo, un retainer genera ampliaciones que las inflarían.
+   * Para medirlos hay que pasar `dealType: "NEW_BUSINESS"` explícitamente.
+   */
+  dealType?: CrmDealType
 }
 
 // ─── P&L KPIs ─────────────────────────────────────────────────────────────────
@@ -111,6 +120,12 @@ export interface CommercialKPIs {
   /** Leads creados en el periodo filtrado. */
   leadsCreated: number
   leadsByOrigin: Record<string, number>
+  /**
+   * Mezcla de negocio nuevo, ampliación y renovación. Se devuelve siempre, también
+   * cuando no se filtra por `dealType`, para que se vea cuánto de lo contado es venta
+   * nueva de verdad sin tener que lanzar una segunda consulta.
+   */
+  leadsByDealType: Record<string, number>
   wonCount: number
   lostCount: number
   winRatePct: number | null

@@ -553,6 +553,13 @@ desemboca en nada.
 5. Actualizar §7.1 de la estrategia en Confluence, que sigue diciendo "Holded / DocuSign", para
    que refleje Documenso (D5).
 
+> **Estado al 2026-10-13**: el módulo se construyó y mergeó el 18-sep (#37) con la D4 ya
+> invertida, y la carga de cuentas y contactos el 20-sep (#44). Las cuatro piezas acordadas
+> los días 20-21 —relaciones entre cuentas, papel en la decisión, tipo de operación y
+> cuentas de tipo prescriptor— se añadieron el 13-oct, después del módulo. Siguen abiertos:
+> los puntos 1, 2 y 4 de F0 (necesitan credenciales), la carga de las 22 oportunidades, el
+> recordatorio de próximos pasos de F5 y todo lo de "Fuera del CRM".
+
 ### F1 — Modelo de datos, embudos y migración (2-3 j)
 - `prisma/schema.prisma` + migración `2026xxxxxxxxxx_add_crm_module` con los modelos de arriba.
   **No hay cliente de `api/crm/v1` ni `syncHoldedCrm()`**: el pipeline no se sincroniza con nada.

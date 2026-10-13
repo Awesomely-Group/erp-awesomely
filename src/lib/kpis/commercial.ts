@@ -6,6 +6,12 @@ import type { KPIFilters, CommercialKPIs, CommercialFunnelStage } from "./types"
  * activación de Odoo). Mismo patrón que el resto de src/lib/kpis/*: recibe
  * `KPIFilters` (aquí también `marca`/`lineOfBusiness`) y devuelve un objeto plano.
  *
+ * `dealType` (revisión 2026-09-20) acota los leads pero NO se aplica por defecto: el
+ * pipeline ponderado es dinero real y una ampliación de retainer cuenta igual que una
+ * venta nueva. Lo que sí distorsiona la mezcla son los objetivos de captación, y esos
+ * se piden con el filtro puesto. El desglose `leadsByDealType` sale siempre para que la
+ * proporción se vea sin lanzar otra consulta.
+ *
  * Si no se pasa `marca`, se agrega sobre todas las marcas/líneas a la vez — útil
  * para una vista consolidada, pero las conversiones dejan de tener el sentido por
  * embudo que motivó `lineOfBusiness`; el caller debería normalmente iterar por
@@ -20,25 +26,32 @@ export async function getCommercialKPIs(filters: KPIFilters): Promise<Commercial
     ...(filters.marca ? { marca: filters.marca } : {}),
     ...(filters.lineOfBusiness ? { lineOfBusiness: filters.lineOfBusiness } : {}),
   };
+  // El tipo de operación solo acota los leads: las etapas del embudo no lo tienen.
+  const leadWhere = {
+    ...scopeWhere,
+    ...(filters.dealType ? { dealType: filters.dealType } : {}),
+  };
 
   const [leadsInPeriod, stages, openLeads] = await Promise.all([
     prisma.crmLead.findMany({
-      where: { ...scopeWhere, createdAt: { gte: dateFrom, lt: dateTo } },
+      where: { ...leadWhere, createdAt: { gte: dateFrom, lt: dateTo } },
       include: { stage: true, stageEvents: { orderBy: { changedAt: "asc" } } },
     }),
     prisma.crmStage.findMany({ where: scopeWhere, orderBy: { order: "asc" } }),
     // Pipeline ponderado y funnel: foto actual, no acotada al periodo (un lead
     // abierto pudo crearse antes del rango filtrado y seguir vivo hoy).
     prisma.crmLead.findMany({
-      where: { ...scopeWhere, stage: { isWon: false, isLost: false } },
+      where: { ...leadWhere, stage: { isWon: false, isLost: false } },
       select: { amount: true, probability: true, stageId: true },
     }),
   ]);
 
   const leadsByOrigin: Record<string, number> = {};
+  const leadsByDealType: Record<string, number> = {};
   for (const lead of leadsInPeriod) {
     const key = lead.origin ?? "SIN_ORIGEN";
     leadsByOrigin[key] = (leadsByOrigin[key] ?? 0) + 1;
+    leadsByDealType[lead.dealType] = (leadsByDealType[lead.dealType] ?? 0) + 1;
   }
 
   const wonLeads = leadsInPeriod.filter((l) => l.stage.isWon);
@@ -89,6 +102,7 @@ export async function getCommercialKPIs(filters: KPIFilters): Promise<Commercial
     dateTo: dateTo.toISOString(),
     leadsCreated: leadsInPeriod.length,
     leadsByOrigin,
+    leadsByDealType,
     wonCount: wonLeads.length,
     lostCount: lostLeads.length,
     winRatePct,
