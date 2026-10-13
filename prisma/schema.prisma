@@ -32,8 +32,9 @@ model User {
   apiKeys       ApiKey[]
 
   ownedLeads      CrmLead[]           @relation("CrmLeadOwner")
+  ownedDeals      CrmDeal[]           @relation("CrmDealOwner")
   ownedAccounts   CrmAccount[]        @relation("CrmAccountOwner")
-  leadStageEvents CrmLeadStageEvent[]
+  dealStageEvents CrmDealStageEvent[]
   commissions     Commission[]
 
   createdAt DateTime @default(now())
@@ -984,8 +985,8 @@ model Budget {
 
   // Lead de Growth/CRM del que nace esta propuesta (D7/F7) — dispara la comisión
   // PROPOSAL_PERCENT al firmarse (ver src/app/api/webhooks/documenso/route.ts).
-  crmLeadId String?
-  crmLead   CrmLead? @relation(fields: [crmLeadId], references: [id], onDelete: SetNull)
+  crmDealId String?
+  crmDeal   CrmDeal? @relation(fields: [crmDealId], references: [id], onDelete: SetNull)
 
   name           String
   type           BudgetType
@@ -1033,7 +1034,7 @@ model Budget {
   @@index([projectId])
   @@index([status])
   @@index([companyId])
-  @@index([crmLeadId])
+  @@index([crmDealId])
   @@map("budgets")
 }
 
@@ -1320,11 +1321,69 @@ enum CrmActivityType {
   @@map("crm_activity_type")
 }
 
+/// Naturaleza de la cuenta (D10, revisión 2026-09-20). PARTNER es el prescriptor que
+/// trae negocio: Z1 Gestión ha aportado al menos tres clientes, Holded deriva leads y
+/// Odoo paga comisión de partner. `lifecycle` solo tiene sentido para CLIENT — un
+/// prescriptor no recorre el embudo. Los proveedores NO entran en el CRM: el ERP ya
+/// tiene `Supplier` y duplicarlos daría dos fuentes de verdad para el mismo tercero.
+enum CrmAccountType {
+  CLIENT
+  PARTNER
+
+  @@map("crm_account_type")
+}
+
+/// Relación entre dos cuentas (D8, revisión 2026-09-20). Los casos reales no caben en
+/// una jerarquía única: Charming Concept y Only Charming son sociedades hermanas, Boby
+/// Brands es el holding de ZZEN Labs, e Iknoga es proveedor de Dream España. Por eso la
+/// relación va tipada y no como un `parentAccountId`.
+enum CrmRelationType {
+  HOLDING_OF
+  SUBSIDIARY_OF
+  SIBLING_OF
+  SUPPLIER_OF
+  ADVISOR_OF
+
+  @@map("crm_relation_type")
+}
+
+/// Papel de una persona en la decisión de una oportunidad (revisión 2026-09-20). Quien
+/// manda no siempre trabaja en la cuenta: en varias de nuestras cuentas el que decide es
+/// un asesor externo de otra empresa (asesoría fiscal, consultora técnica), y duplicarlo
+/// como contacto del cliente falsearía a qué empresa pertenece.
+enum CrmDecisionRole {
+  DECISOR
+  PRESCRIPTOR
+  ASESOR_EXTERNO
+  TECNICO
+  ADMINISTRATIVO
+  USUARIO
+
+  @@map("crm_decision_role")
+}
+
+/// Tipo de operación (D9, revisión 2026-09-20). Con una oportunidad por frente de
+/// trabajo un retainer genera varias —Moda re- tiene 7 frentes activos a la vez—, así
+/// que sin distinguir negocio nuevo de ampliación esos 7 contarían como 7 ventas nuevas
+/// e inflarían tanto las conversiones del embudo como el objetivo de "9 implantaciones"
+/// de la línea Odoo.
+enum CrmDealType {
+  NEW_BUSINESS
+  EXPANSION
+  RENEWAL
+
+  @@map("crm_deal_type")
+}
+
 /// Origen del lead (revisión 2026-09-18, impacto plan Odoo): distingue base
 /// instalada que se migra/amplía (INSIDE_OUT) de mercado abierto (OUTSIDE_IN) — el
 /// deck de Odoo separa objetivos por ese mix, y LaTroupe necesita lo mismo para su
 /// "tasa de referidos >50%".
-enum CrmLeadOrigin {
+/// Cómo llegó el negocio. Lo llevan el lead y el deal: el deal lo hereda de su lead
+/// cuando nace de uno, y lo lleva por sí mismo cuando surge de un cliente que ya está
+/// dentro — que no tiene lead y aun así hay que saber si fue inside-out. La mezcla
+/// inside-out/outside-in es objetivo explícito del plan de activación de Odoo.
+enum CrmOrigin {
   INSIDE_OUT
   OUTSIDE_IN
   REFERRAL
@@ -1351,10 +1410,17 @@ model CrmStage {
   order          Int
   isWon          Boolean @default(false)
   isLost         Boolean @default(false)
+  /// Un lead en esta etapa cuenta como cualificado (revisión 2026-10-13). Antes era un
+  /// booleano suelto en CrmLead y había dos verdades: se podía arrastrar un lead a
+  /// "Cualificado" y no cobrar la comisión porque nadie marcó la casilla, o al revés.
+  /// Mismo criterio que isWon/isLost: el desenlace lo dice la etapa, no el nombre ni una
+  /// marca aparte. Lo normal es marcarla desde la etapa de cualificación en adelante,
+  /// salvo la de perdido.
+  isQualified    Boolean @default(false)
 
-  leads      CrmLead[]
-  fromEvents CrmLeadStageEvent[] @relation("StageEventFrom")
-  toEvents   CrmLeadStageEvent[] @relation("StageEventTo")
+  deals      CrmDeal[]
+  fromEvents CrmDealStageEvent[] @relation("StageEventFrom")
+  toEvents   CrmDealStageEvent[] @relation("StageEventTo")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1364,37 +1430,52 @@ model CrmStage {
   @@map("crm_stages")
 }
 
+/// Estado de un lead ANTES de convertirse en oportunidad (revisión 2026-10-13). El
+/// embudo de etapas vive en el deal, no aquí: un lead solo recorre "ha entrado",
+/// "le hemos hablado" y "sirve o no sirve".
+enum CrmLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  DISQUALIFIED
+
+  @@map("crm_lead_status")
+}
+
+/// Entrada comercial sin cualificar. Puede no tener cuenta: llega gente de la que no
+/// consta ni la razón social, y forzar una cuenta obligaría a inventársela.
+///
+/// Al cualificarlo se convierte en uno o varios `CrmDeal` (ver convertLeadToDeal): un
+/// mismo contacto puede abrir varias oportunidades a la vez, y un cliente que ya existe
+/// genera deals sin pasar por aquí — de ahí que `CrmDeal.sourceLeadId` sea opcional.
 model CrmLead {
   id             String        @id @default(cuid())
   name           String
   marca          String
-  // Ver comentario en CrmStage.lineOfBusiness — debe coincidir con la línea del
-  // CrmStage al que apunta `stageId` (no hay constraint de BD que lo garantice, se
-  // valida en el código que crea/mueve el lead).
   lineOfBusiness String        @default("GENERAL")
   source         CrmLeadSource
+  status         CrmLeadStatus @default(NEW)
 
   contactName String?
   email       String?
   phone       String?
-  amount      Decimal?
 
-  // Mix inside-out/outside-in (plan Odoo) y pipeline por mercado (LaTroupe: UK/US/
-  // ES/Nórdicos/Sudáfrica, porque su paid está segmentado así). `seats` es el nº de
-  // usuarios propuestos — objetivo de la línea Odoo (~75 en el año 1).
-  origin CrmLeadOrigin?
+  origin CrmOrigin?
   market String?
-  seats  Int?
 
-  stageId String
-  stage   CrmStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  /// Lo que el formulario o Apollo DECLARAN, no un compromiso: siembra el importe y los
+  /// usuarios del primer deal al convertir. La cifra con la que se hace previsión es
+  /// CrmDeal.amount, que es la que el comercial confirma.
+  estimatedAmount Decimal?
+  seats           Int?
 
-  // Nullable (revisión 2026-09-18): hoy no hay ningún usuario con rol COMERCIAL
-  // asignado todavía (D8) — un lead entrante por webhook puede quedar "sin asignar"
-  // hasta que un admin lo reparta, en vez de forzar un dueño ficticio.
+  // Nullable: un lead entrante por webhook puede quedar "sin asignar" hasta que un
+  // admin lo reparta, en vez de forzar un dueño ficticio.
   ownerId String?
   owner   User?   @relation("CrmLeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
+  // Opcional a propósito: si ya sabemos de qué empresa es, se enlaza; si no, se queda
+  // suelto hasta la conversión.
   accountId String?
   account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
@@ -1407,20 +1488,12 @@ model CrmLead {
   // Idempotencia de los 3 canales de entrada — único por origen (D7).
   externalRef String?
 
-  // Checkbox manual (D9): cualifica al lead y habilita la comisión de 20€ por
-  // reunión cerrada (ver CrmActivity.type MEETING + completedAt).
-  qualified Boolean @default(false)
+  notes               String?
+  disqualifiedReason  String?
+  convertedAt         DateTime?
 
-  expectedCloseDate DateTime?
-  probability       Int?
-  notes             String?
-
-  // Se rellena al ganar el lead y convertirlo en proyecto real.
-  projectId String?
-
-  stageEvents CrmLeadStageEvent[]
   activities  CrmActivity[]
-  budgets     Budget[]
+  deals       CrmDeal[]
   commissions Commission[]
 
   createdAt DateTime @default(now())
@@ -1428,20 +1501,84 @@ model CrmLead {
 
   @@unique([source, externalRef])
   @@index([marca])
-  @@index([stageId])
+  @@index([status])
   @@index([ownerId])
   @@index([accountId])
   @@index([source])
   @@map("crm_leads")
 }
 
+/// Oportunidad cualificada y cuantificada. Siempre cuelga de una cuenta: es lo que la
+/// distingue de un lead. Una cuenta puede tener varios deals abiertos a la vez — el
+/// retainer de Moda re- tiene siete frentes vivos, cada uno con su etapa y su importe.
+model CrmDeal {
+  id             String @id @default(cuid())
+  name           String
+  marca          String
+  // Debe coincidir con la línea del CrmStage al que apunta `stageId` (no hay constraint
+  // de BD que lo garantice, se valida en el código que crea/mueve el deal).
+  lineOfBusiness String @default("GENERAL")
+
+  accountId String
+  account   CrmAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  stageId String
+  stage   CrmStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  amount   Decimal?
+  currency String   @default("EUR")
+
+  // Ver CrmDealType. Por defecto NEW_BUSINESS: la mayoría lo son y dejarlo nulo
+  // obligaría a tratar el nulo en cada consulta de KPIs.
+  dealType CrmDealType @default(NEW_BUSINESS)
+
+  // `seats` es el nº de usuarios propuestos — objetivo de la línea Odoo (~75 el año 1).
+  seats             Int?
+  origin            CrmOrigin?
+  market            String?
+  probability       Int?
+  expectedCloseDate DateTime?
+  notes             String?
+
+  ownerId String?
+  owner   User?   @relation("CrmDealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  /// De qué lead nació, si nació de uno. Null para el negocio que surge de un cliente
+  /// que ya tenemos, que es la mayoría del volumen.
+  sourceLeadId String?
+  sourceLead   CrmLead? @relation(fields: [sourceLeadId], references: [id], onDelete: SetNull)
+
+  /// Se rellena al ganarlo y convertirlo en proyecto real.
+  projectId String?
+
+  /// Idempotencia de la carga inicial (scripts/import-crm.ts).
+  externalRef String? @unique
+
+  stageEvents  CrmDealStageEvent[]
+  activities   CrmActivity[]
+  budgets      Budget[]
+  commissions  Commission[]
+  contactRoles CrmDealContact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([marca])
+  @@index([stageId])
+  @@index([ownerId])
+  @@index([accountId])
+  @@index([dealType])
+  @@index([sourceLeadId])
+  @@map("crm_deals")
+}
+
 /// Historial de cambios de etapa — siempre originado en el ERP (ya no hay
 /// distinción SYNC/ERP del plan original porque no hay sync con Holded). Sin
 /// esto no hay ciclo de venta medible (KPIs de Growth).
-model CrmLeadStageEvent {
+model CrmDealStageEvent {
   id     String  @id @default(cuid())
-  leadId String
-  lead   CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dealId String
+  deal   CrmDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   fromStageId String?
   fromStage   CrmStage? @relation("StageEventFrom", fields: [fromStageId], references: [id], onDelete: SetNull)
@@ -1454,9 +1591,9 @@ model CrmLeadStageEvent {
 
   changedAt DateTime @default(now())
 
-  @@index([leadId])
+  @@index([dealId])
   @@index([changedAt])
-  @@map("crm_lead_stage_events")
+  @@map("crm_deal_stage_events")
 }
 
 /// Cuenta de cliente canónica del ERP (no existe en Holded). `holdedContactId`
@@ -1466,8 +1603,16 @@ model CrmAccount {
   name      String
   domain    String?
   vatNumber String?
+  type      CrmAccountType      @default(CLIENT)
   lifecycle CrmAccountLifecycle @default(LEAD)
   marca     String?
+
+  /// Prescriptor que trajo esta cuenta. Sin esto no se puede medir cuánto negocio
+  /// aporta cada partner — Z1 Gestión trajo al menos Dental de la Vega, Control de
+  /// Obras Públicas y Raméntol.
+  referredByAccountId String?
+  referredBy          CrmAccount?  @relation("CrmAccountReferrals", fields: [referredByAccountId], references: [id], onDelete: SetNull)
+  referrals           CrmAccount[] @relation("CrmAccountReferrals")
 
   ownerId String?
   owner   User?   @relation("CrmAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
@@ -1477,16 +1622,42 @@ model CrmAccount {
   holdedContactId String?
 
   leads      CrmLead[]
+  deals      CrmDeal[]
   contacts   CrmContact[]
   activities CrmActivity[]
   projects   JiraProject[]
+
+  relationsFrom CrmAccountRelation[] @relation("CrmRelationFrom")
+  relationsTo   CrmAccountRelation[] @relation("CrmRelationTo")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([companyId, holdedContactId])
   @@index([ownerId])
+  @@index([type])
+  @@index([referredByAccountId])
   @@map("crm_accounts")
+}
+
+/// Ver CrmRelationType. Cada cuenta conserva sus propios leads, contactos y
+/// `holdedContactId`: esto solo las enlaza, no las fusiona.
+model CrmAccountRelation {
+  id            String          @id @default(cuid())
+  fromAccountId String
+  fromAccount   CrmAccount      @relation("CrmRelationFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  toAccountId   String
+  toAccount     CrmAccount      @relation("CrmRelationTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+  type          CrmRelationType
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromAccountId, toAccountId, type])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@map("crm_account_relations")
 }
 
 model CrmContact {
@@ -1497,7 +1668,11 @@ model CrmContact {
   name  String
   email String?
   phone String?
+  /// Cargo en su empresa ("Finance Manager"). El papel que juega en una oportunidad
+  /// concreta es otra cosa y vive en CrmLeadContact.
   role  String?
+
+  dealRoles CrmDealContact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1508,12 +1683,33 @@ model CrmContact {
   @@map("crm_contacts")
 }
 
+/// Ver CrmDecisionRole. Un contacto puede participar en oportunidades de una cuenta
+/// distinta a la suya — es justo el caso de los asesores externos.
+model CrmDealContact {
+  id        String          @id @default(cuid())
+  dealId    String
+  deal      CrmDeal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   CrmContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role      CrmDecisionRole @default(USUARIO)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealId, contactId])
+  @@index([dealId])
+  @@index([contactId])
+  @@map("crm_deal_contacts")
+}
+
 model CrmActivity {
   id   String          @id @default(cuid())
   type CrmActivityType
 
   leadId    String?
   lead      CrmLead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dealId    String?
+  deal      CrmDeal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
   accountId String?
   account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -1533,6 +1729,7 @@ model CrmActivity {
   updatedAt DateTime @updatedAt
 
   @@index([leadId])
+  @@index([dealId])
   @@index([accountId])
   @@index([dueDate])
   @@map("crm_activities")
@@ -1578,8 +1775,12 @@ model Commission {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
+  /// QUALIFIED_MEETING nace de una reunión con un lead; PROPOSAL_PERCENT, de la
+  /// propuesta de un deal. Por eso conviven los dos, ambos opcionales.
   leadId String?
   lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  dealId String?
+  deal   CrmDeal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
 
   // PROPOSAL_PERCENT: propuesta firmada que originó la comisión.
   budgetId String?
@@ -1604,6 +1805,8 @@ model Commission {
   @@index([userId])
   @@index([marca])
   @@index([status])
+  // La ficha de la oportunidad lista sus comisiones; sin esto es un seq scan.
+  @@index([dealId])
   @@map("commissions")
 }
 

@@ -4,11 +4,43 @@ on:
   push:
     branches:
       - main
+  # Los pull requests corren el job `build` —lint, typecheck, tests y la comprobación
+  # de que las migraciones reconstruyen el esquema—, que es lo que sirve para no meter
+  # el problema. `migrate` y `deploy` van contra producción y quedan fuera: ver sus
+  # condiciones, que excluyen este evento explícitamente.
+  pull_request:
   workflow_dispatch:
+
+# Un run por rama. En un pull request se cancela el anterior: empujar tres commits
+# seguidos solo tiene que comprobar el último, y lo que se cancela es un build.
+#
+# En main NO se cancela, se hace cola. Ahí dentro va `prisma migrate deploy` contra
+# producción, y cortarlo a media migración deja el advisory lock cogido y la cadena a
+# medias — que es exactamente el P1002 del PR #4 que documenta el job `migrate`. Si se
+# empujan varios commits seguidos, el run en curso termina, el último espera su turno y
+# los intermedios se descartan: las migraciones son acumulativas, así que no se salta
+# ninguna.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      # Base de usar y tirar para comprobar que las migraciones reconstruyen el esquema.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: deriva
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,6 +69,22 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # El historial de migraciones se desincronizó del esquema durante meses porque
+      # `migrate deploy` solo aplica lo pendiente: nunca comprueba que el resultado sea
+      # el esquema. Esto levanta un Postgres vacío, aplica la cadena entera y exige que
+      # no quede diferencia. Si alguien vuelve a cambiar el esquema con `db push` en vez
+      # de con una migración, falla aquí y no dos meses después, cuando alguien levante
+      # un entorno nuevo.
+      - name: Las migraciones reconstruyen el esquema
+        run: |
+          pnpm prisma migrate deploy
+          pnpm prisma migrate diff \
+            --from-config-datasource \
+            --to-schema prisma/schema.prisma \
+            --exit-code
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deriva
+
       - name: Build project
         run: pnpm next build
         env:
@@ -45,7 +93,7 @@ jobs:
   migrate:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -77,7 +125,7 @@ jobs:
   deploy:
     needs: migrate
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     environment: production
     steps:
       - name: Trigger Vercel production deploy hook

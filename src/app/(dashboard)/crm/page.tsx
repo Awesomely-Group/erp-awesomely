@@ -2,8 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { MARCA_OPTIONS } from "@/lib/org";
 import { CrmBoard } from "./crm-board";
 import { KpiSemaforo } from "./kpi-semaforo";
-import type { BoardLead, BoardStage, BoardUser } from "./crm-board";
+import type { BoardAccount, BoardDeal, BoardStage, BoardUser } from "./crm-board";
 
+/**
+ * Tablero del pipeline. Desde la separación lead/deal (2026-10-13) lo que se arrastra
+ * son OPORTUNIDADES, no leads: los leads sin cualificar no tienen etapa y viven en
+ * /crm/leads. Lo que antes era una columna "Nuevo" llena de formularios sin filtrar
+ * ensuciaba el win rate y el pipeline ponderado de los que sí eran negocio.
+ */
 export default async function CrmPage({
   searchParams,
 }: {
@@ -29,14 +35,21 @@ export default async function CrmPage({
       ? params.lineOfBusiness
       : (lineValues.includes("GENERAL") ? "GENERAL" : (lineValues[0] ?? "GENERAL"));
 
-  const [stages, leads, users] = await Promise.all([
+  const [stages, deals, users, accounts, pendingLeads] = await Promise.all([
     prisma.crmStage.findMany({ where: { marca, lineOfBusiness }, orderBy: { order: "asc" } }),
-    prisma.crmLead.findMany({
+    prisma.crmDeal.findMany({
       where: { marca, lineOfBusiness },
-      include: { owner: { select: { id: true, name: true, email: true } } },
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+        account: { select: { id: true, name: true } },
+      },
       orderBy: { createdAt: "desc" },
     }),
     prisma.user.findMany({ select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
+    // Sin filtrar por marca: una cuenta puede comprar a varias marcas del grupo, y la
+    // suya propia es solo de dónde vino la primera vez.
+    prisma.crmAccount.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.crmLead.count({ where: { marca, status: { in: ["NEW", "CONTACTED"] } } }),
   ]);
 
   const boardStages: BoardStage[] = stages.map((s) => ({
@@ -47,21 +60,23 @@ export default async function CrmPage({
     isLost: s.isLost,
   }));
 
-  const boardLeads: BoardLead[] = leads.map((l) => ({
-    id: l.id,
-    name: l.name,
-    contactName: l.contactName,
-    amount: l.amount !== null ? Number(l.amount) : null,
-    stageId: l.stageId,
-    source: l.source,
-    qualified: l.qualified,
-    ownerName: l.owner?.name ?? l.owner?.email ?? null,
+  const boardDeals: BoardDeal[] = deals.map((d) => ({
+    id: d.id,
+    name: d.name,
+    accountId: d.accountId,
+    accountName: d.account.name,
+    amount: d.amount !== null ? Number(d.amount) : null,
+    stageId: d.stageId,
+    dealType: d.dealType,
+    ownerName: d.owner?.name ?? d.owner?.email ?? null,
   }));
 
   const boardUsers: BoardUser[] = users.map((u) => ({
     id: u.id,
     label: u.name ?? u.email,
   }));
+
+  const boardAccounts: BoardAccount[] = accounts.map((a) => ({ id: a.id, name: a.name }));
 
   return (
     <div className="space-y-4">
@@ -71,8 +86,10 @@ export default async function CrmPage({
         lineOfBusiness={lineOfBusiness}
         availableLines={lineValues}
         stages={boardStages}
-        leads={boardLeads}
+        deals={boardDeals}
         users={boardUsers}
+        accounts={boardAccounts}
+        pendingLeads={pendingLeads}
       />
     </div>
   );

@@ -22,15 +22,17 @@ const prisma = new PrismaClient({ adapter });
 
 const MARCAS = ["Gigson Solutions", "Gigson", "Awesomely", "LaTroupe"] as const;
 
-type StageSeed = { name: string; order: number; isWon?: boolean; isLost?: boolean };
+type StageSeed = { name: string; order: number; isWon?: boolean; isLost?: boolean; isQualified?: boolean };
 
 const GENERAL_STAGES: StageSeed[] = [
   { name: "Nuevo", order: 1 },
   { name: "Contactado", order: 2 },
   { name: "Reunión agendada", order: 3 },
-  { name: "Cualificado", order: 4 },
-  { name: "Propuesta enviada", order: 5 },
-  { name: "Ganado", order: 6, isWon: true },
+  // De aquí en adelante el lead cuenta como cualificado, salvo "Perdido": lo que decide
+  // la comisión por reunión es si está cualificado AHORA (revisión 2026-10-13).
+  { name: "Cualificado", order: 4, isQualified: true },
+  { name: "Propuesta enviada", order: 5, isQualified: true },
+  { name: "Ganado", order: 6, isWon: true, isQualified: true },
   { name: "Perdido", order: 7, isLost: true },
 ];
 
@@ -46,10 +48,10 @@ const FUNNELS: { marca: string; lineOfBusiness: string; stages: StageSeed[] }[] 
 //   lineOfBusiness: "ODOO",
 //   stages: [
 //     { name: "Nuevo", order: 1 },
-//     { name: "Calificación", order: 2 },
-//     { name: "Demo", order: 3 },
-//     { name: "Propuesta enviada", order: 4 },
-//     { name: "Ganado", order: 5, isWon: true },
+//     { name: "Calificación", order: 2, isQualified: true },
+//     { name: "Demo", order: 3, isQualified: true },
+//     { name: "Propuesta enviada", order: 4, isQualified: true },
+//     { name: "Ganado", order: 5, isWon: true, isQualified: true },
 //     { name: "Perdido", order: 6, isLost: true },
 //   ],
 // });
@@ -70,6 +72,7 @@ async function main(): Promise<void> {
           name: stage.name,
           isWon: stage.isWon ?? false,
           isLost: stage.isLost ?? false,
+          isQualified: stage.isQualified ?? false,
         },
         create: {
           marca: funnel.marca,
@@ -78,6 +81,7 @@ async function main(): Promise<void> {
           order: stage.order,
           isWon: stage.isWon ?? false,
           isLost: stage.isLost ?? false,
+          isQualified: stage.isQualified ?? false,
         },
       });
     }

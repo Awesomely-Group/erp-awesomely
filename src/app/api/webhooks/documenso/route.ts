@@ -1,7 +1,7 @@
 import { unauthorized, json } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import { HoldedClient } from "@/lib/holded";
-import { verifyWebhookSignature, type DocumensoWebhookPayload } from "@/lib/documenso";
+import { verifyWebhookSecret, type DocumensoWebhookPayload } from "@/lib/documenso";
 import { BRAND_TO_MARCA, type ProposalBrand } from "@/lib/proposals-brand";
 import type { BudgetLineType } from "@prisma/client";
 
@@ -46,8 +46,7 @@ function buildHoldedProducts(
  */
 export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
-  const signature = req.headers.get("x-documenso-signature");
-  if (!verifyWebhookSignature(rawBody, signature)) return unauthorized();
+  if (!verifyWebhookSecret(req.headers.get("x-documenso-secret"))) return unauthorized();
 
   let payload: DocumensoWebhookPayload;
   try {
@@ -66,7 +65,7 @@ export async function POST(req: Request): Promise<Response> {
       project: { select: { name: true } },
       lines: { orderBy: [{ phase: "asc" }, { sortOrder: "asc" }] },
       paymentTerms: true,
-      crmLead: true,
+      crmDeal: true,
     },
   });
   if (!budget) return json({ ok: true, skipped: "budget no encontrado para este documento" });
@@ -146,10 +145,10 @@ export async function POST(req: Request): Promise<Response> {
 
   // Comisión PROPOSAL_PERCENT (D9/F7, Growth/CRM revisión 2026-09-18): se genera al
   // FIRMAR la propuesta (asunción explícita del plan, no confirmada al 100% con el
-  // usuario — no al cobrar cada PaymentTerm). Solo si el Budget nace de un CrmLead con
+  // usuario — no al cobrar cada PaymentTerm). Solo si el Budget nace de un CrmDeal con
   // responsable asignado y su marca tiene una CommissionRule activa (hoy solo LaTroupe).
-  if (budget.crmLead?.ownerId) {
-    const rule = await prisma.commissionRule.findUnique({ where: { marca: budget.crmLead.marca } });
+  if (budget.crmDeal?.ownerId) {
+    const rule = await prisma.commissionRule.findUnique({ where: { marca: budget.crmDeal.marca } });
     if (rule?.active) {
       const baseAmount = Number(budget.amount);
       const rate = Number(rule.proposalPercent);
@@ -157,9 +156,9 @@ export async function POST(req: Request): Promise<Response> {
         await prisma.commission.create({
           data: {
             type: "PROPOSAL_PERCENT",
-            marca: budget.crmLead.marca,
-            userId: budget.crmLead.ownerId,
-            leadId: budget.crmLead.id,
+            marca: budget.crmDeal.marca,
+            userId: budget.crmDeal.ownerId,
+            dealId: budget.crmDeal.id,
             budgetId: budget.id,
             baseAmount,
             rate,

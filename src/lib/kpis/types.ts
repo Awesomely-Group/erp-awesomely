@@ -1,3 +1,5 @@
+import type { CrmDealType } from "@prisma/client"
+
 export interface KPIFilters {
   year?: number
   dateFrom?: Date
@@ -7,10 +9,17 @@ export interface KPIFilters {
   /** Invoice.marca value */
   marca?: string
   /**
-   * CrmStage/CrmLead.lineOfBusiness (Growth, revisión 2026-09-18) — solo se usa en
+   * CrmStage/CrmDeal.lineOfBusiness (Growth, revisión 2026-09-18) — solo se usa en
    * getCommercialKPIs(). Una marca sin líneas de negocio distintas usa "GENERAL".
    */
   lineOfBusiness?: string
+  /**
+   * CrmDeal.dealType (revisión 2026-09-20) — solo en getCommercialKPIs(). Los objetivos
+   * de captación ("9 implantaciones de Odoo en el año 1") cuentan ventas nuevas: con una
+   * oportunidad por frente de trabajo, un retainer genera ampliaciones que las inflarían.
+   * Para medirlos hay que pasar `dealType: "NEW_BUSINESS"` explícitamente.
+   */
+  dealType?: CrmDealType
 }
 
 // ─── P&L KPIs ─────────────────────────────────────────────────────────────────
@@ -108,15 +117,42 @@ export interface CommercialKPIs {
   lineOfBusiness?: string
   dateFrom: string
   dateTo: string
-  /** Leads creados en el periodo filtrado. */
+  /** Leads creados en el periodo filtrado. Boca del embudo, antes de cualificar. */
   leadsCreated: number
   leadsByOrigin: Record<string, number>
+  /**
+   * Leads creados en el periodo que llegaron a cualificarse (`convertedAt` dentro del
+   * periodo). Es el numerador de `qualificationRatePct`.
+   */
+  leadsQualified: number
+  /**
+   * Cuántos de los leads entrados se convirtieron en oportunidad. Separar lead de deal
+   * (2026-10-13) es lo que hace medible este salto: antes un lead descartado y una
+   * oportunidad perdida caían en la misma etapa "Perdido" y no se distinguían.
+   * `null` si no entró ningún lead en el periodo.
+   */
+  qualificationRatePct: number | null
+  /** Oportunidades creadas en el periodo filtrado. */
+  dealsCreated: number
+  /**
+   * Mezcla de negocio nuevo, ampliación y renovación. Se devuelve siempre, también
+   * cuando no se filtra por `dealType`, para que se vea cuánto de lo contado es venta
+   * nueva de verdad sin tener que lanzar una segunda consulta.
+   */
+  dealsByType: Record<string, number>
   wonCount: number
   lostCount: number
   winRatePct: number | null
   avgDealSize: number | null
+  /**
+   * Días de la oportunidad: de su creación a la etapa ganada. No incluye lo que el lead
+   * tardó en cualificarse — eso es `avgTimeToQualifyDays`, que mide otra cosa y lo hace
+   * otro equipo.
+   */
   avgCycleDays: number | null
-  /** Foto actual (no filtrada por fecha de creación): leads abiertos × probabilidad. */
+  /** Días entre la entrada del lead y su cualificación, para los ganados en el periodo. */
+  avgTimeToQualifyDays: number | null
+  /** Foto actual (no filtrada por fecha de creación): deals abiertos × probabilidad. */
   weightedPipeline: number
   funnel: CommercialFunnelStage[]
 }

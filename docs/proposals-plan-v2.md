@@ -126,10 +126,14 @@ aplicada contra la base de datos real (Neon).
 2. **Probar el flujo end-to-end con curl/Postman** simulando una plataforma externa (sin
    esperar a que exista `gigsonapps` ni el módulo de `lt-tools`): crear propuesta → firmar
    en Documenso → confirmar proforma real en Holded + `PaymentTerm.proformaId` enlazado.
-3. **Verificar el header real de firma del webhook de Documenso** —
-   `verifyWebhookSignature()` en `src/lib/documenso.ts` asume `x-documenso-signature` +
-   HMAC-SHA256 sin haber podido confirmarlo contra la documentación pública (ver comentario
-   en el propio archivo). Confirmar contra la configuración real del webhook en Documenso.
+3. ~~**Verificar el header real de firma del webhook de Documenso**~~ — **resuelto el
+   2026-10-13**. La suposición era incorrecta y el webhook nunca habría funcionado: Documenso
+   **no firma el cuerpo**. Envía el secreto configurado tal cual en `X-Documenso-Secret` y el
+   receptor lo compara en tiempo constante
+   ([documentación oficial](https://docs.documenso.com/docs/developers/webhooks/verification)).
+   El código leía `x-documenso-signature`, que no existe, así que `signatureHeader` llegaba
+   `null` y **toda llamada real se rechazaba con 401**. Sustituido por `verifyWebhookSecret()`,
+   con tests en `src/lib/documenso.test.ts`.
 4. **Confirmar el esquema de creación de documentos de Documenso** (`createDocumentFromPdf`
    en `src/lib/documenso.ts`) contra una cuenta real — la API pública de Documenso está en
    migración hacia el modelo "envelope" (v2) y el mapeo campo a campo no se pudo probar en
