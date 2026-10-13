@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+  # Los pull requests corren el job `build` —lint, typecheck, tests y la comprobación
+  # de que las migraciones reconstruyen el esquema—, que es lo que sirve para no meter
+  # el problema. `migrate` y `deploy` van contra producción y quedan fuera: ver sus
+  # condiciones, que excluyen este evento explícitamente.
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -75,7 +80,7 @@ jobs:
   migrate:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -107,7 +112,7 @@ jobs:
   deploy:
     needs: migrate
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     environment: production
     steps:
       - name: Trigger Vercel production deploy hook
