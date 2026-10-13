@@ -479,8 +479,8 @@ model CrmContact {
 
 /// Participación de un contacto en una oportunidad, con su papel en la decisión.
 /// Resuelve los asesores externos, que son gente de OTRA cuenta pero mandan en
-/// ésta: David Castany (aspeadvisors) en ZZEN, Javier Granado (zinco.ai) en Quick
-/// Smile, E. Martín (Veltian) en LUVI. Sin esto habría que duplicarlos como
+/// ésta: en varias cuentas decide un asesor externo de otra empresa (asesoría
+/// fiscal, consultora técnica). Sin esto habría que duplicarlos como
 /// contactos de la cuenta del cliente, falseando a quién pertenecen.
 enum CrmDecisionRole { DECISOR PRESCRIPTOR ASESOR_EXTERNO TECNICO ADMINISTRATIVO USUARIO }
 

@@ -1347,8 +1347,9 @@ enum CrmRelationType {
 }
 
 /// Papel de una persona en la decisión de una oportunidad (revisión 2026-09-20). Quien
-/// manda no siempre trabaja en la cuenta: David Castany (aspeadvisors) decide en ZZEN
-/// Labs, Javier Granado (zinco.ai) en Quick Smile y E. Martín (Veltian) en LUVI 2000.
+/// manda no siempre trabaja en la cuenta: en varias de nuestras cuentas el que decide es
+/// un asesor externo de otra empresa (asesoría fiscal, consultora técnica), y duplicarlo
+/// como contacto del cliente falsearía a qué empresa pertenece.
 enum CrmDecisionRole {
   DECISOR
   PRESCRIPTOR
