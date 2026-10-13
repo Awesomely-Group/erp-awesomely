@@ -1405,6 +1405,13 @@ model CrmStage {
   order          Int
   isWon          Boolean @default(false)
   isLost         Boolean @default(false)
+  /// Un lead en esta etapa cuenta como cualificado (revisión 2026-10-13). Antes era un
+  /// booleano suelto en CrmLead y había dos verdades: se podía arrastrar un lead a
+  /// "Cualificado" y no cobrar la comisión porque nadie marcó la casilla, o al revés.
+  /// Mismo criterio que isWon/isLost: el desenlace lo dice la etapa, no el nombre ni una
+  /// marca aparte. Lo normal es marcarla desde la etapa de cualificación en adelante,
+  /// salvo la de perdido.
+  isQualified    Boolean @default(false)
 
   leads      CrmLead[]
   fromEvents CrmLeadStageEvent[] @relation("StageEventFrom")
@@ -1465,10 +1472,6 @@ model CrmLead {
 
   // Idempotencia de los 3 canales de entrada — único por origen (D7).
   externalRef String?
-
-  // Checkbox manual (D9): cualifica al lead y habilita la comisión de 20€ por
-  // reunión cerrada (ver CrmActivity.type MEETING + completedAt).
-  qualified Boolean @default(false)
 
   expectedCloseDate DateTime?
   probability       Int?

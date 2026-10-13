@@ -76,7 +76,7 @@ export async function moveLeadStage(leadId: string, toStageId: string): Promise<
 
   const lead = await prisma.crmLead.findUnique({
     where: { id: leadId },
-    select: { stageId: true, marca: true, lineOfBusiness: true },
+    select: { stageId: true, marca: true, lineOfBusiness: true, ownerId: true },
   });
   if (!lead) throw new Error("Lead no encontrado");
   if (lead.stageId === toStageId) return;
@@ -102,15 +102,22 @@ export async function moveLeadStage(leadId: string, toStageId: string): Promise<
     }),
   ]);
 
-  revalidatePath("/crm");
-  revalidatePath(`/crm/leads/${leadId}`);
-}
+  // Al entrar en una etapa cualificada se cobran las reuniones ya cerradas que estaban
+  // esperando: antes, cerrar la reunión y mover la tarjeta en el orden "natural" (primero
+  // la reunión) dejaba la comisión sin generar para siempre.
+  if (toStage.isQualified) {
+    const pendientes = await prisma.crmActivity.findMany({
+      where: { leadId, type: "MEETING", completedAt: { not: null }, commission: { is: null } },
+      select: { id: true },
+    });
+    for (const actividad of pendientes) {
+      await createMeetingCommission({ id: leadId, marca: lead.marca, ownerId: lead.ownerId }, actividad.id);
+    }
+  }
 
-export async function toggleLeadQualified(leadId: string, qualified: boolean): Promise<void> {
-  await requireSession();
-  await prisma.crmLead.update({ where: { id: leadId }, data: { qualified } });
-  revalidatePath(`/crm/leads/${leadId}`);
   revalidatePath("/crm");
+  revalidatePath(`/crm/leads/${leadId}`);
+  if (toStage.isQualified) revalidatePath("/crm/comisiones");
 }
 
 /** Reasignar el comercial responsable — pensado para cuando haya usuarios COMERCIAL. */
@@ -152,10 +159,44 @@ export async function createActivity(payload: CreateActivityPayload): Promise<{ 
 }
 
 /**
- * Marca una actividad como completada. Si es una reunión (`MEETING`) de un lead ya
- * marcado como cualificado (checkbox), dispara la comisión QUALIFIED_MEETING (D9/F7) —
- * solo si la marca del lead tiene una `CommissionRule` activa (hoy solo LaTroupe) y el
- * lead tiene un `ownerId` asignado (si no, no hay a quién pagarle la comisión).
+ * Comisión de 20€ por reunión cualificada (D9/F7). Solo si la marca del lead tiene una
+ * `CommissionRule` activa (hoy solo LaTroupe) y el lead tiene `ownerId` — sin dueño no
+ * hay a quién pagarle.
+ *
+ * Se intenta desde los DOS lados: al cerrar la reunión y al mover el lead a una etapa
+ * cualificada. El orden entre esas dos acciones es arbitrario, y mirando solo una de
+ * ellas se perdía la comisión cuando se hacían al revés. `Commission.activityId` es
+ * `@unique`, así que intentarlo dos veces no paga dos veces.
+ */
+async function createMeetingCommission(
+  lead: { id: string; marca: string; ownerId: string | null },
+  activityId: string
+): Promise<void> {
+  if (lead.ownerId === null) return;
+  const rule = await prisma.commissionRule.findUnique({ where: { marca: lead.marca } });
+  if (!rule?.active) return;
+
+  try {
+    await prisma.commission.create({
+      data: {
+        type: "QUALIFIED_MEETING",
+        marca: lead.marca,
+        userId: lead.ownerId,
+        leadId: lead.id,
+        activityId,
+        amount: rule.qualifiedMeetingAmount,
+        status: "PENDING",
+      },
+    });
+  } catch (err) {
+    // @@unique([activityId]) — ya se generó la comisión en una ejecución anterior.
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;
+  }
+}
+
+/**
+ * Marca una actividad como completada. Si es una reunión de un lead que está en una etapa
+ * cualificada, dispara la comisión.
  */
 export async function completeActivity(activityId: string): Promise<void> {
   await requireSession();
@@ -163,29 +204,11 @@ export async function completeActivity(activityId: string): Promise<void> {
   const activity = await prisma.crmActivity.update({
     where: { id: activityId },
     data: { completedAt: new Date() },
-    include: { lead: true },
+    include: { lead: { include: { stage: true } } },
   });
 
-  if (activity.type === "MEETING" && activity.lead?.qualified && activity.lead.ownerId) {
-    const rule = await prisma.commissionRule.findUnique({ where: { marca: activity.lead.marca } });
-    if (rule?.active) {
-      try {
-        await prisma.commission.create({
-          data: {
-            type: "QUALIFIED_MEETING",
-            marca: activity.lead.marca,
-            userId: activity.lead.ownerId,
-            leadId: activity.lead.id,
-            activityId: activity.id,
-            amount: rule.qualifiedMeetingAmount,
-            status: "PENDING",
-          },
-        });
-      } catch (err) {
-        // @@unique([activityId]) — ya se generó la comisión en una ejecución anterior.
-        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;
-      }
-    }
+  if (activity.type === "MEETING" && activity.lead?.stage.isQualified) {
+    await createMeetingCommission(activity.lead, activity.id);
   }
 
   if (activity.leadId) revalidatePath(`/crm/leads/${activity.leadId}`);

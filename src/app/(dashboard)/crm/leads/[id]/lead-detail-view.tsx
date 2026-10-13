@@ -5,7 +5,6 @@ import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   moveLeadStage,
-  toggleLeadQualified,
   assignLeadOwner,
   createActivity,
   completeActivity,
@@ -51,6 +50,7 @@ export interface LeadDetail {
   origin: CrmLeadOrigin | null;
   market: string | null;
   seats: number | null;
+  /** Derivado de la etapa (CrmStage.isQualified), no editable aquí. */
   qualified: boolean;
   dealType: CrmDealType;
   decisionContacts: LeadDecisionContact[];
@@ -103,12 +103,6 @@ export function LeadDetailView({
     });
   }
 
-  function handleQualifiedChange(checked: boolean): void {
-    startTransition(async () => {
-      await toggleLeadQualified(lead.id, checked);
-    });
-  }
-
   function handleOwnerChange(ownerId: string): void {
     startTransition(async () => {
       await assignLeadOwner(lead.id, ownerId || null);
@@ -157,15 +151,14 @@ export function LeadDetailView({
         </Link>
         <div className="mt-1 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-gray-900">{lead.name}</h1>
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={lead.qualified}
-              onChange={(e) => handleQualifiedChange(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-            Lead cualificado
-          </label>
+          {lead.qualified && (
+            <span
+              title="Lo determina la etapa del embudo, no una marca aparte"
+              className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+            >
+              Cualificado
+            </span>
+          )}
         </div>
         <p className="text-sm text-gray-500">
           {lead.marca}

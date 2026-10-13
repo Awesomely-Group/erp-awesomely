@@ -47,6 +47,10 @@ export default async function CrmPage({
     isLost: s.isLost,
   }));
 
+  // La cualificación la dice la etapa (revisión 2026-10-13): el tablero ya no lee un
+  // booleano del lead.
+  const etapasCualificadas = new Set(stages.filter((s) => s.isQualified).map((s) => s.id));
+
   const boardLeads: BoardLead[] = leads.map((l) => ({
     id: l.id,
     name: l.name,
@@ -54,7 +58,7 @@ export default async function CrmPage({
     amount: l.amount !== null ? Number(l.amount) : null,
     stageId: l.stageId,
     source: l.source,
-    qualified: l.qualified,
+    qualified: etapasCualificadas.has(l.stageId),
     ownerName: l.owner?.name ?? l.owner?.email ?? null,
   }));
 

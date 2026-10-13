@@ -57,7 +57,7 @@ export default async function LeadDetailPage({
     origin: lead.origin,
     market: lead.market,
     seats: lead.seats,
-    qualified: lead.qualified,
+    qualified: lead.stage.isQualified,
     dealType: lead.dealType,
     decisionContacts: lead.contactRoles.map((r) => ({
       contactId: r.contactId,
