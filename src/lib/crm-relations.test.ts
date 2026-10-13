@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   DEAL_TYPE_OPTIONS,
   DECISION_ROLE_OPTIONS,
+  ORIGIN_OPTIONS,
   RELATION_TYPE_OPTIONS,
   dealTypeLabel,
   decisionRoleLabel,
   describeRelation,
+  leadStatusLabel,
+  originLabel,
 } from "./crm-relations";
 
 describe("describeRelation", () => {
@@ -53,8 +56,24 @@ describe("etiquetas de papel y tipo de operación", () => {
     expect(DECISION_ROLE_OPTIONS).toHaveLength(6);
     expect(DEAL_TYPE_OPTIONS).toHaveLength(3);
     expect(RELATION_TYPE_OPTIONS).toHaveLength(5);
-    for (const { label } of [...DECISION_ROLE_OPTIONS, ...DEAL_TYPE_OPTIONS]) {
+    expect(ORIGIN_OPTIONS).toHaveLength(5);
+    for (const { label } of [...DECISION_ROLE_OPTIONS, ...DEAL_TYPE_OPTIONS, ...ORIGIN_OPTIONS]) {
       expect(label).toBeTruthy();
     }
+  });
+});
+
+describe("origen y estado del lead", () => {
+  // La mezcla inside-out/outside-in es objetivo del plan de activación de Odoo: si una
+  // de las dos se queda sin etiqueta, el desglose sale con un hueco en vez de romper.
+  it("nombra los dos lados de la mezcla que se mide", () => {
+    expect(originLabel("INSIDE_OUT")).toContain("inside-out");
+    expect(originLabel("OUTSIDE_IN")).toContain("outside-in");
+  });
+
+  it("traduce el estado del lead, que no es una etapa del embudo", () => {
+    expect(leadStatusLabel("NEW")).toBe("Nuevo");
+    expect(leadStatusLabel("QUALIFIED")).toBe("Cualificado");
+    expect(leadStatusLabel("DISQUALIFIED")).toBe("Descartado");
   });
 });

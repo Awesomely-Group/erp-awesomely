@@ -18,6 +18,14 @@ const METRICS: MetricDef[] = [
     format: (v) => String(v),
   },
   {
+    // Medible desde que el lead y la oportunidad son dos cosas (2026-10-13): antes, un
+    // lead descartado y una oportunidad perdida caían los dos en "Perdido".
+    key: "tasa_cualificacion_pct",
+    label: "Leads que cualifican",
+    getValue: (k) => k.qualificationRatePct,
+    format: (v) => `${v.toFixed(0)}%`,
+  },
+  {
     key: "win_rate_pct",
     label: "Win rate",
     getValue: (k) => k.winRatePct,

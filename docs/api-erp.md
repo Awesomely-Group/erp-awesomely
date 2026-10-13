@@ -99,77 +99,84 @@ export async function GET(req: Request): Promise<Response> {
 
 ## 4. Delta — secciones nuevas
 
-### 4.1 CRM · `/api/crm/*`
+### 4.1 CRM — no hay API de escritura, y es a propósito
 
-Todas con `authenticateRequest()`. Prefijo a añadir en `src/proxy.ts`.
+**Esta sección describía nueve endpoints `/api/crm/*` que se decidió NO construir** (PR #44).
+El CRM se opera desde su propia UI con server actions; abrir una superficie de escritura HTTP
+para una carga que se hace cuatro veces en la vida no se paga sola, y cada endpoint habría que
+autenticarlo, versionarlo y mantenerlo. La carga inicial entra por `scripts/import-crm.ts`.
 
-#### `GET /api/crm/leads`
-Query: `marca`, `lineOfBusiness`, `funnelId`, `stageId`, `ownerId`, `origin`, `market`,
-`companyId`, `closeFrom`, `closeTo`, `page`, `limit`.
-Respuesta: `{ data: CrmLead[], total, page, limit }` — cada lead con `funnel { id, name,
-lineOfBusiness }`, `account { id, name }` y `owner { id, name }`.
+Lo que sí existe, y es todo lo que el CRM expone hacia fuera:
 
-#### `GET /api/crm/leads/[id]`
-Lead + `funnel`, `account`, `activities`, `budgets` (con `documensoStatus`) y `stageHistory`.
-`404` si no existe.
+#### `POST /api/webhooks/leads`
+Entrada única de **leads** para Growth (D7): formularios de gigsonsolutions.com y
+latroupestudio.com, y el Workflow nativo de Apollo. Auth por `x-webhook-secret` contra
+`LEADS_WEBHOOK_SECRET`. Idempotente por `(source, externalRef)` → `200` con
+`{ leadId, idempotent: true }` si ya existía; `201` si es nuevo.
 
-#### `PATCH /api/crm/leads/[id]`
-Body: `name`, `amount`, `currency`, `marca`, `ownerId`, `accountId`, `expectedCloseDate`,
-`probability`, `origin`, `market`, `seats`, `dealType`, `notes`, `externalRef`.
-`stageId` **no** se acepta aquí: el cambio de etapa tiene su propio endpoint porque escribe
-historial. Un body que lo traiga → `400`.
+Body: `source` (`WEB_GIGSON|WEB_LATROUPE|APOLLO|REFERIDO|OTRO`), `externalRef`, `name`, `marca`
+obligatorios; al menos uno de `email`/`phone`. Opcionales: `lineOfBusiness` (default `GENERAL`),
+`contactName`, `amount`, `seats`, `origin`, `market`, `campaignSource`, `utm*`, `notes`.
 
-#### `POST /api/crm/leads/[id]/stage`
-Body: `{ stageId: string }`. Operación **local**: valida que la etapa pertenece al embudo del
-lead, actualiza `stageId`, aplica la `defaultProbability` de la etapa destino si el usuario no la
-ha fijado a mano, y guarda `CrmLeadStageEvent` + `AuditLog`.
-Idempotente: si ya está en esa etapa, `200` sin efectos secundarios.
-`400` si la etapa no pertenece a ese embudo. No hay `502`: no sale a ningún sistema externo.
+El lead entra como `NEW`, **sin etapa y sin dueño**. No entra en el embudo: desde la separación
+lead/deal (2026-10-13) el embudo es de oportunidades, y la oportunidad nace al cualificar el lead
+desde la UI. `amount` y `seats` se guardan como lo *declarado* (`CrmLead.estimatedAmount`,
+`CrmLead.seats`) y siembran la primera oportunidad; la cifra con la que se hace previsión es
+`CrmDeal.amount`, que confirma el comercial.
 
-#### `GET|POST /api/crm/pipelines` · `PUT|DELETE /api/crm/pipelines/[id]` · `PUT /api/crm/pipelines/[id]/stages`
-Embudos y etapas, propiedad del ERP (D11). Query de listado: `marca`, `lineOfBusiness`, `active`.
-Cada embudo devuelve sus etapas ordenadas con `defaultProbability`, `isWon` e `isLost` — es lo que
-alimenta las columnas del tablero. `PUT …/stages` reordena y renombra en bloque; rechazar con
-`409` el borrado de una etapa que tenga leads.
+#### `POST /api/webhooks/proposals` y sus rutas hermanas
+`POST /api/webhooks/proposals` · `GET /api/webhooks/proposals/[budgetId]/status` ·
+`GET|POST /api/webhooks/proposals/contacts`.
 
-#### `GET /api/crm/accounts` · `GET /api/crm/accounts/[id]`
-Listado con `marca`, `lifecycle`, `ownerId`, `q` (nombre/dominio/CIF) + paginación.
-El detalle es la ficha 360: contactos, leads, presupuestos, proformas, facturas y proyectos,
-resueltos por `(companyId, holdedContactId)`.
+El campo que enlaza la propuesta con el CRM es **`crmDealId`** (antes `crmLeadId`): una propuesta
+es siempre de una oportunidad, porque un lead sin cualificar no tiene ni importe ni cuenta a la
+que facturar. Al crearse, mueve esa oportunidad a la etapa "Propuesta enviada" de su embudo
+(marca + línea de negocio), best-effort: si la etapa no está sembrada, el presupuesto se crea
+igual y se registra el fallo en consola.
 
-#### `GET|POST|DELETE /api/crm/accounts/[id]/relations`
-Relaciones tipadas entre cuentas (`HOLDING_OF`, `SUBSIDIARY_OF`, `SIBLING_OF`, `SUPPLIER_OF`,
-`ADVISOR_OF`). Body: `{ toAccountId, type, note? }`. `409` si ya existe la misma terna.
-La ficha 360 (`GET /api/crm/accounts/[id]`) devuelve las relaciones para poder pintar el grupo
-—Charming ↔ Only Charming, Boby Brands → ZZEN Labs— sin que el cliente tenga que recomponerlo.
+`/proposals/contacts` es el único punto donde el CRM escribe en Holded: da de alta el contacto
+fiscal al preparar la propuesta (D3).
 
-#### `PUT|DELETE /api/crm/leads/[id]/contacts/[contactId]`
-Papel de un contacto en la oportunidad (`DECISOR`, `PRESCRIPTOR`, `ASESOR_EXTERNO`, `TECNICO`,
-`ADMINISTRATIVO`, `USUARIO`). Permite que un contacto de **otra** cuenta participe en esta
-oportunidad —los asesores externos— sin duplicarlo ni falsear a qué empresa pertenece.
-
-#### `GET|POST /api/crm/activities` · `PATCH /api/crm/activities/[id]`
-Filtros: `ownerId`, `leadId`, `accountId`, `dueBefore`, `pending=true`.
-`POST` crea nota/llamada/reunión/tarea; `PATCH` marca `completedAt`.
+#### `POST /api/webhooks/documenso`
+Firma de la propuesta. Auth por `X-Documenso-Secret` **en claro** contra
+`DOCUMENSO_WEBHOOK_SECRET` — Documenso no firma el cuerpo con HMAC, así que no hay firma que
+verificar; la comparación es en tiempo constante sobre el digest SHA-256 de ambos valores.
+Al firmarse genera la comisión `PROPOSAL_PERCENT` sobre `budget.crmDeal` si su marca tiene una
+`CommissionRule` activa.
 
 #### Sincronización — no hay
-El pipeline no se sincroniza con ningún sistema externo (D4, `docs/plan-crm.md`). El único
-contacto con Holded desde el CRM es el alta del contacto fiscal al preparar propuesta, que ya
-vive en `/api/webhooks/proposals/contacts`.
+El pipeline no se sincroniza con ningún sistema externo (D4, `docs/plan-crm.md`).
 
 ### 4.2 KPIs comerciales
 
 #### `GET /api/kpis?type=commercial`
-Añadir el caso al `switch` de `src/app/api/kpis/route.ts` y `getCommercialKPIs()` a
-`src/lib/kpis/` (mismo patrón que `getPLKPIs`/`getCashflowKPIs`, exportado desde `index.ts` y
-sumado a `getAllKPIs`).
+Implementado en `src/lib/kpis/commercial.ts`, mismo patrón que `getPLKPIs`/`getCashflowKPIs`.
+`KPIFilters` acepta `marca`, `lineOfBusiness` y `dealType`: **agregar solo por `marca` no
+distingue las dos líneas de Gigson** (Integraciones/IA y Odoo), que tienen embudos y metas
+distintas — mezclarlas invalida las conversiones.
 
-Ampliar `KPIFilters` (`src/lib/kpis/types.ts`) con `lineOfBusiness?` y `funnelId?`: **agregar solo
-por `marca` no distingue las dos líneas de Gigson** (Integraciones/IA y Odoo), que tienen embudos
-y metas distintas — mezclarlas invalida las conversiones.
+`dealType` **no se aplica por defecto**: el pipeline ponderado es dinero real y una ampliación de
+retainer cuenta igual que una venta nueva. Para medir objetivos de captación ("9 implantaciones de
+Odoo el año 1") hay que pasarlo explícitamente, porque los 7 frentes de un retainer inflarían la
+cuenta. El desglose `dealsByType` sale siempre.
 
-Respuesta: `{ commercial: { leadsByMonth, demos, proposals, conversionByStage, avgCycleDays,
-avgTicket, winRate, weightedPipeline, byOrigin, seats }, generatedAt }`.
+Mide **dos embudos encadenados** (separación lead/deal, 2026-10-13):
+
+| Del lead | Del deal |
+|---|---|
+| `leadsCreated`, `leadsByOrigin` | `dealsCreated`, `dealsByType` |
+| `leadsQualified`, `qualificationRatePct` | `wonCount`, `lostCount`, `winRatePct` |
+| `avgTimeToQualifyDays` | `avgDealSize`, `avgCycleDays`, `weightedPipeline`, `funnel` |
+
+`qualificationRatePct` se cuenta sobre los leads **entrados** en el periodo, no sobre los
+cualificados en él: la pregunta es qué parte de lo que entró sirvió para algo, y un lead de
+diciembre que cualifica en enero cuenta en diciembre, que es donde está su coste de captación.
+
+`avgCycleDays` mide la oportunidad (de crearse a ganarse) y no incluye lo que el lead tardó en
+cualificarse: eso es `avgTimeToQualifyDays`, que mide otra cosa y normalmente lo hace otra
+persona. Solo cuenta los deals nacidos de un lead — los que vienen de un cliente que ya está
+dentro no pasaron por cualificación, y meterlos como 0 días bajaría la media de algo que no han
+hecho.
 
 #### `GET|PUT /api/kpis/targets`
 CRUD de `KpiTarget` (`metric`, `marca`, `lineOfBusiness?`, `periodType` MONTH|QUARTER|YEAR,
@@ -184,8 +191,9 @@ Nuevo `src/lib/mcp/tools/crm.ts` con `registerCrmTools(server)`, registrado en `
 
 | Tool | Devuelve |
 |---|---|
-| `list_leads` | leads con los filtros de `GET /api/crm/leads` |
-| `get_lead` | detalle con actividades y propuestas |
+| `list_deals` | oportunidades por marca, línea, etapa, cuenta o tipo |
+| `get_deal` | detalle con actividades, propuestas y las otras oportunidades de la cuenta |
+| `list_leads` | leads sin cualificar, filtrables por estado y origen |
 | `get_pipeline` | embudo agregado por etapa (conteo + importe + ponderado), filtrable por marca y línea |
 | `list_crm_accounts` | cuentas con su lifecycle y último movimiento |
 
@@ -195,9 +203,11 @@ comercial. Subir `version` del servidor MCP al añadir tools (hoy `"1.0.0"` fija
 ### 4.4 `src/proxy.ts`
 
 ```ts
-p.startsWith("/api/crm/") ||
 p.startsWith("/api/kpis") ||   // cubre /api/kpis y /api/kpis/targets
 ```
+
+Ya no hace falta `/api/crm/` (ver §4.1: no hay API de escritura del CRM). Los webhooks van por el
+bypass de prefijo `/api/webhooks/`, que ya está.
 
 Conviene aprovechar para pasar la lista de igualdades exactas a prefijos: hoy `/api/kpis` está
 por igualdad, así que `/api/kpis/targets` **no** quedaría cubierto.
@@ -215,11 +225,13 @@ por igualdad, así que `/api/kpis/targets` **no** quedaría cubierto.
 ## 6. Verificación
 
 - `pnpm typecheck && pnpm lint && pnpm test` (lo mismo que corre CI).
-- Con sesión abierta, desde el navegador: `/api/crm/leads?marca=LaTroupe`.
-- Con API key, que es donde se nota si falta el paso 2 del proxy:
-  `curl -H "x-api-key: $KEY" https://<preview>/api/crm/leads` → debe devolver JSON, no el HTML
-  de `/login`. Ese redirect es el síntoma exacto de haber olvidado `src/proxy.ts`.
+- Webhook de leads, que es donde se nota si falta el paso 2 del proxy:
+  `curl -X POST -H "x-webhook-secret: $LEADS_WEBHOOK_SECRET" -H "Content-Type: application/json" \
+  -d '{"source":"WEB_GIGSON","externalRef":"prueba-1","name":"Prueba","marca":"Gigson Solutions","email":"a@b.c"}' \
+  https://<preview>/api/webhooks/leads` → `201` con `{ leadId }`. Repetir la misma llamada: debe
+  devolver `200` con `idempotent: true` y **no** crear un segundo lead. Si sale el HTML de
+  `/login` en vez de JSON, falta la ruta en `src/proxy.ts`.
 - MCP: listar tools contra `/api/mcp` y comprobar que aparecen las de CRM.
-- Cambio de etapa: `POST /api/crm/leads/<id>/stage` → confirmar en Holded que el lead se movió y
-  que se creó un único `CrmLeadStageEvent`; repetir la misma llamada y comprobar que es
-  idempotente.
+- Cualificación, desde la UI: en `/crm/leads`, abrir el lead de prueba → "Cualificar". Comprobar
+  que aparece en el tablero `/crm`, que el lead queda en `QUALIFIED` con `convertedAt`, y que
+  volver a cualificarlo crea una **segunda** oportunidad sin tocar `convertedAt`.

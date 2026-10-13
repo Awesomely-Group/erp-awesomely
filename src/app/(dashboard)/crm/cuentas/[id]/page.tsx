@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { describeRelation } from "@/lib/crm-relations";
+import { describeRelation, leadStatusLabel } from "@/lib/crm-relations";
 import {
   AccountClassificationCard,
   AccountRelationsCard,
@@ -21,7 +21,8 @@ export default async function AccountDetailPage({
     include: {
       owner: { select: { name: true, email: true } },
       contacts: true,
-      leads: { include: { stage: true }, orderBy: { createdAt: "desc" } },
+      deals: { include: { stage: true }, orderBy: { createdAt: "desc" } },
+      leads: { orderBy: { createdAt: "desc" } },
       company: { select: { name: true } },
       referredBy: { select: { id: true, name: true } },
       referrals: { select: { id: true, name: true }, orderBy: { name: "asc" } },
@@ -49,6 +50,8 @@ export default async function AccountDetailPage({
       note: r.note,
     })),
   ].sort((a, b) => a.otherName.localeCompare(b.otherName));
+
+  const abiertas = account.deals.filter((d) => !d.stage.isWon && !d.stage.isLost);
 
   const [accountOptions, partnerOptions] = await Promise.all([
     prisma.crmAccount.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
@@ -137,21 +140,65 @@ export default async function AccountDetailPage({
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-gray-900">Leads</h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Oportunidades</h2>
+            {abiertas.length > 0 && (
+              <span className="text-xs text-gray-400">
+                {abiertas.length} abierta{abiertas.length === 1 ? "" : "s"} ·{" "}
+                {formatCurrency(abiertas.reduce((sum, d) => sum + (d.amount !== null ? Number(d.amount) : 0), 0))}
+              </span>
+            )}
+          </div>
           <ul className="mt-2 space-y-1 text-sm">
-            {account.leads.map((l) => (
-              <li key={l.id} className="flex justify-between">
-                <Link href={`/crm/leads/${l.id}`} className="text-indigo-600 hover:text-indigo-800">
-                  {l.name}
-                </Link>
-                <span className="text-gray-500">{l.stage.name}</span>
-              </li>
-            ))}
-            {account.leads.length === 0 && (
-              <li className="text-xs text-gray-400">Sin leads todavía.</li>
+            {account.deals.map((d) => {
+              const cerrada = d.stage.isWon || d.stage.isLost;
+              return (
+                <li key={d.id} className="flex justify-between gap-2">
+                  <Link
+                    href={`/crm/deals/${d.id}`}
+                    className={
+                      cerrada
+                        ? "min-w-0 truncate text-gray-400 hover:text-gray-600"
+                        : "min-w-0 truncate text-indigo-600 hover:text-indigo-800"
+                    }
+                  >
+                    {d.name}
+                  </Link>
+                  <span className="shrink-0 text-gray-500">
+                    {d.stage.name}
+                    {d.amount !== null && ` · ${formatCurrency(Number(d.amount))}`}
+                  </span>
+                </li>
+              );
+            })}
+            {account.deals.length === 0 && (
+              <li className="text-xs text-gray-400">Sin oportunidades todavía.</li>
             )}
           </ul>
         </div>
+
+        {/* Los leads sin cualificar de esta cuenta. Normalmente no hay ninguno: un lead
+            se enlaza a la cuenta al cualificarlo, y ahí ya pasa a tener oportunidad. */}
+        {account.leads.some((l) => l.status !== "QUALIFIED") && (
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-900">Leads sin cualificar</h2>
+            <ul className="mt-2 space-y-1 text-sm">
+              {account.leads
+                .filter((l) => l.status !== "QUALIFIED")
+                .map((l) => (
+                  <li key={l.id} className="flex justify-between gap-2">
+                    <Link
+                      href={`/crm/leads/${l.id}`}
+                      className="min-w-0 truncate text-indigo-600 hover:text-indigo-800"
+                    >
+                      {l.name}
+                    </Link>
+                    <span className="shrink-0 text-gray-500">{leadStatusLabel(l.status)}</span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-gray-900">Proformas</h2>

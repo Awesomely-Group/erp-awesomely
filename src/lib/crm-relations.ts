@@ -1,4 +1,4 @@
-import type { CrmRelationType, CrmDecisionRole, CrmDealType } from "@prisma/client";
+import type { CrmRelationType, CrmDecisionRole, CrmDealType, CrmLeadStatus, CrmOrigin } from "@prisma/client";
 
 /**
  * Una relación entre cuentas se guarda una sola vez, en una dirección, pero la ficha de
@@ -60,3 +60,34 @@ export function dealTypeLabel(type: CrmDealType): string {
 export const DEAL_TYPE_OPTIONS: { value: CrmDealType; label: string }[] = (
   Object.keys(DEAL_TYPE_LABELS) as CrmDealType[]
 ).map((value) => ({ value, label: DEAL_TYPE_LABELS[value] }));
+
+const ORIGIN_LABELS: Record<CrmOrigin, string> = {
+  INSIDE_OUT: "Base instalada (inside-out)",
+  OUTSIDE_IN: "Mercado abierto (outside-in)",
+  REFERRAL: "Referido",
+  INBOUND: "Inbound",
+  PARTNER: "Partner",
+};
+
+export function originLabel(origin: CrmOrigin): string {
+  return ORIGIN_LABELS[origin];
+}
+
+export const ORIGIN_OPTIONS: { value: CrmOrigin; label: string }[] = (
+  Object.keys(ORIGIN_LABELS) as CrmOrigin[]
+).map((value) => ({ value, label: ORIGIN_LABELS[value] }));
+
+/**
+ * Estado del lead, que NO es una etapa del embudo: el embudo es de oportunidades. Un
+ * lead solo responde a "¿lo hemos llamado ya?" y "¿ha salido algo de ahí?".
+ */
+const LEAD_STATUS_LABELS: Record<CrmLeadStatus, string> = {
+  NEW: "Nuevo",
+  CONTACTED: "Contactado",
+  QUALIFIED: "Cualificado",
+  DISQUALIFIED: "Descartado",
+};
+
+export function leadStatusLabel(status: CrmLeadStatus): string {
+  return LEAD_STATUS_LABELS[status];
+}

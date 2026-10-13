@@ -15,32 +15,19 @@ export default async function LeadDetailPage({
     include: {
       owner: { select: { id: true, name: true, email: true } },
       account: { select: { id: true, name: true } },
-      stage: true,
       activities: { orderBy: { createdAt: "desc" } },
-      budgets: { select: { id: true, name: true, amount: true, status: true, documensoStatus: true } },
       commissions: true,
-      contactRoles: {
-        include: { contact: { include: { account: { select: { name: true } } } } },
-        orderBy: { createdAt: "asc" },
+      deals: {
+        include: { stage: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
       },
     },
   });
   if (!lead) notFound();
 
-  const [stages, users, contacts] = await Promise.all([
-    // Solo las etapas del mismo funnel (marca + lineOfBusiness) — ver
-    // CrmStage.lineOfBusiness, revisión 2026-09-18.
-    prisma.crmStage.findMany({
-      where: { marca: lead.marca, lineOfBusiness: lead.lineOfBusiness },
-      orderBy: { order: "asc" },
-    }),
+  const [users, accounts] = await Promise.all([
     prisma.user.findMany({ select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
-    // Todos los contactos, no solo los de la cuenta del lead: el asesor externo que
-    // decide trabaja en otra empresa (ver CrmDecisionRole).
-    prisma.crmContact.findMany({
-      include: { account: { select: { name: true } } },
-      orderBy: { name: "asc" },
-    }),
+    prisma.crmAccount.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
   const detail: LeadDetail = {
@@ -49,29 +36,30 @@ export default async function LeadDetailPage({
     marca: lead.marca,
     lineOfBusiness: lead.lineOfBusiness,
     source: lead.source,
+    status: lead.status,
     contactName: lead.contactName,
     email: lead.email,
     phone: lead.phone,
-    amount: lead.amount !== null ? Number(lead.amount) : null,
+    estimatedAmount: lead.estimatedAmount !== null ? Number(lead.estimatedAmount) : null,
     notes: lead.notes,
+    disqualifiedReason: lead.disqualifiedReason,
     origin: lead.origin,
     market: lead.market,
     seats: lead.seats,
-    qualified: lead.stage.isQualified,
-    dealType: lead.dealType,
-    decisionContacts: lead.contactRoles.map((r) => ({
-      contactId: r.contactId,
-      name: r.contact.name,
-      accountName: r.contact.account.name,
-      role: r.role,
-    })),
-    stageId: lead.stageId,
-    stageName: lead.stage.name,
+    campaignSource: lead.campaignSource,
+    utmSource: lead.utmSource,
+    utmCampaign: lead.utmCampaign,
     ownerId: lead.ownerId,
-    ownerLabel: lead.owner ? (lead.owner.name ?? lead.owner.email) : null,
     accountId: lead.accountId,
     accountName: lead.account?.name ?? null,
     createdAt: lead.createdAt.toISOString(),
+    convertedAt: lead.convertedAt?.toISOString() ?? null,
+    deals: lead.deals.map((d) => ({
+      id: d.id,
+      name: d.name,
+      amount: d.amount !== null ? Number(d.amount) : null,
+      stageName: d.stage.name,
+    })),
     activities: lead.activities.map((a) => ({
       id: a.id,
       type: a.type,
@@ -79,13 +67,6 @@ export default async function LeadDetailPage({
       notes: a.notes,
       dueDate: a.dueDate?.toISOString() ?? null,
       completedAt: a.completedAt?.toISOString() ?? null,
-    })),
-    budgets: lead.budgets.map((b) => ({
-      id: b.id,
-      name: b.name,
-      amount: Number(b.amount),
-      status: b.status,
-      documensoStatus: b.documensoStatus,
     })),
     commissions: lead.commissions.map((c) => ({
       id: c.id,
@@ -98,9 +79,8 @@ export default async function LeadDetailPage({
   return (
     <LeadDetailView
       lead={detail}
-      stages={stages.map((s) => ({ id: s.id, name: s.name, order: s.order }))}
       users={users.map((u) => ({ id: u.id, label: u.name ?? u.email }))}
-      contacts={contacts.map((c) => ({ id: c.id, label: `${c.name} · ${c.account.name}` }))}
+      accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
     />
   );
 }

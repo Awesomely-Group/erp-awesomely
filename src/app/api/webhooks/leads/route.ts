@@ -2,10 +2,10 @@ import { json, badRequest, unauthorized } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import { authenticateLeadsWebhook, isWebhookLeadSource } from "@/lib/leads-webhook";
 import { MARCA_OPTIONS } from "@/lib/org";
-import { CrmLeadOrigin, Prisma } from "@prisma/client";
+import { CrmOrigin, Prisma } from "@prisma/client";
 
 const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
-const ORIGIN_VALUES = new Set<string>(Object.values(CrmLeadOrigin));
+const ORIGIN_VALUES = new Set<string>(Object.values(CrmOrigin));
 
 interface LeadWebhookPayload {
   source: string;
@@ -13,12 +13,12 @@ interface LeadWebhookPayload {
   name: string;
   marca: string;
   // Ver CrmStage.lineOfBusiness (revisión 2026-09-18) — default "GENERAL" si no se
-  // envía. Solo tiene sentido pasar otra cosa si esa marca ya tiene más de un funnel
-  // sembrado (ver scripts/seed-growth-crm.ts).
+  // envía. Determina en qué embudo caerá el deal cuando se cualifique el lead.
   lineOfBusiness?: string;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
+  /** Presupuesto declarado por quien rellena el formulario. Orientativo. */
   amount?: number | null;
   campaignSource?: string | null;
   utmSource?: string | null;
@@ -42,9 +42,11 @@ interface LeadWebhookPayload {
  * src/lib/leads-webhook.ts). Idempotente por (source, externalRef) — mismo patrón que
  * /api/webhooks/proposals.
  *
- * El lead entra en la primera etapa (`order` más bajo) del funnel de su marca y sin
- * `ownerId` (sin asignar) — hoy no hay ningún usuario con rol COMERCIAL todavía (D8);
- * un admin lo reparte a mano desde /crm.
+ * El lead entra como NEW y sin `ownerId` (sin asignar) — hoy no hay ningún usuario con
+ * rol COMERCIAL todavía (D8); un admin lo reparte a mano desde /crm/leads. NO entra en
+ * el embudo: el embudo es de deals, y el deal nace al cualificar el lead (separación
+ * lead/deal del 2026-10-13). `amount` y `seats` se guardan como lo declarado y siembran
+ * ese primer deal.
  */
 export async function POST(req: Request): Promise<Response> {
   if (!authenticateLeadsWebhook(req)) return unauthorized();
@@ -84,19 +86,6 @@ export async function POST(req: Request): Promise<Response> {
     return json({ leadId: existing.id, idempotent: true }, 200);
   }
 
-  const firstStage = await prisma.crmStage.findFirst({
-    where: { marca: payload.marca, lineOfBusiness },
-    orderBy: { order: "asc" },
-  });
-  if (!firstStage) {
-    return json(
-      {
-        error: `No hay etapas configuradas (CrmStage) para "${payload.marca}" / línea "${lineOfBusiness}" — ejecutar scripts/seed-growth-crm.ts`,
-      },
-      500
-    );
-  }
-
   try {
     const lead = await prisma.crmLead.create({
       data: {
@@ -108,19 +97,15 @@ export async function POST(req: Request): Promise<Response> {
         contactName: payload.contactName ?? null,
         email: payload.email ?? null,
         phone: payload.phone ?? null,
-        amount: payload.amount ?? null,
+        estimatedAmount: payload.amount ?? null,
         campaignSource: payload.campaignSource ?? null,
         utmSource: payload.utmSource ?? null,
         utmMedium: payload.utmMedium ?? null,
         utmCampaign: payload.utmCampaign ?? null,
         notes: payload.notes ?? null,
-        origin: (payload.origin as CrmLeadOrigin | null | undefined) ?? null,
+        origin: (payload.origin as CrmOrigin | null | undefined) ?? null,
         market: payload.market ?? null,
         seats: payload.seats ?? null,
-        stageId: firstStage.id,
-        stageEvents: {
-          create: { toStageId: firstStage.id, trigger: "WEBHOOK" },
-        },
       },
       select: { id: true },
     });

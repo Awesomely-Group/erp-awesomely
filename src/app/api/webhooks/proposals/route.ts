@@ -41,12 +41,14 @@ interface ProposalPaymentTermInput {
 interface CreateProposalPayload {
   brand: string;
   externalRef: string;
-  // Opcional desde Growth/CRM (revisión 2026-09-18, F7): un lead puede llegar a
-  // propuesta sin proyecto de Jira todavía — antes era obligatorio.
+  // Opcional desde Growth/CRM (revisión 2026-09-18, F7): una oportunidad puede llegar
+  // a propuesta sin proyecto de Jira todavía — antes era obligatorio.
   projectId?: string | null;
-  // Lead de Growth/CRM del que nace esta propuesta — enlaza Budget.crmLeadId y
-  // dispara la comisión PROPOSAL_PERCENT al firmarse (D9/F7).
-  crmLeadId?: string | null;
+  // Oportunidad de Growth/CRM de la que nace esta propuesta — enlaza Budget.crmDealId y
+  // dispara la comisión PROPOSAL_PERCENT al firmarse (D9/F7). Se llamaba `crmLeadId`
+  // hasta la separación lead/deal del 2026-10-13: una propuesta es siempre de un deal,
+  // porque un lead sin cualificar no tiene ni importe ni cuenta a la que facturar.
+  crmDealId?: string | null;
   name: string;
   type: BudgetType;
   region?: BudgetRegion;
@@ -128,7 +130,7 @@ export async function POST(req: Request): Promise<Response> {
     const budget = await prisma.budget.create({
       data: {
         projectId: payload.projectId ?? null,
-        crmLeadId: payload.crmLeadId ?? null,
+        crmDealId: payload.crmDealId ?? null,
         name: payload.name,
         type: payload.type,
         region: payload.region ?? "EU",
@@ -187,25 +189,31 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: message }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 
-  // Mueve el lead de Growth/CRM a "Propuesta enviada" (F7). Best-effort: si el lead o
-  // la etapa no existen (p.ej. seed de CrmStage no ejecutado para esa marca), no
+  // Mueve la oportunidad de Growth/CRM a "Propuesta enviada" (F7). Best-effort: si el
+  // deal o la etapa no existen (p.ej. seed de CrmStage no ejecutado para esa marca), no
   // bloquea la creación del presupuesto — solo se registra en consola.
-  if (payload.crmLeadId) {
+  if (payload.crmDealId) {
     try {
-      const lead = await prisma.crmLead.findUnique({ where: { id: payload.crmLeadId } });
-      const targetStage = lead
-        ? await prisma.crmStage.findFirst({ where: { marca: lead.marca, name: "Propuesta enviada" } })
+      const deal = await prisma.crmDeal.findUnique({ where: { id: payload.crmDealId } });
+      const targetStage = deal
+        ? await prisma.crmStage.findFirst({
+            where: {
+              marca: deal.marca,
+              lineOfBusiness: deal.lineOfBusiness,
+              name: "Propuesta enviada",
+            },
+          })
         : null;
-      if (lead && targetStage && lead.stageId !== targetStage.id) {
+      if (deal && targetStage && deal.stageId !== targetStage.id) {
         await prisma.$transaction([
-          prisma.crmLead.update({ where: { id: lead.id }, data: { stageId: targetStage.id } }),
-          prisma.crmLeadStageEvent.create({
-            data: { leadId: lead.id, fromStageId: lead.stageId, toStageId: targetStage.id, trigger: "WEBHOOK" },
+          prisma.crmDeal.update({ where: { id: deal.id }, data: { stageId: targetStage.id } }),
+          prisma.crmDealStageEvent.create({
+            data: { dealId: deal.id, fromStageId: deal.stageId, toStageId: targetStage.id, trigger: "WEBHOOK" },
           }),
         ]);
       }
     } catch (err) {
-      console.error("[webhooks/proposals] no se pudo mover el lead a 'Propuesta enviada'", err);
+      console.error("[webhooks/proposals] no se pudo mover el deal a 'Propuesta enviada'", err);
     }
   }
 

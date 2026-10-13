@@ -58,6 +58,7 @@ Este plan conecta ese proceso ya definido con el ERP, sin inventar un CRM parale
 | D9 | **Una oportunidad por frente de trabajo**, también dentro de un retainer | Decisión del 2026-09-20. Obliga a distinguir negocio nuevo de ampliación para que las métricas no se inflen (`dealType`) |
 | D10 | **En el CRM entran clientes, leads y partners/prescriptores; no proveedores** | Decisión del 2026-09-20. El ERP ya tiene el modelo `Supplier`; duplicarlo daría dos fuentes de verdad para el mismo tercero |
 | D11 | **Las etapas del embudo son un modelo propio del ERP, configurable por marca y línea** | Consecuencia de la D4 revisada. Cada línea tiene su embudo: Odoo (Leads → **Demo** → Propuesta → Ganado), Gigson integraciones (contacto → BANT → discovery → propuesta → negociación → cierre) y LaTroupe. Se editan en `/settings`, sin depender de Holded |
+| D12 | **El lead y la oportunidad son dos entidades distintas** (`CrmLead` / `CrmDeal`) | Decisión del 2026-10-13. El lead es la entrada sin cualificar: puede no tener cuenta, y su ciclo es NEW → CONTACTED → QUALIFIED \| DISQUALIFIED. La oportunidad siempre cuelga de una cuenta y es lo único que recorre el embudo. **Cualificar un lead = crearle su primera oportunidad**, lo que hace que `CrmStage.isQualified` y el viejo booleano `qualified` dejen de poder contradecirse. Una cuenta puede tener varias oportunidades abiertas a la vez (D9) sin que ninguna sea "el lead" — el caso de Moda re-, con siete frentes vivos. El negocio que sale de un cliente que ya tenemos, que es la mayor parte del volumen, nace directamente como oportunidad con `sourceLeadId` nulo |
 
 ### Reconciliación de D3 con la estrategia (no hay conflicto)
 
@@ -172,9 +173,9 @@ configuren y no se cableen.
 | Métrica | Sección | Fuente | Estado |
 |---|---|---|---|
 | Leads/mes, por origen | CRM | `CrmLead` | Nuevo (F1/F2) |
-| Demos/mes | CRM | entrada en etapa Demo → `CrmLeadStageEvent` | Nuevo; requiere el funnel de Odoo en Holded |
-| Propuestas enviadas | CRM | `Budget` + `documensoStatus` | Existe; falta `crmLeadId` (F6) |
-| Conversión por etapa, ciclo de venta | CRM | `CrmLeadStageEvent` | Nuevo (F7) |
+| Demos/mes | CRM | entrada en etapa Demo → `CrmDealStageEvent` | Nuevo; requiere sembrar el embudo de Odoo (`scripts/seed-growth-crm.ts`) |
+| Propuestas enviadas | CRM | `Budget` + `documensoStatus` | Existe, enlazado por `Budget.crmDealId` |
+| Conversión por etapa, ciclo de venta | CRM | `CrmDealStageEvent` | Nuevo (F7) |
 | Pipeline ponderado | CRM → Previsiones | `amount × probability` | Nuevo (F7) |
 | Nuevos proyectos | CRM → Proyectos | lead ganado → `JiraProject` | Nuevo el enlace |
 | Nuevos usuarios / seats (~75) | Facturación | `CrmLead.seats` + línea de factura | **Hueco**: no existe el concepto de usuario vendido |
@@ -286,250 +287,38 @@ fiscal propia*, no cliente. Todo el modelo es **propiedad del ERP** (D4 revisada
 espejadas ni reglas de "no sobrescribir en el sync". El único puente con Holded es
 `CrmAccount.holdedContactId`, que se rellena al preparar la propuesta (D3).
 
-```prisma
-/// Embudo comercial. Uno por línea de negocio (D11): el de Odoo tiene etapa Demo,
-/// el de integraciones no, y LaTroupe tiene el suyo. Es el eje por el que se
-/// agregan los KPIs — agrupar solo por marca mezclaría las dos líneas de Gigson.
-model CrmPipeline {
-  id             String  @id @default(cuid())
-  name           String
-  marca          String?
-  lineOfBusiness String? // "INTEGRACIONES" | "ODOO" | "BIM"
-  active         Boolean @default(true)
-  sortOrder      Int     @default(0)
+> **El modelo real está en `prisma/schema.prisma`, que manda sobre este documento.** Lo que
+> seguía aquí era el boceto con el que se planificó, y se ha quedado atrás en tres cosas:
+>
+> - **`CrmPipeline` no se llegó a construir.** Las etapas (`CrmStage`) llevan `marca` +
+>   `lineOfBusiness` directamente, con `@@unique([marca, lineOfBusiness, order])`. Una tabla de
+>   embudos aparte no añadía nada: no había ningún atributo del embudo que no fuera ya esa pareja.
+> - **El lead se partió en dos** (D12, 2026-10-13): `CrmLead` y `CrmDeal`. Lo que el boceto
+>   llamaba `CrmLead` —con etapa, importe, `dealType` y `probability`— es hoy `CrmDeal`.
+>   `CrmLeadStageEvent` y `CrmLeadContact` son `CrmDealStageEvent` y `CrmDealContact`.
+> - **`CrmStage.isQualified`** marca desde qué etapa se considera trabajada una oportunidad, y es
+>   la única fuente de esa verdad: el booleano `CrmLead.qualified` del boceto se eliminó porque
+>   podía contradecir a la etapa, y la comisión por reunión leía justamente el que no tocaba.
 
-  stages CrmStage[]
-  leads  CrmLead[]
+Resumen de lo que hay hoy:
 
-  @@map("crm_pipelines")
-}
-
-/// Etapa del embudo. `isWon`/`isLost` evitan inferir el desenlace por el nombre,
-/// que es de donde salen los errores en los cálculos de win rate y conversión.
-model CrmStage {
-  id                 String      @id @default(cuid())
-  pipelineId         String
-  pipeline           CrmPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  name               String
-  order              Int
-  defaultProbability Int?        // % por defecto al entrar en la etapa
-  isWon              Boolean     @default(false)
-  isLost             Boolean     @default(false)
-
-  leads CrmLead[]
-
-  @@unique([pipelineId, order])
-  @@index([pipelineId])
-  @@map("crm_stages")
-}
-
-/// Oportunidad comercial. Entidad propia del ERP: no se espeja de ningún sistema
-/// externo. Se llama `CrmLead` y no `Opportunity` porque el equipo habla de leads
-/// y porque es una sola entidad a lo largo de todo el embudo, no dos.
-model CrmLead {
-  id         String  @id @default(cuid())
-  companyId  String?
-  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-
-  name        String
-  contactName String?
-  email       String?
-  phone       String?
-  amount      Decimal?
-  currency    String   @default("EUR")
-
-  pipelineId String?
-  pipeline   CrmPipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
-  stageId    String?
-  stage      CrmStage?    @relation(fields: [stageId], references: [id], onDelete: SetNull)
-
-  /// Referencia en un sistema externo cuando el canal obliga a registrarla ahí —
-  /// p. ej. ZZEN Labs está dada de alta en el CRM de partner de Odoo. Es una
-  /// anotación para poder rastrearla, no una integración.
-  externalRef    String?
-  externalSource String? // "ODOO_PARTNER" | …
-
-  marca             String?  // MARCA_OPTIONS (src/lib/org.ts)
-  ownerId           String?  // responsable comercial
-  owner             User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  accountId         String?
-  account           CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  expectedCloseDate DateTime?
-  probability       Int?     // % para el pipeline ponderado (F7)
-  origin            String?  // INSIDE_OUT | OUTSIDE_IN | REFERRAL | INBOUND | PARTNER — mix
-                             // del plan de Odoo y tasa de referidos de LaTroupe.
-  market            String?  // UK | US | ES | NORDICS | ZA — pipeline por mercado (LaTroupe)
-  seats             Int?     // usuarios propuestos (objetivo de ~75 usuarios de Odoo)
-  dealType          String?  // NEW_BUSINESS | EXPANSION | RENEWAL. Necesario por D9: si cada
-                             // frente de un retainer es una oportunidad, sin esto los 7 frentes
-                             // de Moda re- cuentan como 7 ventas nuevas e inflan el embudo.
-  notes             String?
-  projectId         String?  // se rellena al ganar
-  project           JiraProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
-  budgets      Budget[]
-  activities   CrmActivity[]
-  stageHistory CrmLeadStageEvent[]
-  contactRoles CrmLeadContact[]
-
-  @@index([stageId]) @@index([pipelineId]) @@index([ownerId]) @@index([marca])
-  @@index([expectedCloseDate])
-  @@map("crm_leads")
-}
-
-/// Historial de etapas. Holded no expone histórico (ver wishlist del playbook:
-/// "endpoint /history" sigue siendo una petición pendiente), así que se deriva
-/// de los diffs que detecta el sync. Sin esto no hay ciclo de venta medible.
-model CrmLeadStageEvent {
-  id          String   @id @default(cuid())
-  leadId      String
-  lead        CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  fromStageId String?
-  fromStageName String?
-  toStageId   String?
-  toStageName String?
-  changedAt   DateTime @default(now())
-  changedById String?
-
-  @@index([leadId])
-  @@map("crm_lead_stage_events")
-}
-
-enum CrmLifecycle { LEAD QUALIFIED CUSTOMER CHURNED DISQUALIFIED }
-enum CrmAccountType { CLIENT LEAD PARTNER }
-
-/// Cuenta de cliente canónica del ERP: la columna vertebral de la ficha 360.
-/// No existe en Holded como tal (Holded tiene leads y contactos, no cuentas).
-model CrmAccount {
-  id        String  @id @default(cuid())
-  name      String
-  domain    String? @unique
-  vatNumber String?
-  type      CrmAccountType @default(LEAD) // D10: PARTNER para Z1, Holded y Odoo. Los
-                                          // proveedores NO entran: ya existe `Supplier`.
-  lifecycle CrmLifecycle   @default(LEAD)
-  sector    String?
-  marca     String?
-  ownerId   String?
-  owner     User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-
-  /// Quién trajo esta cuenta (prescriptor). Sin esto no se puede medir cuánto
-  /// negocio aporta cada partner — Z1 ha traído al menos tres clientes.
-  referredByAccountId String?
-  referredBy          CrmAccount?  @relation("CrmReferrals", fields: [referredByAccountId], references: [id], onDelete: SetNull)
-  referrals           CrmAccount[] @relation("CrmReferrals")
-
-  relationsFrom CrmAccountRelation[] @relation("CrmRelationFrom")
-  relationsTo   CrmAccountRelation[] @relation("CrmRelationTo")
-
-  // Enlace fiscal: null hasta que se prepara la primera propuesta (D3)
-  companyId       String?
-  company         Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  holdedContactId String?
-  holdedSyncedAt  DateTime?
-
-  leads      CrmLead[]
-  contacts   CrmContact[]
-  activities CrmActivity[]
-
-  @@unique([companyId, holdedContactId])
-  @@index([lifecycle]) @@index([ownerId]) @@index([marca])
-  @@map("crm_accounts")
-}
-
-/// Relación tipada entre cuentas (D8). Los casos reales no son una jerarquía única:
-/// Charming Concept ↔ Only Charming son hermanas; Boby Brands es el holding de ZZEN
-/// Labs; Iknoga es proveedor de Dream España. Cada par es una relación distinta, y
-/// cada cuenta mantiene sus propias oportunidades y su propio `holdedContactId`.
-enum CrmRelationType { HOLDING_OF SUBSIDIARY_OF SIBLING_OF SUPPLIER_OF ADVISOR_OF }
-
-model CrmAccountRelation {
-  id            String          @id @default(cuid())
-  fromAccountId String
-  fromAccount   CrmAccount      @relation("CrmRelationFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
-  toAccountId   String
-  toAccount     CrmAccount      @relation("CrmRelationTo", fields: [toAccountId], references: [id], onDelete: Cascade)
-  type          CrmRelationType
-  note          String?
-
-  @@unique([fromAccountId, toAccountId, type])
-  @@index([fromAccountId])
-  @@index([toAccountId])
-  @@map("crm_account_relations")
-}
-
-model CrmContact {
-  id        String     @id @default(cuid())
-  accountId String
-  account   CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name      String
-  email     String?
-  phone     String?
-  title     String?
-  language  String?
-  linkedinUrl String?
-  isPrimary Boolean @default(false)
-  activities CrmActivity[]
-  leadRoles  CrmLeadContact[]
-
-  @@unique([accountId, email])
-  @@index([accountId])
-  @@map("crm_contacts")
-}
-
-/// Participación de un contacto en una oportunidad, con su papel en la decisión.
-/// Resuelve los asesores externos, que son gente de OTRA cuenta pero mandan en
-/// ésta: en varias cuentas decide un asesor externo de otra empresa (asesoría
-/// fiscal, consultora técnica). Sin esto habría que duplicarlos como
-/// contactos de la cuenta del cliente, falseando a quién pertenecen.
-enum CrmDecisionRole { DECISOR PRESCRIPTOR ASESOR_EXTERNO TECNICO ADMINISTRATIVO USUARIO }
-
-model CrmLeadContact {
-  id        String          @id @default(cuid())
-  leadId    String
-  lead      CrmLead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contactId String
-  contact   CrmContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  role      CrmDecisionRole @default(USUARIO)
-
-  @@unique([leadId, contactId])
-  @@index([leadId])
-  @@map("crm_lead_contacts")
-}
-
-enum CrmActivityType { NOTE CALL EMAIL MEETING TASK }
-
-/// Actividades y próximos pasos. Enteramente del ERP: la API de Holded no expone
-/// actividades de CRM.
-model CrmActivity {
-  id      String          @id @default(cuid())
-  type    CrmActivityType
-  subject String
-  body    String?
-
-  accountId String?
-  contactId String?
-  leadId    String?
-  ownerId   String?
-
-  dueDate     DateTime?
-  completedAt DateTime?
-  externalRef String?   // id de ReadAI (§7.1: discovery se graba con ReadAI), thread de Gmail…
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([accountId]) @@index([leadId]) @@index([ownerId, dueDate])
-  @@map("crm_activities")
-}
-```
+| Entidad | Para qué |
+|---|---|
+| `CrmLead` | La entrada sin cualificar. Sin etapa; `status` NEW/CONTACTED/QUALIFIED/DISQUALIFIED, `estimatedAmount` y `seats` como lo *declarado*, `convertedAt` y `disqualifiedReason`. Único por `(source, externalRef)` |
+| `CrmDeal` | La oportunidad. `accountId` **obligatorio**, `stageId`, `amount`, `dealType`, `probability`, `expectedCloseDate`, `origin`, `seats`, `sourceLeadId` (nulo si nace de un cliente que ya está dentro) |
+| `CrmStage` | Etapa del embudo, por `marca` + `lineOfBusiness`, con `isWon`, `isLost`, `isQualified` y `defaultProbability` |
+| `CrmDealStageEvent` | Historial de movimientos: de aquí salen ciclo de venta y conversiones |
+| `CrmAccount` | La empresa. `type` CLIENT/PARTNER, `lifecycle`, `referredByAccountId`, `holdedContactId` (puente con facturación) |
+| `CrmAccountRelation` | Enlace tipado entre cuentas sin fusionarlas (D8) |
+| `CrmContact` / `CrmDealContact` | Personas y su papel en la decisión de una oportunidad; el contacto puede ser de otra cuenta (asesor externo) |
+| `CrmActivity` | Nota/llamada/reunión/tarea, colgando de un lead, de una oportunidad o de una cuenta |
 
 Cambios en modelos existentes:
 
-- `Budget`: `crmLeadId String?` + relación; **`projectId` pasa a nullable**.
+- `Budget`: `crmDealId String?` + relación; **`projectId` pasa a nullable**.
+- `Commission`: `leadId` (QUALIFIED_MEETING, es del lead) y `dealId` (PROPOSAL_PERCENT, del deal).
 - `Proforma`: añadir `@@index([companyId, holdedContactId])`.
-- `Company`: relaciones inversas (`crmFunnels`, `crmLeads`, `crmAccounts`).
-- `User`: relaciones inversas (`crmLeads`, `crmAccounts`, `crmActivities`).
+- `User`: relaciones inversas (`crmLeads`, `crmDeals`, `crmAccounts`, `crmActivities`).
 - No se toca `Invoice` ni el sync fiscal: la ficha 360 resuelve por
   `(companyId, holdedContactId)`, índice que `Invoice` ya tiene (l.325).
 
@@ -576,7 +365,7 @@ desemboca en nada.
   por marca y línea, y listado con filtros por responsable, etapa, origen, mercado y fecha de
   cierre estimada.
 - **Cambio de etapa**: arrastrar llama a una server action que actualiza `stageId`, escribe
-  `CrmLeadStageEvent` y `AuditLog`, y aplica la `defaultProbability` de la etapa destino si el
+  `CrmDealStageEvent` y `AuditLog`, y aplica la `defaultProbability` de la etapa destino si el
   usuario no la ha tocado a mano. Es una operación local — no sale a ningún sistema externo, así
   que no hay relectura de confirmación, ni idempotencia contra terceros, ni estados divergentes.
 - `/crm/leads/[id]`: detalle con contactos y su papel en la decisión, actividades, propuestas
@@ -611,12 +400,12 @@ Amplía el contrato de `docs/proposals-plan-v2.md`. Los consumidores todavía no
   CRM sin contacto fiscal, marcadas con su origen, para poder elegir una que aún no está en
   `invoicing/v1/contacts`. Con caché TTL, porque `/contacts` no pagina y devuelve el catálogo
   entero (playbook §6).
-- `POST /api/webhooks/proposals/contacts`: aceptar `crmAccountId`/`crmLeadId` y **escribir de
+- `POST /api/webhooks/proposals/contacts`: aceptar `crmAccountId`/`crmDealId` y **escribir de
   vuelta** `holdedContactId` + `holdedSyncedAt` + `lifecycle: QUALIFIED` (D3).
-- `POST /api/webhooks/proposals`: aceptar `crmLeadId`, enlazar `Budget.crmLeadId` y hacer
+- `POST /api/webhooks/proposals`: aceptar `crmDealId`, enlazar `Budget.crmDealId` y hacer
   `projectId` **opcional** (hoy obligatorio, `route.ts:86`).
 - `POST /api/webhooks/documenso`: en `DOCUMENT_COMPLETED`, mover el lead a la etapa con
-  `isWon` de su embudo y registrar el `CrmLeadStageEvent`.
+  `isWon` de su embudo y registrar el `CrmDealStageEvent`.
 - Actualizar `docs/proposals-plan-v2.md` con el contrato resultante.
 
 ### F7 — KPIs comerciales, metas y semáforo (3-4 j)
@@ -626,7 +415,7 @@ Amplía el contrato de `docs/proposals-plan-v2.md`. Los consumidores todavía no
   nuevo — y se amplía `KPIFilters` con `lineOfBusiness` / `funnelId`.
 - Los KPIs no hay que inventarlos: están en §8 de la estrategia y en el deck de Odoo. Métricas:
   leads/mes por origen, demos/mes, propuestas, conversiones por etapa, ciclo de venta (desde
-  `CrmLeadStageEvent`), ticket medio, win rate, pipeline ponderado y seats. Cada marca/línea usa
+  `CrmDealStageEvent`), ticket medio, win rate, pipeline ponderado y seats. Cada marca/línea usa
   las suyas según la propuesta de arriba.
 - **`KpiTarget`** (modelo nuevo, transversal — no solo CRM): `metric`, `marca`,
   `lineOfBusiness?`, `periodType` (MONTH|QUARTER|YEAR), `periodKey`, `value`. Alimenta el
@@ -677,14 +466,14 @@ propio y conviene decidirlas por separado, no colarlas en el CRM:
   `.github/workflows/deploy.yml` y `deploy-staging.yml`, más `pnpm next build`).
 - Migraciones: `pnpm prisma migrate dev` en local y revisión del SQL a mano; la rama `staging`
   tiene base propia (`refresh-staging-db.yml`) — probar ahí el backfill antes de producción.
-- Tests de dominio nuevos: transiciones de etapa (que escriben un único `CrmLeadStageEvent` y
+- Tests de dominio nuevos: transiciones de etapa (que escriben un único `CrmDealStageEvent` y
   aplican la probabilidad por defecto), cálculo de conversiones y ciclo de venta a partir del
   historial, y resolución de la ficha 360 por `(companyId, holdedContactId)`.
 - F0 y F6 se verifican con curl contra Preview: son los únicos contratos con sistemas externos
   que quedan.
 - Comprobación funcional end-to-end: crear un lead en `/crm/leads` → arrastrarlo de etapa →
   verificar el evento y la probabilidad → prepararle propuesta (curl al webhook) → confirmar
-  `Budget.crmLeadId`, el contacto fiscal creado en Holded y el lead en la etapa de ganado.
+  `Budget.crmDealId`, el contacto fiscal creado en Holded y la oportunidad en la etapa de ganado.
 
 ## Riesgos y decisiones abiertas
 
