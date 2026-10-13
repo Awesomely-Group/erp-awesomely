@@ -11,6 +11,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Un run por rama. En un pull request se cancela el anterior: empujar tres commits
+# seguidos solo tiene que comprobar el último, y lo que se cancela es un build.
+#
+# En main NO se cancela, se hace cola. Ahí dentro va `prisma migrate deploy` contra
+# producción, y cortarlo a media migración deja el advisory lock cogido y la cadena a
+# medias — que es exactamente el P1002 del PR #4 que documenta el job `migrate`. Si se
+# empujan varios commits seguidos, el run en curso termina, el último espera su turno y
+# los intermedios se descartan: las migraciones son acumulativas, así que no se salta
+# ninguna.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
