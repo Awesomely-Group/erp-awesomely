@@ -241,10 +241,16 @@ export async function reactivateLead(leadId: string): Promise<void> {
   revalidatePath(`/crm/leads/${leadId}`);
 }
 
-/** Avance dentro del estado del lead (NEW → CONTACTED). No toca el embudo. */
+/**
+ * Avance dentro del estado del lead (NEW → CONTACTED). No toca el embudo.
+ *
+ * `updateMany` y no `update` para que no reviente si el lead ya salió de NEW: el botón
+ * solo se pinta para los nuevos, pero una pestaña abierta desde ayer enseña un estado que
+ * ya no es el de la base, y pulsarlo ahí no debería tirar un error a la cara.
+ */
 export async function markLeadContacted(leadId: string): Promise<void> {
   await requireSession();
-  await prisma.crmLead.update({
+  await prisma.crmLead.updateMany({
     where: { id: leadId, status: "NEW" },
     data: { status: "CONTACTED" },
   });
