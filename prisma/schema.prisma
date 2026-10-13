@@ -1805,6 +1805,8 @@ model Commission {
   @@index([userId])
   @@index([marca])
   @@index([status])
+  // La ficha de la oportunidad lista sus comisiones; sin esto es un seq scan.
+  @@index([dealId])
   @@map("commissions")
 }
 

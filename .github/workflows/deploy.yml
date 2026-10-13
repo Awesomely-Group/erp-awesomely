@@ -9,6 +9,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      # Base de usar y tirar para comprobar que las migraciones reconstruyen el esquema.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: deriva
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,6 +50,22 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      # El historial de migraciones se desincronizó del esquema durante meses porque
+      # `migrate deploy` solo aplica lo pendiente: nunca comprueba que el resultado sea
+      # el esquema. Esto levanta un Postgres vacío, aplica la cadena entera y exige que
+      # no quede diferencia. Si alguien vuelve a cambiar el esquema con `db push` en vez
+      # de con una migración, falla aquí y no dos meses después, cuando alguien levante
+      # un entorno nuevo.
+      - name: Las migraciones reconstruyen el esquema
+        run: |
+          pnpm prisma migrate deploy
+          pnpm prisma migrate diff \
+            --from-config-datasource \
+            --to-schema prisma/schema.prisma \
+            --exit-code
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deriva
 
       - name: Build project
         run: pnpm next build
