@@ -8,7 +8,19 @@ import {
   canManageSsoAllowlist,
   normalizeEmail,
 } from "@/lib/sso-allowlist";
-import { randomBytes, createHash } from "crypto";
+import { requireAdmin, requireSession } from "@/lib/roles";
+import {
+  DEFAULT_GRANT_DAYS,
+  MAX_GRANT_DAYS,
+  grantScopeError,
+  isApiScope,
+} from "@/lib/api-scopes";
+import {
+  grantApiAccess,
+  mintApiKey,
+  revokeApiAccess,
+  revokeApiKey,
+} from "@/lib/api-keys";
 
 export async function createCompany(data: FormData): Promise<void> {
   const session = await auth();
@@ -280,74 +292,118 @@ export async function deleteAccountMapping(id: string): Promise<void> {
   revalidatePath("/settings");
 }
 
-// ─── API Keys ─────────────────────────────────────────────────────────────────
+// ─── Acceso por API ───────────────────────────────────────────────────────────
+//
+// Dos actos distintos, dos acciones distintas: un ADMIN **concede** acceso a una
+// persona, y es esa persona quien **acuña** sus claves. Si el ADMIN las creara, el valor
+// en claro pasaría por sus manos y viajaría por Slack o por correo, y una credencial que
+// ha estado en un chat ya no es una credencial.
 
-export type ApiKeyFormState =
-  | { error?: string; newKey?: string }
-  | undefined;
+export type ApiKeyFormState = { error?: string; newKey?: string } | undefined;
+export type GrantFormState = { error?: string; ok?: true } | undefined;
 
-export async function createApiKey(
-  _prev: ApiKeyFormState,
-  formData: FormData
-): Promise<ApiKeyFormState> {
-  const session = await auth();
-  if (!session?.user?.id) return { error: "No autorizado" };
+/** Concede o renueva el acceso de una persona. Solo ADMIN. */
+export async function grantAccess(
+  _prev: GrantFormState,
+  formData: FormData,
+): Promise<GrantFormState> {
+  const session = await requireAdmin();
 
-  const name = (formData.get("name") as string)?.trim();
-  if (!name) return { error: "El nombre es obligatorio" };
-  if (name.length > 64) return { error: "El nombre no puede superar 64 caracteres" };
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId) return { error: "Elige a quién se lo concedes" };
 
-  const rawKey = "erp_" + randomBytes(24).toString("hex");
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
-  const keyPrefix = rawKey.slice(0, 12);
+  const scopes = formData.getAll("scopes").map(String);
+  const companyIds = formData.getAll("companyIds").map(String).filter(Boolean);
+  const marcas = formData.getAll("marcas").map(String).filter(Boolean);
 
-  await prisma.apiKey.create({
-    data: {
-      name,
-      keyHash,
-      keyPrefix,
-      createdById: session.user.id,
-    },
+  const dias = Number(formData.get("days") ?? DEFAULT_GRANT_DAYS);
+  if (!Number.isInteger(dias) || dias < 1 || dias > MAX_GRANT_DAYS) {
+    return { error: `La caducidad tiene que estar entre 1 y ${MAX_GRANT_DAYS} días` };
+  }
+
+  const nota = String(formData.get("note") ?? "").trim();
+  if (nota.length > 200) return { error: "La nota es demasiado larga" };
+
+  // El rol se lee de la base, nunca del formulario: es el que decide qué se puede
+  // conceder, y venir del cliente lo convertiría en una sugerencia.
+  const destinatario = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
   });
+  if (!destinatario) return { error: "Esa persona no existe" };
 
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      action: AuditAction.CREATE,
-      entityType: "ApiKey",
-      entityId: keyPrefix,
-      newValue: { name, keyPrefix },
-    },
+  const problema = grantScopeError(scopes, destinatario.role);
+  if (problema) return { error: problema };
+
+  await grantApiAccess({
+    userId,
+    scopes: scopes.filter(isApiScope),
+    companyIds,
+    marcas,
+    days: dias,
+    note: nota || null,
+    grantedById: session.user.id,
   });
 
   revalidatePath("/settings");
-  return { newKey: rawKey };
+  return { ok: true };
 }
 
+/** Retira el acceso y, en cascada, las claves que colgaban de él. Solo ADMIN. */
+export async function revokeAccess(_prev: GrantFormState, formData: FormData): Promise<GrantFormState> {
+  const session = await requireAdmin();
+
+  const grantId = String(formData.get("grantId") ?? "");
+  if (!grantId) return { error: "Falta la concesión" };
+
+  const resultado = await revokeApiAccess(grantId, session.user.id);
+  if (!resultado) return { error: "Esa concesión ya estaba retirada" };
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/**
+ * Acuña una clave propia, dentro de la concesión viva de quien la pide. El valor en
+ * claro vuelve por aquí y se enseña **una vez**: no se guarda en ningún sitio del que se
+ * pueda recuperar.
+ */
+export async function createApiKey(
+  _prev: ApiKeyFormState,
+  formData: FormData,
+): Promise<ApiKeyFormState> {
+  const session = await requireSession();
+
+  const resultado = await mintApiKey({
+    userId: session.user.id,
+    name: String(formData.get("name") ?? ""),
+    scopes: formData.getAll("scopes").map(String),
+    companyIds: formData.getAll("companyIds").map(String).filter(Boolean),
+    marcas: formData.getAll("marcas").map(String).filter(Boolean),
+  });
+
+  if (!resultado.ok) return { error: resultado.error };
+
+  revalidatePath("/settings");
+  return { newKey: resultado.plain };
+}
+
+/**
+ * Revoca una clave. Un ADMIN puede retirar cualquiera; el resto, solo las suyas. Nadie
+ * puede **leer** ninguna: el valor en claro no existe fuera del momento del alta.
+ */
 export async function deleteApiKey(
   _prev: ApiKeyFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ApiKeyFormState> {
-  const session = await auth();
-  if (!session?.user?.id) return { error: "No autorizado" };
+  const session = await requireSession();
 
-  const id = formData.get("id") as string;
+  const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Falta id" };
 
-  const row = await prisma.apiKey.findUnique({ where: { id } });
-  if (!row) return { error: "API key no encontrada" };
-
-  await prisma.apiKey.delete({ where: { id } });
-
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      action: AuditAction.DELETE,
-      entityType: "ApiKey",
-      entityId: row.keyPrefix,
-      previousValue: { name: row.name, keyPrefix: row.keyPrefix },
-    },
-  });
+  const esAdmin = session.user.role === "ADMIN";
+  const revocada = await revokeApiKey(id, session.user.id, esAdmin ? undefined : session.user.id);
+  if (!revocada) return { error: "Esa clave no existe o ya estaba revocada" };
 
   revalidatePath("/settings");
   return undefined;
