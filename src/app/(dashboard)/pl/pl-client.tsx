@@ -1,8 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { formatPlAmount, formatPlRatio, PL_LINE_DEFS } from "@/lib/pl-data";
-import type { PlEntityData, PlLineKey } from "@/lib/pl-data";
+import { formatPlAmount, formatPlRatio, PL_LINE_DEFS } from "@/lib/pl-display";
+import type { PlEntityData, PlLineKey } from "@/lib/pl-display";
 
 interface PlTableProps {
   entity: PlEntityData;
