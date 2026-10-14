@@ -3,6 +3,11 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { LocalDateTime } from "@/components/local-datetime";
 import { ChevronUp, ChevronDown, ChevronsUpDown, X, Search } from "lucide-react";
+import {
+  parseSyncLogDetails,
+  type SyncLogDetails,
+  type SyncUpsertError,
+} from "@/lib/sync-log-details";
 
 type SyncSource = "HOLDED" | "JIRA";
 type SyncResult = "SUCCESS" | "PARTIAL" | "ERROR" | "RUNNING";
@@ -19,12 +24,6 @@ export interface SyncLogRow {
   triggeredBy: string | null;
 }
 
-type UpsertError = { type: string; holdedId: string; docNumber: string; error: string };
-type SyncLogDetails = {
-  fetchedIds: string[];
-  upsertErrors: UpsertError[];
-} | null;
-
 type SyncLogDetail = {
   id: string;
   source: string;
@@ -33,7 +32,8 @@ type SyncLogDetail = {
   startedAt: string;
   finishedAt: string | null;
   errorMessage: string | null;
-  details: SyncLogDetails;
+  // Forma libre: la escribe closeSyncLog y cambia según cómo acabe la pasada.
+  details: unknown;
 };
 
 const RESULT_LABELS: Record<SyncResult, string> = {
@@ -97,7 +97,7 @@ function SyncSortTh({
 type SearchState =
   | { status: "idle" }
   | { status: "found_ok"; holdedId: string }
-  | { status: "found_error"; holdedId: string; error: UpsertError }
+  | { status: "found_error"; holdedId: string; error: SyncUpsertError }
   | { status: "not_fetched"; holdedId: string };
 
 function SyncLogModal({
@@ -108,22 +108,27 @@ function SyncLogModal({
   onClose: () => void;
 }): React.JSX.Element {
   const [log, setLog] = useState<SyncLogDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Si la petición falla, el modal tiene que decirlo: antes se quedaba sin `log` y
+  // acababa enseñando el mensaje de "solo disponible para Holded", que no es lo que pasa.
+  const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset del estado de carga al cambiar logId, antes del fetch
-    setLoading(true);
+    setState("loading");
     fetch(`/api/sync-logs/${logId}`)
-      .then((r) => r.json())
-      .then((data: SyncLogDetail) => { setLog(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<SyncLogDetail>;
+      })
+      .then((data) => { setLog(data); setState("ready"); })
+      .catch(() => setState("failed"));
   }, [logId]);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, [loading]);
+  }, [state]);
 
   // Close on Escape
   useEffect(() => {
@@ -134,17 +139,25 @@ function SyncLogModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const details: SyncLogDetails | null = useMemo(
+    () => parseSyncLogDetails(log?.details),
+    [log],
+  );
+
+  const hasDocuments =
+    details !== null && (details.fetchedIds.length > 0 || details.upsertErrors.length > 0);
+
   const searchResult = useMemo((): SearchState => {
     const trimmed = query.trim();
-    if (!trimmed || !log?.details) return { status: "idle" };
+    if (!trimmed || !details) return { status: "idle" };
 
-    const { fetchedIds, upsertErrors } = log.details;
+    const { fetchedIds, upsertErrors } = details;
     if (!fetchedIds.includes(trimmed)) return { status: "not_fetched", holdedId: trimmed };
 
     const err = upsertErrors.find((e) => e.holdedId === trimmed);
     if (err) return { status: "found_error", holdedId: trimmed, error: err };
     return { status: "found_ok", holdedId: trimmed };
-  }, [query, log]);
+  }, [query, details]);
 
   return (
     <div
@@ -159,12 +172,12 @@ function SyncLogModal({
             {log && (
               <p className="text-xs text-gray-500 mt-0.5">
                 {log.entityName} · <LocalDateTime date={log.startedAt} />
-                {log.details && (
+                {details && !details.skipped && (
                   <span className="ml-2 text-gray-400">
-                    {log.details.fetchedIds.length} docs de Holded
-                    {log.details.upsertErrors.length > 0 && (
+                    {details.fetchedIds.length} docs de Holded
+                    {details.upsertErrors.length > 0 && (
                       <span className="text-red-500 ml-1">
-                        · {log.details.upsertErrors.length} error{log.details.upsertErrors.length !== 1 ? "es" : ""}
+                        · {details.upsertErrors.length} error{details.upsertErrors.length !== 1 ? "es" : ""}
                       </span>
                     )}
                   </span>
@@ -182,17 +195,41 @@ function SyncLogModal({
 
         {/* Body */}
         <div className="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
-          {loading && (
+          {state === "loading" && (
             <p className="text-sm text-gray-400 text-center py-8">Cargando…</p>
           )}
 
-          {!loading && log?.source !== "HOLDED" && (
+          {state === "failed" && (
+            <p className="text-sm text-gray-500 text-center py-8">
+              No se ha podido cargar el detalle de este sync.
+            </p>
+          )}
+
+          {state === "ready" && log?.errorMessage && (
+            <div className="rounded-lg bg-red-50 px-3 py-2.5">
+              <p className="text-xs font-medium text-red-700 mb-1">
+                {log.result === "PARTIAL" ? "Aviso" : "Error"}
+              </p>
+              <p className="text-sm text-red-800 whitespace-pre-wrap break-words">
+                {log.errorMessage}
+              </p>
+            </div>
+          )}
+
+          {state === "ready" && details?.skipped && (
+            <p className="text-sm text-gray-500 text-center py-6">
+              Esta empresa no llegó a arrancar en esta ejecución, así que no hay documentos
+              que consultar. Se sincronizará en la siguiente pasada.
+            </p>
+          )}
+
+          {state === "ready" && !details?.skipped && log?.source !== "HOLDED" && (
             <p className="text-sm text-gray-500 text-center py-8">
               El detalle de documentos solo está disponible para syncs de Holded.
             </p>
           )}
 
-          {!loading && log?.source === "HOLDED" && !log.details && (
+          {state === "ready" && !details?.skipped && log?.source === "HOLDED" && !details && (
             <p className="text-sm text-gray-500 text-center py-8">
               Este sync no tiene datos detallados.
               <br />
@@ -202,7 +239,13 @@ function SyncLogModal({
             </p>
           )}
 
-          {!loading && log?.source === "HOLDED" && log.details && (
+          {state === "ready" && details && !details.skipped && !hasDocuments && (
+            <p className="text-sm text-gray-500 text-center py-8">
+              Holded no devolvió ningún documento en esta pasada.
+            </p>
+          )}
+
+          {state === "ready" && details && !details.skipped && hasDocuments && (
             <>
               {/* Search */}
               <div>
@@ -257,13 +300,13 @@ function SyncLogModal({
               </div>
 
               {/* Upsert errors list */}
-              {log.details.upsertErrors.length > 0 && (
+              {details.upsertErrors.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-gray-600 mb-2">
-                    Errores de importación ({log.details.upsertErrors.length})
+                    Errores de importación ({details.upsertErrors.length})
                   </p>
                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                    {log.details.upsertErrors.map((err, i) => (
+                    {details.upsertErrors.map((err, i) => (
                       <div key={i} className="bg-red-50 rounded-lg px-3 py-2 text-xs">
                         <p className="font-mono text-red-700 truncate">{err.holdedId}</p>
                         <p className="text-red-600 mt-0.5">
