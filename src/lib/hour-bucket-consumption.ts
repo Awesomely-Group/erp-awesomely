@@ -16,7 +16,10 @@
 export type AttributionReason =
   /** El autor no tiene rol asignado en el proyecto. */
   | "NO_ROLE"
-  /** Tiene rol, pero ese rol no tiene bolsa activa que cubra la fecha del parte. */
+  /**
+   * Tiene rol, pero ese rol no tiene ninguna bolsa donde quepa la hora: ni una viva en
+   * esa fecha, ni una que arranque dentro del margen posterior.
+   */
   | "ROLE_WITHOUT_BUCKET"
   /** El issue está asignado a mano a una bolsa que ya no está activa. */
   | "UNKNOWN_BUCKET";
@@ -62,7 +65,11 @@ export interface ConsumptionInput {
 export interface ConsumptionResult {
   /** Horas que consumen bolsa: facturables, aprobadas y dentro de ventana. */
   hoursByBucketId: ReadonlyMap<string, number>;
-  /** Atribuidas a una bolsa pero todavía sin aprobar. Se enseñan aparte, no restan saldo. */
+  /**
+   * Atribuidas a una bolsa pero todavía sin aprobar. Se enseñan aparte y **no restan
+   * saldo**: se reparten contra su propia cuenta de hueco, así que no desplazan a las
+   * horas aprobadas ni consumen packs posteriores en su lugar.
+   */
   pendingApprovalByBucketId: ReadonlyMap<string, number>;
   /** Facturables que no caen en ninguna bolsa. Es el número que el portal publica. */
   pendingAttributionHours: number;
@@ -72,6 +79,23 @@ export interface ConsumptionResult {
   unattributedByAuthor: ReadonlyMap<string, number>;
   /** No facturables. Ni consumen ni cuentan como pendientes: son coste nuestro. */
   nonBillableHours: number;
+}
+
+/**
+ * Cuánto puede estirarse una hora hacia atrás para que la cubra un pack posterior.
+ *
+ * Se trabaja y luego se factura, así que lo normal es imputar antes de que exista el
+ * pack: en Z1 Gestión 31 de sus 37 h eran de las dos semanas previas a su propia bolsa.
+ * Pero sin tope, trabajo de hace año y medio se comería un pack recién comprado —y en
+ * silencio, porque dejaría de contarse como hora sin atribuir, que es donde se ve el
+ * problema—. Dos meses cubre el desfase real entre trabajar y facturar; lo que caiga
+ * fuera sigue saliendo como `ROLE_WITHOUT_BUCKET`, a la vista.
+ */
+const MARGEN_PACK_POSTERIOR_DIAS = 60;
+
+/** Días entre dos "YYYY-MM-DD". Ambas se leen como UTC, así que no hay husos de por medio. */
+function diasEntre(desde: string, hasta: string): number {
+  return (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000;
 }
 
 /** Las fechas son "YYYY-MM-DD", así que comparar como cadena ya ordena bien. */
@@ -93,11 +117,13 @@ function addTo(map: Map<string, number>, key: string, hours: number): void {
  *  1. **Asignación explícita del issue** a una bolsa. Gana siempre y **no** se filtra
  *     por fecha: es una decisión deliberada de una persona y tiene que poder pesar más
  *     que el calendario.
- *  2. **Fallback por rol del autor**, y aquí sí manda la ventana de la bolsa. Sin esto,
- *     renovar una bolsa la rompía: con caducidad de un año conviven dos bolsas activas
- *     del mismo rol, y el mapa rol→bolsa se quedaba con una sola, de modo que todo el
- *     histórico caía en ella (la renovada salía agotada de golpe y la anterior a 0 %).
- *     Una bolsa sin fechas cubre todo, así que las que hoy existen no cambian de número.
+ *  2. **Fallback por rol del autor**. Manda la ventana de la bolsa, con una excepción
+ *     acotada: si la hora no cabe en ninguna bolsa viva, la absorbe el siguiente pack que
+ *     arranque dentro de `MARGEN_PACK_POSTERIOR_DIAS`. Sin la ventana, renovar una bolsa
+ *     la rompía: con caducidad de un año conviven dos bolsas activas del mismo rol, y el
+ *     mapa rol→bolsa se quedaba con una sola, de modo que todo el histórico caía en ella
+ *     (la renovada salía agotada de golpe y la anterior a 0 %). Una bolsa sin fechas
+ *     cubre todo, así que las que hoy existen no cambian de número.
  *
  * Lo que no encaja **no se pierde en silencio**, que es lo que pasaba hasta ahora en
  * tres casos distintos: se acumula en `pendingAttributionHours` para que el saldo se
@@ -123,8 +149,16 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
     else list.push(bucket);
   }
 
-  /** Hueco que le queda a cada bolsa mientras se reparte. */
-  const restante = new Map<string, number>(buckets.map((b) => [b.id, b.totalHours]));
+  // Hueco que le queda a cada bolsa mientras se reparte, con una cuenta POR CADA FLUJO.
+  // `ConsumptionResult` promete que las horas pendientes de aprobación "se enseñan
+  // aparte, no restan saldo", y con una sola cuenta eso era mentira: un parte sin aprobar
+  // ocupaba hueco y empujaba a las horas aprobadas que llegaban después a la bolsa
+  // siguiente. Con la cadena hacia packs futuros el efecto cruzaba además de un pack a
+  // otro: 25 h sin aprobar en octubre dejaban el pack de noviembre con 5 h de hueco.
+  const restantePorFlujo = {
+    aprobado: new Map<string, number>(buckets.map((b) => [b.id, b.totalHours])),
+    pendiente: new Map<string, number>(buckets.map((b) => [b.id, b.totalHours])),
+  };
 
   // En orden cronológico, porque el reparto depende de lo que ya se haya consumido antes.
   const enOrden = [...worklogs].sort((a, b) => a.date.localeCompare(b.date));
@@ -140,6 +174,10 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
       nonBillableHours += worklog.hours;
       continue;
     }
+
+    // Cada parte reparte contra la cuenta de su flujo: las aprobadas no ven el hueco que
+    // ocupan las pendientes, ni al revés.
+    const restante = worklog.approved ? restantePorFlujo.aprobado : restantePorFlujo.pendiente;
 
     let bucketId: string | undefined;
 
@@ -161,29 +199,45 @@ export function computeBucketConsumption(input: ConsumptionInput): ConsumptionRe
       leak("NO_ROLE", worklog);
       continue;
     }
-    const candidatas = (bucketsByRole.get(roleId) ?? []).filter((b) => coversDate(b, worklog.date));
-    if (candidatas.length === 0) {
+    const delRol = bucketsByRole.get(roleId) ?? [];
+    // Primero las bolsas vivas en esa fecha, de la más antigua a la más nueva: se
+    // consume el pack que se compró primero.
+    const vivas = delRol.filter((b) => coversDate(b, worklog.date));
+    // Y detrás las que arrancan DESPUÉS, hasta `MARGEN_PACK_POSTERIOR_DIAS`. Una hora
+    // que no cabe en ninguna bolsa viva la cubre el siguiente pack que se compre, que es
+    // lo que pasa de verdad: te pasas de horas y el pack siguiente lo absorbe. Esto cubre
+    // también el trabajo hecho justo antes de que exista el pack, que es lo normal —se
+    // trabaja y luego se factura—: en Z1 Gestión 31 de sus 37 h eran anteriores a su
+    // propia bolsa.
+    const futuras = delRol.filter(
+      (b) =>
+        b.startDate !== null &&
+        worklog.date < b.startDate &&
+        diasEntre(worklog.date, b.startDate) <= MARGEN_PACK_POSTERIOR_DIAS,
+    );
+    const cadena = [...vivas, ...futuras];
+    if (cadena.length === 0) {
       leak("ROLE_WITHOUT_BUCKET", worklog);
       continue;
     }
 
-    // Se reparte llenando la bolsa más antigua que aún tenga hueco y desbordando a la
-    // siguiente. Sin esto, la primera bolsa cuya ventana cubre la fecha se lo llevaba
-    // TODO: en Colvin, una bolsa de 65 h figuraba con 198,5 consumidas y las otras tres
-    // a cero. Un cliente que compra packs seguidos consume el que compró primero, y con
-    // caducidad de un año sus ventanas se solapan casi siempre, así que la fecha por sí
-    // sola no decide.
     let porRepartir = worklog.hours;
-    for (let i = 0; i < candidatas.length && porRepartir > 0; i += 1) {
-      const b = candidatas[i];
+    for (const b of cadena) {
+      if (porRepartir <= 0) break;
       const hueco = restante.get(b.id) ?? 0;
-      // En la última candidata cae el resto aunque se pase: el exceso tiene que verse
-      // como bolsa agotada, no desaparecer.
-      const cabe = i === candidatas.length - 1 ? porRepartir : Math.max(Math.min(hueco, porRepartir), 0);
+      const cabe = Math.max(Math.min(hueco, porRepartir), 0);
       if (cabe <= 0) continue;
       addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, b.id, cabe);
       restante.set(b.id, hueco - cabe);
       porRepartir -= cabe;
+    }
+    // Si no cabe en ninguna, el resto sobrecarga la ÚLTIMA de la cadena: el exceso tiene
+    // que verse como bolsa agotada —y en la más reciente, que es donde el cliente mira—
+    // en vez de desaparecer.
+    if (porRepartir > 0) {
+      const ultima = cadena[cadena.length - 1];
+      addTo(worklog.approved ? hoursByBucketId : pendingApprovalByBucketId, ultima.id, porRepartir);
+      restante.set(ultima.id, (restante.get(ultima.id) ?? 0) - porRepartir);
     }
   }
 
