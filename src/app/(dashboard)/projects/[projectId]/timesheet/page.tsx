@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { resolveHoursSource } from "@/lib/hours-source";
 import { ProjectTimesheetSection } from "../project-timesheet-section";
 import { assignIssueToBucket } from "../../actions";
 
@@ -26,6 +27,8 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
   });
 
   if (!project) notFound();
+
+  const hasHoursSource = resolveHoursSource(project) !== "UNAVAILABLE";
 
   let filterBucketId: string | undefined;
   let filterBucketRoleId: string | undefined;
@@ -81,7 +84,7 @@ export default async function ProjectTimesheetPage({ params, searchParams }: Pro
       {/* Timesheet */}
       <ProjectTimesheetSection
         projectId={project.id}
-        hasTempoToken={!!project.workspace.tempoApiToken}
+        hasHoursSource={hasHoursSource}
         workspaceDomain={project.workspace.domain}
         isBolsasHoras={project.isBolsasHoras}
         bucketByRole={Object.fromEntries(

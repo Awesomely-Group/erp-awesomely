@@ -218,3 +218,195 @@ export async function projectAuthors(
     })),
   };
 }
+
+// ─── Worklogs crudos de un proyecto ───────────────────────────────────────────
+
+/**
+ * Una línea de imputación, ya normalizada: la misma forma venga de Giro o de Tempo.
+ *
+ * La llave de persona es el **`accountId` de Jira** y no el `giroUserId` porque es
+ * contra ella contra la que el ERP tiene escritas las tarifas
+ * (`ProjectUserRole.jiraAccountId`, `SupplierJiraUser.accountId`). Lo que hace el
+ * puente es devolver desde Giro esa misma llave, no cambiarla.
+ */
+export type WorklogLinea = {
+  accountId: string;
+  issueKey: string;
+  /** Id numérico de Jira. `null` desde Giro: allí no existe. */
+  issueNumericId: number | null;
+  description: string;
+  seconds: number;
+  /** `YYYY-MM-DD`. */
+  date: string;
+};
+
+export type IssueMeta = { summary: string; originalEstimateSeconds: number | null };
+
+export type ProjectWorklogs = {
+  source: HoursSource;
+  worklogs: WorklogLinea[];
+  /** Por `issueKey`, y **solo** de los issues que tienen horas en el rango. */
+  issues: Map<string, IssueMeta>;
+  /** `accountId` → nombre para pintar. */
+  nombres: Map<string, string>;
+  /**
+   * Personas cuyas horas vienen de Giro sin `accountId` al otro lado del puente. Sus
+   * líneas **se devuelven igual** (perderlas sería perder horas trabajadas), pero no
+   * van a encontrar tarifa: salen a 0 €. Es un número que tiene que poder enseñarse.
+   */
+  sinPuente: string[];
+};
+
+/**
+ * Elige con qué `accountId` se representa a una persona que tiene varios.
+ *
+ * Giro fusiona cuentas de Atlassian de la misma persona, así que un `giroUserId` puede
+ * traer dos o tres. El ERP, en cambio, tiene la tarifa escrita contra **una** de ellas.
+ * Se prefiere la que el ERP conoce; si no conoce ninguna, la primera por orden
+ * alfabético, para que la elección sea estable entre peticiones y no baile el nombre
+ * de una pantalla a otra.
+ */
+function eligeAccountId(candidatos: string[], conocidos: Set<string>): string | null {
+  const ordenados = [...candidatos].sort();
+  return ordenados.find((accountId) => conocidos.has(accountId)) ?? ordenados[0] ?? null;
+}
+
+/**
+ * Las horas de un proyecto en un rango, crudas, con el nombre y la estimación de cada
+ * issue resueltos.
+ *
+ * **No calcula coste a propósito.** Giro también sabe calcularlo, pero con su catálogo
+ * de tarifas (`ProjectMemberRole`/`RoleRate`), que es la tarifa interna; lo que pintan
+ * las pantallas de proyecto del ERP es el coste de proveedor
+ * (`Supplier.hourlyRate` / `ProjectUserRole.ratePerHour`). Son dos números distintos
+ * que significan cosas distintas, y mezclarlos sería cambiar lo que dice la pantalla
+ * sin que nadie lo haya pedido.
+ */
+export async function projectWorklogs(
+  project: ProyectoConJira & { id: string },
+  rango: { from: string; to: string },
+): Promise<ProjectWorklogs> {
+  const source = resolveHoursSource(project);
+  const vacio: ProjectWorklogs = {
+    source,
+    worklogs: [],
+    issues: new Map(),
+    nombres: new Map(),
+    sinPuente: [],
+  };
+  if (source === "UNAVAILABLE") return vacio;
+
+  if (source === "GIRO") {
+    const { GiroClient } = await import("@/lib/giro-client");
+    const client = new GiroClient(process.env.GIRO_BASE_URL!, project.workspace.giroApiKey!);
+
+    const crudos = await client.listWorklogs(project.giroProjectId!, rango.from, rango.to);
+    if (crudos.length === 0) return vacio;
+
+    // Los `accountId` que este ERP ya usa para este proyecto. Decide cuál se elige
+    // cuando una persona tiene varias cuentas fusionadas en Giro.
+    const [personas, issues, deProyecto, deProveedores] = await Promise.all([
+      client.listUsers(),
+      client.listIssues(project.giroProjectId!, true),
+      prisma.projectUserRole.findMany({
+        where: { projectId: project.id },
+        select: { jiraAccountId: true },
+      }),
+      prisma.supplierJiraUser.findMany({ select: { accountId: true } }),
+    ]);
+    const conocidos = new Set([
+      ...deProyecto.map((fila) => fila.jiraAccountId),
+      ...deProveedores.map((fila) => fila.accountId),
+    ]);
+
+    const nombres = new Map<string, string>();
+    const porGiroUserId = new Map<string, string>();
+    const sinAccountId = new Set<string>();
+    for (const persona of personas) {
+      const accountId = eligeAccountId(persona.accountIds, conocidos);
+      // Sin puente la hora no desaparece: se representa con el propio id de Giro. Así
+      // sigue contando en el total y se ve con tarifa 0, que es el síntoma correcto.
+      const clave = accountId ?? persona.id;
+      if (accountId === null) sinAccountId.add(persona.id);
+      porGiroUserId.set(persona.id, clave);
+      nombres.set(clave, persona.name ?? persona.email);
+    }
+
+    // Solo se avisa de quien **ha imputado** en el rango. Media organización sin
+    // `accountId` no es una incidencia si ninguna de esas personas tocó el proyecto.
+    const sinPuente = [
+      ...new Set(
+        crudos
+          .filter((worklog) => sinAccountId.has(worklog.authorId))
+          .map((worklog) => nombres.get(worklog.authorId) ?? worklog.authorEmail),
+      ),
+    ];
+
+    const worklogs: WorklogLinea[] = crudos.map((worklog) => ({
+      accountId: porGiroUserId.get(worklog.authorId) ?? worklog.authorId,
+      issueKey: worklog.issueKey,
+      issueNumericId: null,
+      description: worklog.description ?? "",
+      seconds: worklog.timeSpentSeconds,
+      date: worklog.startDate,
+    }));
+
+    // Solo los issues con horas: `month-cost` suma la estimación de este mapa, y
+    // meter el proyecto entero cambiaría el número que lleva años enseñándose.
+    const conHoras = new Set(worklogs.map((worklog) => worklog.issueKey));
+    const meta = new Map<string, IssueMeta>();
+    for (const issue of issues) {
+      if (!conHoras.has(issue.key)) continue;
+      meta.set(issue.key, {
+        summary: issue.summary,
+        originalEstimateSeconds: issue.originalEstimateSeconds,
+      });
+    }
+
+    return { source, worklogs, issues: meta, nombres, sinPuente };
+  }
+
+  const { TempoClient } = await import("@/lib/tempo");
+  const { JiraClient } = await import("@/lib/jira");
+
+  const tempo = new TempoClient(project.workspace.tempoApiToken!);
+  const crudos = await tempo.getWorklogs(project.jiraId, rango.from, rango.to);
+  if (crudos.length === 0) return vacio;
+
+  const accountIds = [...new Set(crudos.map((worklog) => worklog.author.accountId))];
+  const issueIds = [...new Set(crudos.map((worklog) => worklog.issue.id))];
+
+  const jira = new JiraClient(
+    project.workspace.domain,
+    project.workspace.email,
+    project.workspace.apiToken,
+  );
+  const [deJira, nombres] = await Promise.all([
+    jira.getIssuesByIds(issueIds).catch(() => []),
+    jira.getUsersByAccountIds(accountIds),
+  ]);
+
+  // Tempo no siempre trae la key del issue, solo su id numérico; la key sale de Jira y,
+  // si ni eso, se cae al id para no perder la línea.
+  const porNumericId = new Map(deJira.map((issue) => [issue.numericId, issue]));
+  const claveDe = (id: number): string => porNumericId.get(id)?.key ?? String(id);
+
+  const worklogs: WorklogLinea[] = crudos.map((worklog) => ({
+    accountId: worklog.author.accountId,
+    issueKey: claveDe(worklog.issue.id),
+    issueNumericId: worklog.issue.id,
+    description: worklog.description ?? "",
+    seconds: worklog.timeSpentSeconds,
+    date: worklog.startDate,
+  }));
+
+  const meta = new Map<string, IssueMeta>();
+  for (const issue of deJira) {
+    meta.set(issue.key, {
+      summary: issue.summary,
+      originalEstimateSeconds: issue.originalEstimateSeconds,
+    });
+  }
+
+  return { source, worklogs, issues: meta, nombres, sinPuente: [] };
+}

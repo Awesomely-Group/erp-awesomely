@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ProjectFixedPriceSection } from "./project-fixed-price-section";
 import { ProjectRegularFeeSection } from "./project-regular-fee-section";
 import { ProjectHourBucketsSection } from "./project-hour-buckets-section";
-import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
+import type { ProjectHoursMonthCostResponse } from "@/app/api/projects/[projectId]/hours/route";
 
 interface RegularFeeEntry {
   id: string;
@@ -26,26 +26,26 @@ interface Props {
   projectId: string;
   from: string;
   to: string;
-  hasTempoToken: boolean;
+  hasHoursSource: boolean;
   config: ProjectTypesConfig;
 }
 
-export function ProjectTypesDashboard({ projectId, from, to, hasTempoToken, config }: Props): React.JSX.Element | null {
+export function ProjectTypesDashboard({ projectId, from, to, hasHoursSource, config }: Props): React.JSX.Element | null {
   const { isPrecioCerrado, isBolsasHoras, isFeeRegular } = config;
   const hasAnyType = isPrecioCerrado || isBolsasHoras || isFeeRegular;
 
-  const [tempoData, setTempoData] = useState<TempoWorklogsMonthCostResponse | null>(null);
+  const [tempoData, setTempoData] = useState<ProjectHoursMonthCostResponse | null>(null);
 
-  const needsTempoData = (isPrecioCerrado || (isFeeRegular && config.regularFeeEntries.length > 0)) && hasTempoToken;
+  const needsTempoData = (isPrecioCerrado || (isFeeRegular && config.regularFeeEntries.length > 0)) && hasHoursSource;
 
   useEffect(() => {
     if (!needsTempoData) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTempoData(null);
-    fetch(`/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month-cost`)
+    fetch(`/api/projects/${projectId}/hours?from=${from}&to=${to}&groupBy=month-cost`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Error");
-        return res.json() as Promise<TempoWorklogsMonthCostResponse>;
+        return res.json() as Promise<ProjectHoursMonthCostResponse>;
       })
       .then(setTempoData)
       .catch(() => setTempoData(null));
@@ -69,7 +69,7 @@ export function ProjectTypesDashboard({ projectId, from, to, hasTempoToken, conf
           projectId={projectId}
           from={from}
           to={to}
-          hasTempoToken={hasTempoToken}
+          hasHoursSource={hasHoursSource}
         />
       )}
 

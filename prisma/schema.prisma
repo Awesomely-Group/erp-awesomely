@@ -244,7 +244,9 @@ model IssueHourBucketAssignment {
   projectId      String
   project        JiraProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issueKey       String
-  issueNumericId Int
+  /// Id numérico de Jira. Nullable desde el Bloque E: las horas que vienen de
+  /// Giro no traen uno, y nadie lee esta columna — la llave es `issueKey`.
+  issueNumericId Int?
   hourBucketId   String
   hourBucket     HourBucket  @relation(fields: [hourBucketId], references: [id], onDelete: Cascade)
   createdAt      DateTime    @default(now())
