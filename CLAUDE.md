@@ -145,10 +145,82 @@ npx ruflo status
 
 ---
 
+## API v1, MCP y acceso programático (octubre de 2026)
+
+El acceso programático al ERP se rehízo entero, portando el modelo de Giro. Lo que hay
+que saber antes de tocar esta zona:
+
+- **Toda clave nace de una concesión nominal** (`ApiAccessGrant`) que un ADMIN otorga a
+  una persona, con caducidad (90 días por defecto). Lo que puede hacer se recalcula en
+  **cada petición** como `clave ∩ concesión ∩ permisos vivos del dueño`, nunca se lee de
+  la fila. La pertenencia viva aquí es **`SsoAllowedEmail`**: quitar un email de ahí
+  corta el login y corta también sus claves.
+- **Conceder y acuñar son dos actos y dos pantallas.** El ADMIN autoriza; la persona
+  autorizada crea sus claves. Si las creara el ADMIN, el valor en claro pasaría por sus
+  manos y viajaría por Slack, y una credencial que ha estado en un chat ya no lo es.
+- **`companyIds`/`marcas` son la frontera de datos y no son opcionales.** Se inyectan en
+  el `where` desde la credencial; **nunca** se aceptan como parámetro. Un `?companyId=`
+  solo puede acotar dentro de lo permitido, y pedir una fuera de alcance devuelve vacío
+  — no 403, que ya confirmaría que esa sociedad existe.
+- **Los scopes se separan por sensibilidad, no por tabla.** `payroll:read` y `cash:read`
+  exigen ADMIN vivo: el primero toca `Employee.iban`, el segundo el saldo y los pagos
+  individuales (distinto de los agregados de `finance:read`, que ya circulan en
+  informes). Un `COMERCIAL` solo puede ejercer `crm:read`, que es lo único que ve por
+  pantalla. **No existe ningún scope de borrado**, y hay un test que lo impide.
+- **Revocar es marcar, no borrar.** La fila con su `lastUsedAt` es lo que dice desde y
+  hasta cuándo estuvo viva una credencial. Retirar una concesión revoca en cascada sus
+  claves.
+- **`/api/v1/*` autentica con Bearer en `apiRoute`**, que exige declarar el scope en cada
+  ruta: sin declararlo no compila. Las rutas internas de la app (`authenticateRequest`)
+  son **solo sesión** desde octubre: aceptar también `x-api-key` dejaba dos puertas al
+  mismo dato con reglas distintas.
+- **El middleware (`src/proxy.ts`) usa cuatro reglas por prefijo**, no un allowlist ruta
+  a ruta. El allowlist literal se había desincronizado de lo que los handlers aceptaban.
+  `/api/v1` queda fuera de la excepción de login en local a propósito: si ahí se pudiera
+  entrar sin Bearer, una prueba manual pasaría y producción fallaría.
+- **El MCP vive en `/api/v1/mcp`** y se construye **por petición**, registrando solo las
+  herramientas que los permisos de la clave dan — `tools/list` devuelve distinto según
+  quién pregunte. El contexto viaja por clausura, nunca como argumento de una
+  herramienta. **Las nóminas no se exponen al MCP en ninguna circunstancia**, ni con su
+  permiso: un IBAN de una persona física no tiene por qué pasar por la ventana de
+  contexto de un modelo.
+- **Solo tres escrituras** (`src/lib/writes.ts`), compartidas entre API y MCP. La regla
+  para entrar: el ERP tiene que ser la fuente de verdad del dato y el cambio tiene que
+  deshacerse desde una pantalla. Fuera: pagos, nóminas, borrados, disparar un sync
+  (300 s de reloj), aprobar/enviar presupuestos y firma, CRM y comisiones, y todo lo que
+  escriba en Holded.
+- **`ERP_API_KEY` está en retirada.** Era una clave maestra sin dueño, sin caducidad y
+  sin permisos. Ya no vale para el MCP ni para `/api/kpis`. Queda viva solo como
+  alternativa a `CRON_SECRET` en `webhooks/jira` y `webhooks/holded`; se retira
+  introduciendo `WEBHOOK_SYNC_SECRET` y vigilando el `console.warn` de la rama legacy.
+
+### Dos cosas que bloquean el desarrollo local y conviene arreglar
+
+1. **`src/lib/prisma.ts` usa siempre `@prisma/adapter-neon`**, que habla por WebSocket y
+   no sabe conectarse a un Postgres normal. No hay forma de levantar el ERP contra una
+   base local: cualquier prueba real apunta a la Neon de **producción**. Giro resuelve
+   esto eligiendo el adapter por el host de la URL.
+2. Al intentar arreglarlo aparece lo de debajo: **algún componente cliente acaba
+   importando `prisma`** (`src/app/(dashboard)/pl/pl-client.tsx` lo destapa), así que el
+   bundler intenta meter `pg` en el bundle del navegador. Hasta que eso se separe, el
+   punto 1 no se puede cerrar.
+
+Mientras tanto, las rutas de `/api/v1` se prueban **como handlers** con `prisma`
+mockeado (`src/app/api/v1/routes.test.ts`), que es la verificación honesta disponible.
+
 ## Current Phase
 
-<!-- TODO: Document current development phase -->
+Bloque E (el ERP deja de leer de Jira/Tempo y lee de Giro) **a medias**: están el puente
+de identidad `GiroUserLink`, `src/lib/hours-source.ts` con su tercer estado
+`UNAVAILABLE`, y los dos scripts (`sync-giro-user-links.ts` para rellenar el puente,
+`compare-hours-giro-vs-tempo.ts` como criterio objetivo del cutover).
+
+Queda migrar los consumidores que aún leen de Jira/Tempo: `api/jira/users` (y las dos
+páginas de proveedores), `api/projects/[projectId]/user-roles`, y `api/tempo/worklogs`
+—del que **solo dos de sus seis modos tienen consumidor**: `month-cost` y
+`hierarchical`; los otros cuatro no los llama nadie y se borran con la ruta—. Después
+del cutover: `captureTempoHours`, `syncJiraWorkspace` y borrar `TempoClient`.
 
 ---
 
-**Last updated:** 2026-03-25
+**Last updated:** 2026-10-14
