@@ -55,6 +55,26 @@ function isoDay(date: Date): string {
  */
 const SHADOW_EMAIL = /^shadow\+([^@]+)@migrated\.giro\.internal$/i;
 
+/**
+ * El accountId **slugificado**, que es como Giro lo mete en el email sombra
+ * (`shadowEmail()` en `apps/giro/src/lib/import/identity.ts`): minúsculas y todo lo que
+ * no sea alfanumérico a guiones.
+ *
+ * Importa más de lo que parece: un accountId moderno de Atlassian es
+ * `712020:dba4dc92-…`, y sin convertir los dos puntos a guión **ninguna** persona con
+ * cuenta moderna casaba — solo los accountId hexadecimales antiguos. El síntoma era
+ * silencioso: horas en `unattributedByAuthor` que deberían estar consumiendo una bolsa.
+ * `scripts/map-giro-users.ts` ya tenía esta función; no estaba compartida.
+ */
+export function slugAccountId(accountId: string): string {
+  return accountId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+/** El email sombra que Giro daría a este accountId. */
+export function shadowEmailFor(accountId: string): string {
+  return `shadow+${slugAccountId(accountId)}@migrated.giro.internal`;
+}
+
 export function jiraAccountIdFromGiroEmail(email: string): string | null {
   return SHADOW_EMAIL.exec(email)?.[1] ?? null;
 }
@@ -167,7 +187,7 @@ export async function getProjectConsumption(projectId: string): Promise<ProjectC
     if (source === "GIRO") {
       if (ur.giroUserEmail !== null) authorToRole.set(ur.giroUserEmail.toLowerCase(), ur.roleId);
       // La gente importada y sin casar llega con el email sombra, que lleva dentro el accountId.
-      authorToRole.set(`shadow+${ur.jiraAccountId}@migrated.giro.internal`, ur.roleId);
+      authorToRole.set(shadowEmailFor(ur.jiraAccountId), ur.roleId);
     } else {
       authorToRole.set(ur.jiraAccountId, ur.roleId);
     }

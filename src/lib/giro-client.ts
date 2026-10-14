@@ -56,6 +56,23 @@ export type GiroProject = {
   isInternal: boolean;
 };
 
+/**
+ * Una persona en Giro, con sus `accountId` de Jira/Tempo (Bloque E).
+ *
+ * `accountIds` puede traer más de uno: Giro fusiona cuentas de Atlassian que son la
+ * misma persona. `isShadow` marca a quien fue importado y todavía no tiene cuenta
+ * propia — no podrá imputar después del cutover, y eso hay que poder avisarlo.
+ */
+export type GiroUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  isShadow: boolean;
+  isSystem: boolean;
+  active: boolean;
+  accountIds: string[];
+};
+
 export class GiroClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -99,5 +116,51 @@ export class GiroClient {
 
   async listProjects(): Promise<GiroProject[]> {
     return (await this.get("/projects", {})) as GiroProject[];
+  }
+
+  /**
+   * Las personas que aparecen en los datos de la organización.
+   *
+   * Es la fuente del puente `GiroUserLink`: sin esto, casar un `accountId` de Jira con
+   * una persona de Giro había que hacerlo a mano con un script y heurísticas de nombre.
+   */
+  async listUsers(filtros: { q?: string; accountIds?: string[] } = {}): Promise<GiroUser[]> {
+    return (await this.get("/users", {
+      ...(filtros.q ? { q: filtros.q } : {}),
+      ...(filtros.accountIds?.length ? { accountIds: filtros.accountIds.join(",") } : {}),
+    })) as GiroUser[];
+  }
+
+  /**
+   * Horas aprobadas por persona y periodo — el sustituto de Tempo `/approvals`.
+   *
+   * `userIds` acota a unas personas: al verificar las horas de un proveedor se pregunta
+   * por una, no por toda la organización.
+   */
+  async listApprovedHours(
+    from: string,
+    to: string,
+    userIds?: string[],
+  ): Promise<{ userId: string; userEmail: string; periodStart: string; periodEnd: string; approvedHours: number }[]> {
+    return (await this.get("/approved-hours", {
+      from,
+      to,
+      ...(userIds?.length ? { userIds: userIds.join(",") } : {}),
+    })) as { userId: string; userEmail: string; periodStart: string; periodEnd: string; approvedHours: number }[];
+  }
+
+  /**
+   * Los issues de un proyecto. `includeArchived` hace falta al cruzarlos con worklogs:
+   * un issue archivado después sigue teniendo horas colgando, y sin él esas líneas
+   * quedan sin nombre y sin estimación.
+   */
+  async listIssues(
+    projectId: string,
+    includeArchived = false,
+  ): Promise<{ id: string; key: string; summary: string; assigneeName: string | null; originalEstimateSeconds: number | null; archivedAt: string | null }[]> {
+    return (await this.get("/issues", {
+      projectId,
+      ...(includeArchived ? { includeArchived: "true" } : {}),
+    })) as { id: string; key: string; summary: string; assigneeName: string | null; originalEstimateSeconds: number | null; archivedAt: string | null }[];
   }
 }

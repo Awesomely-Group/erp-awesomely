@@ -1127,6 +1127,42 @@ model RoleRate {
   @@map("role_rates")
 }
 
+// ─── Puente de identidad con Giro ─────────────────────────────────────────────
+
+/// Correspondencia entre un `accountId` de Jira y una persona de Giro (Bloque E).
+///
+/// La clave de unión pasa a ser el **`giroUserId`**, no el email: el email de alguien
+/// importado como *shadow* se edita a mano cuando esa persona se da de alta de verdad
+/// (`identity.ts` en Giro lo documenta), así que indexar por él es construir sobre
+/// arena. `ProjectUserRole.giroUserEmail` se queda como override manual, no como puente.
+///
+/// `giroUserId` **no es único**: Giro fusiona cuentas de Atlassian que son la misma
+/// persona (`KNOWN_IDENTITY_MERGES`), así que dos `accountId` distintos pueden apuntar
+/// al mismo usuario. El `accountId` sí es la clave, y se conserva para siempre: es lo
+/// único que permite releer Jira/Tempo si aparece una discrepancia en un cierre.
+model GiroUserLink {
+  jiraAccountId String     @id
+  giroUserId    String
+  giroUserEmail String
+  /// Importada de Jira y todavía sin cuenta propia en Giro. No podrá imputar tras el
+  /// cutover, y eso hay que poder avisarlo.
+  isShadow      Boolean    @default(false)
+  source        LinkSource @default(API)
+  linkedAt      DateTime   @default(now())
+
+  @@index([giroUserId])
+  @@map("giro_user_links")
+}
+
+enum LinkSource {
+  /// Resuelto automáticamente contra `GET /api/v1/users` de Giro.
+  API
+  /// Casado a mano, porque Giro no tenía el accountId mapeado.
+  MANUAL
+
+  @@map("link_source")
+}
+
 // ─── API Keys ─────────────────────────────────────────────────────────────────
 
 /// Autorización nominal para usar la API del ERP. Portado del modelo de Giro
