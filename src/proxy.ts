@@ -11,34 +11,35 @@ export default auth((req) => {
 
   const p = req.nextUrl.pathname;
 
+  // Rutas que **no** pasan por sesión porque tienen su propia autenticación. Antes
+  // esto era un allowlist literal ruta a ruta, y se había desincronizado de lo que los
+  // handlers aceptaban: `/api/invoices/[id]`, `classify-lines` y los dos PDFs admitían
+  // `x-api-key` pero el middleware los mandaba a /login, así que por API eran
+  // inalcanzables. Cuatro reglas por prefijo en vez de una lista que hay que recordar
+  // actualizar:
   const isApiInternal =
-    p === "/api/sync" ||
-    p === "/api/debug-accounts" ||
-    p === "/api/notify/proformas" ||
-    p === "/api/mcp" ||
-    p === "/api/kpis" ||
-    p === "/api/projects" ||
-    p.startsWith("/api/projects/") ||
-    p === "/api/invoices" ||
-    (p.startsWith("/api/invoices/") && p.endsWith("/classify")) ||
-    p === "/api/cashflow" ||
-    p === "/api/forecasts" ||
-    p === "/api/suppliers/verifications" ||
+    // API pública versionada: autentica en `apiRoute` con Bearer + scope.
+    p.startsWith("/api/v1/") ||
+    // Eventos de entrada, cada integración con su secreto.
     p.startsWith("/api/webhooks/") ||
     // Portal de cliente (2026-09-20): lo lee gigsonapps.com con un secreto por marca
     // (x-webhook-secret, ver src/lib/portal-auth.ts). Prefijo propio y no /api/webhooks/
-    // a propósito — esto es SALIDA de datos de cliente, no eventos de entrada, y este
-    // allowlist es donde se audita qué se puede leer sin sesión.
+    // a propósito — esto es SALIDA de datos de cliente, no eventos de entrada.
     p.startsWith("/api/portal/") ||
-    // Cron que recalcula el consumo de las bolsas contra Giro. Va aparte porque
-    // "/api/sync" de arriba es coincidencia exacta y no cubre las subrutas.
-    p === "/api/sync/hours";
+    // Disparadores programados, con CRON_SECRET.
+    p === "/api/sync" ||
+    p === "/api/sync/hours" ||
+    p === "/api/notify/proformas" ||
+    // Legacy: el MCP vive todavía aquí. Se mueve a /api/v1/mcp en la fase siguiente.
+    p === "/api/mcp";
 
   if (isApiAuth || isApiInternal) return NextResponse.next();
   // En desarrollo local (NODE_ENV !== "production") se omite el login para agilizar las
   // pruebas sin pasar por SSO. Nunca afecta a producción (ver también layout.tsx). El
   // guard de rol COMERCIAL de más abajo sí se aplica también en local, para poder
   // probarlo sin desplegar.
+  // `/api/v1` queda fuera de esta excepción a propósito: si en local se pudiera entrar
+  // sin Bearer, una prueba manual pasaría aquí y fallaría en producción.
   const skipLoginCheck = process.env.NODE_ENV !== "production";
   if (!skipLoginCheck) {
     if (!isLoggedIn && !isLoginPage) {

@@ -1116,7 +1116,7 @@ export class HoldedClient {
    * afirmación sobre una API externa, no una garantía.
    *
    * Verificado contra un contacto real en v2 (2026-09-18, GET
-   * /api/debug-contacts): la raíz expone `iban`, `swift`, `sepa_ref` y
+   * /api/debug/contacts): la raíz expone `iban`, `swift`, `sepa_ref` y
    * `defaults.payment_method`. NO existen titular ni nombre de banco, así que
    * `holder` y `bankName` quedan siempre a null mientras se use v2; las ramas
    * restantes se conservan como red para v1, cuya forma no hemos podido

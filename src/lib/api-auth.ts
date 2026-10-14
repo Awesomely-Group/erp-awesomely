@@ -1,10 +1,18 @@
 import { auth } from "@/lib/auth";
-import { validateApiKey } from "@/lib/mcp/validate-key";
 
-/** Returns true if the request has a valid session OR a valid API key. */
-export async function authenticateRequest(req: Request): Promise<boolean> {
-  const apiKey = req.headers.get("x-api-key");
-  if (await validateApiKey(apiKey)) return true;
+/**
+ * Autenticación de las rutas **internas** de la app: solo sesión.
+ *
+ * Antes aceptaba también `x-api-key`, y eso dejaba dos puertas al mismo dato con reglas
+ * distintas: una con sesión y rol, otra con una clave sin dueño ni permisos. Las
+ * credenciales programáticas entran ahora por `/api/v1`, donde hay scopes, caducidad y
+ * frontera de sociedad.
+ *
+ * El cambio además cierra una incoherencia que ya existía: `/api/invoices/[id]`,
+ * `classify-lines` y los dos PDFs aceptaban `x-api-key` en el handler mientras el
+ * middleware los redirigía a /login, así que por API eran inalcanzables de todas formas.
+ */
+export async function authenticateRequest(_req: Request): Promise<boolean> {
   const session = await auth();
   return !!session?.user;
 }
