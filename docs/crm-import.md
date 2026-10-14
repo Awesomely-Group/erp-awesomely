@@ -1,6 +1,13 @@
-# Carga de cuentas y contactos al CRM
+# Carga de datos al CRM
 
-`scripts/import-crm.ts` carga cuentas y contactos desde un JSON, de forma idempotente.
+`scripts/import-crm.ts` carga cuentas, contactos, relaciones entre cuentas, oportunidades
+y leads desde un JSON, de forma idempotente.
+
+**`deals` y `leads` son dos claves distintas** desde que el 2026-10-13 se separó lead de
+oportunidad. Una **oportunidad** cuelga de una cuenta y recorre el embudo de etapas. Un
+**lead** es una entrada sin cualificar que puede no tener cuenta todavía: solo pasa por
+`NEW`, `CONTACTED` y `QUALIFIED`/`DISQUALIFIED`. Cualificar un lead es crear la
+oportunidad, y eso lo hace la UI al convertirlo, no esta carga.
 
 ```bash
 pnpm tsx scripts/import-crm.ts datos.json            # valida y enseña qué haría
@@ -39,7 +46,7 @@ de cliente no encuentra a nadie.
   "relations": [
     { "from": "Sociedad A", "to": "Sociedad B", "type": "SIBLING_OF", "note": "mismo grupo" }
   ],
-  "leads": [
+  "deals": [
     {
       "name": "Implantación Odoo",
       "marca": "Gigson Solutions",
@@ -52,8 +59,22 @@ de cliente no encuentra a nadie.
       "market": "ES",
       "seats": 10,
       "amount": 12000,
+      "probability": 60,
       "notes": "…",
       "contacts": [{ "email": "persona@cliente.example", "role": "DECISOR" }]
+    }
+  ],
+  "leads": [
+    {
+      "name": "Integración de tienda con el ERP",
+      "marca": "Gigson Solutions",
+      "externalRef": "inventario-2026-09:formulario-web-0042",
+      "status": "CONTACTED",
+      "origin": "INBOUND",
+      "market": "ES",
+      "contactName": "Nombre Apellido",
+      "email": "persona@cliente.example",
+      "notes": "…"
     }
   ]
 }
@@ -84,15 +105,16 @@ de cliente no encuentra a nadie.
 Se guarda **en un solo sentido**: la ficha de la otra cuenta la lee invertida ("es holding
 de" ↔ "es filial de"). No hace falta declarar las dos.
 
-### `leads` — oportunidades
+### `deals` — oportunidades
 
 | Campo | Obligatorio | Notas |
 |---|---|---|
 | `name`, `marca` | sí | |
 | `stage` | sí | Nombre de la etapa **tal cual** está sembrada para esa marca y línea. Si no existe, el script dice cuáles hay y no escribe nada |
-| `externalRef` | sí | Llave de idempotencia. Sin ella una segunda pasada duplicaría el lead |
+| `externalRef` | sí | Llave de idempotencia. Sin ella una segunda pasada duplicaría la oportunidad. **`deals` y `leads` comparten espacio de nombres**: repetir uno entre las dos listas casi siempre es la misma fila pegada dos veces, y se bloquea |
+| `account` | **sí** | Nombre de la cuenta a la que cuelga. Una oportunidad siempre es de alguien a quien se puede facturar; si de una entrada solo consta un nombre suelto, va en `leads` |
 | `lineOfBusiness` | no (`GENERAL`) | Debe coincidir con la línea de la etapa |
-| `account` | no | Nombre de la cuenta a la que cuelga |
+| `probability` | no | 0-100 |
 | `dealType` | no (`NEW_BUSINESS`) | `EXPANSION` para los frentes de un retainer, `RENEWAL` para renovaciones. Marcarlo evita inflar las conversiones |
 | `origin` | no | `INSIDE_OUT` · `OUTSIDE_IN` · `REFERRAL` · `INBOUND` · `PARTNER` |
 | `market`, `seats`, `amount` | no | |
@@ -103,18 +125,41 @@ de" ↔ "es filial de"). No hace falta declarar las dos.
 Las etapas **no se crean al vuelo**: el funnel se siembra aparte y a conciencia con
 `scripts/seed-growth-crm.ts`.
 
+### `leads` — entradas sin cualificar
+
+Lo que llega y todavía no es una oportunidad. A diferencia de un deal, **puede no tener
+cuenta**: llega gente de la que no consta ni la razón social, y forzar una cuenta
+obligaría a inventársela.
+
+| Campo | Obligatorio | Notas |
+|---|---|---|
+| `name`, `marca` | sí | |
+| `externalRef` | sí | Llave de idempotencia, en el mismo espacio de nombres que los `deals` |
+| `lineOfBusiness` | no (`GENERAL`) | |
+| `account` | no | Si ya se sabe de qué empresa es, se enlaza; si no, se queda suelto hasta la conversión |
+| `status` | no (`NEW`) | `NEW` · `CONTACTED` · `DISQUALIFIED`. **`QUALIFIED` se rechaza**: cualificar es crear la oportunidad, y eso lo hace la UI al convertir. Si ya existe, va en `deals` |
+| `origin` | no | `INSIDE_OUT` · `OUTSIDE_IN` · `REFERRAL` · `INBOUND` · `PARTNER` |
+| `contactName`, `email`, `phone` | no | Datos sueltos de la persona, sin crear `CrmContact` |
+| `market`, `seats`, `notes` | no | |
+| `amount` | no | Se guarda en `estimatedAmount`: lo que el formulario o Apollo **declaran**, no un compromiso. Siembra el importe del primer deal al convertir |
+
+El `source` de todo lo que entra por aquí es **`MANUAL`**, no se puede fijar desde el
+fichero. Un lead que vino del formulario web quedará como `MANUAL` y no como
+`WEB_GIGSON`: si esa distinción importa para medir canales, hay que corregirla después
+desde la pantalla.
+
 ## Idempotencia
 
 - **Cuenta**: se busca por `(companyId, holdedContactId)` — la misma llave con la que el
   ERP cruza facturas y proformas. Sin ella, por `(name, marca)`.
 - **Contacto**: por su correo dentro de la cuenta; sin correo, por el nombre.
 - **Relación**: por `(from, to, type)`.
-- **Oportunidad**: por `externalRef`.
+- **Oportunidad y lead**: por `externalRef`.
 
 Se puede ejecutar las veces que haga falta: la segunda pasada actualiza en vez de duplicar.
 
-En las oportunidades, actualizar **no borra**: un campo que el fichero omite se deja como
-está. Si alguien enlazó la cuenta o corrigió el importe desde la pantalla, una segunda
+En oportunidades y leads, actualizar **no borra**: un campo que el fichero omite se deja
+como está. Si alguien enlazó la cuenta o corrigió el importe desde la pantalla, una segunda
 pasada no se lo lleva por delante.
 
 ## Datos reales fuera del repositorio
@@ -127,7 +172,9 @@ personas de empresas clientes, así que no se commitea: se pasa al script desde 
 
 **Si hay un solo error no se escribe nada.** Media carga es peor que ninguna, porque deja
 que adivinar qué entró. Se comprueban marca, `lifecycle`, que la entidad exista, que no se
-repita un `holdedContactId`, y que los correos tengan forma de correo.
+repita un `holdedContactId`, que los correos tengan forma de correo, que la etapa de cada
+oportunidad exista en su funnel, que ningún `externalRef` se repita entre `deals` y
+`leads`, y que ningún lead venga como `QUALIFIED`.
 
 La comprobación que más vale la pena es **un mismo correo en dos cuentas**. El portal
 resuelve al cliente por el correo de la persona, y si aparece en dos devuelve `409
