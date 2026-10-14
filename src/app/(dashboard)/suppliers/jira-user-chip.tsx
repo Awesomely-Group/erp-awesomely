@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { JiraUser } from "@/lib/jira";
+import type { Persona } from "@/lib/hours-source";
 
 interface Props {
   accountId: string;
@@ -14,11 +14,11 @@ export function JiraUserChip({ accountId, displayName: initialDisplayName, works
 
   useEffect(() => {
     if (initialDisplayName || !workspaceId) return;
-    const params = new URLSearchParams({ accountId, workspaceId });
-    fetch(`/api/jira/users?${params.toString()}`)
+    const params = new URLSearchParams({ accountIds: accountId });
+    fetch(`/api/people?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) return;
-        const data = (await res.json()) as JiraUser[];
+        const data = (await res.json()) as Persona[];
         if (data[0]?.displayName) setDisplayName(data[0].displayName);
       })
       .catch(() => {});

@@ -1,12 +1,9 @@
 /**
  * Las rutas de `/api/v1`, probadas como handlers.
  *
- * No se levanta un servidor a propósito: el ERP solo sabe hablar con Neon
- * (`src/lib/prisma.ts` usa siempre `@prisma/adapter-neon`, que va por WebSocket), así
- * que no hay forma de correrlo contra un Postgres local sin tocar esa elección — y
- * tocarla destapa que algún componente **cliente** acaba importando `prisma`, que es
- * otro problema y más grande. Mientras eso siga así, la verificación honesta de estas
- * rutas es esta: invocar el handler con `prisma` mockeado.
+ * Se invoca el handler con `prisma` mockeado en vez de levantar un servidor: lo que hay
+ * que fijar aquí son las decisiones del guard, no el transporte. Un test que pasara por
+ * HTTP comprobaría lo mismo y tardaría mil veces más.
  *
  * Lo que se afirma aquí es lo que de verdad protege los datos:
  *

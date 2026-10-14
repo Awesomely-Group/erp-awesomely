@@ -98,3 +98,31 @@ export async function resolvePersonKeysByEmail(emails: string[]): Promise<Map<st
 
   return new Map(enlaces.map((enlace) => [enlace.giroUserEmail.toLowerCase(), enlace.giroUserId]));
 }
+
+// ─── Resolución de personas ───────────────────────────────────────────────────
+
+/**
+ * Una persona, en la forma que pintan las pantallas de proveedores. Es la misma que
+ * devolvía `JiraUser`, para que migrar la fuente no obligue a tocar la UI.
+ */
+export type Persona = {
+  accountId: string;
+  displayName: string;
+  emailAddress: string;
+  avatarUrl: string | null;
+  /**
+   * Sigue en activo. Desde Jira es su `active`; desde Giro, tener membership viva — un
+   * *shadow* no la tiene. Significa lo mismo en los dos sitios: la pantalla marca
+   * "(inactivo)" sin saber de dónde vino el dato.
+   */
+  active: boolean;
+  /** Importada y sin cuenta propia en Giro: no podrá imputar tras el cutover. */
+  isShadow?: boolean;
+};
+
+/** Giro sirve las personas cuando hay algún workspace con clave y `GIRO_BASE_URL`. */
+export function canResolvePeopleFromGiro(workspaces: { giroApiKey: string | null }[]): boolean {
+  return (
+    (process.env.GIRO_BASE_URL ?? "") !== "" && workspaces.some((w) => w.giroApiKey !== null)
+  );
+}
