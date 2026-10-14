@@ -210,16 +210,34 @@ mockeado (`src/app/api/v1/routes.test.ts`), que es la verificación honesta disp
 
 ## Current Phase
 
-Bloque E (el ERP deja de leer de Jira/Tempo y lee de Giro) **a medias**: están el puente
-de identidad `GiroUserLink`, `src/lib/hours-source.ts` con su tercer estado
-`UNAVAILABLE`, y los dos scripts (`sync-giro-user-links.ts` para rellenar el puente,
-`compare-hours-giro-vs-tempo.ts` como criterio objetivo del cutover).
+Bloque E (el ERP deja de leer de Jira/Tempo y lee de Giro): **los tres consumidores de
+pantalla están migrados**. Sostienen el cutover el puente de identidad `GiroUserLink`,
+`src/lib/hours-source.ts` con su tercer estado `UNAVAILABLE`, y los dos scripts
+(`sync-giro-user-links.ts` para rellenar el puente, `compare-hours-giro-vs-tempo.ts`
+como criterio objetivo del cutover).
 
-Queda migrar los consumidores que aún leen de Jira/Tempo: `api/jira/users` (y las dos
-páginas de proveedores), `api/projects/[projectId]/user-roles`, y `api/tempo/worklogs`
-—del que **solo dos de sus seis modos tienen consumidor**: `month-cost` y
-`hierarchical`; los otros cuatro no los llama nadie y se borran con la ruta—. Después
-del cutover: `captureTempoHours`, `syncJiraWorkspace` y borrar `TempoClient`.
+- `api/jira/users` → **`api/people`** (y las dos páginas de proveedores).
+- `api/projects/[projectId]/user-roles` pasa por `projectAuthors()` y devuelve
+  `{source, entries}`.
+- `api/tempo/worklogs` **borrada** → `api/projects/[projectId]/hours`, con los dos
+  únicos modos que tenían consumidor (`month-cost` y `hierarchical`); los otros cuatro
+  no los llamaba nadie y se fueron con la ruta.
+
+Tres cosas que hay que tener presentes al tocar esto:
+
+- **El coste de estas pantallas es el de proveedor**, calculado en el ERP con
+  `Supplier.hourlyRate` / `ProjectUserRole.ratePerHour`. El que calcula Giro
+  (`/api/v1/project-cost`, usado por `/reconciliation`) es la tarifa **interna**. Son
+  dos números distintos; mientras los catálogos no coincidan, dos pantallas dirán
+  cosas distintas del mismo proyecto y hay que rotular cuál es cuál.
+- **Nada se cae en silencio.** Una persona que llega de Giro sin `accountId` conserva
+  sus horas con tarifa 0 y se nombra en `sinPuente`; un proyecto sin fuente responde
+  `UNAVAILABLE`, nunca 0.
+- **`hasHoursSource`, no `hasTempoToken`.** El gate de las pantallas lo decide
+  `resolveHoursSource`, no la presencia del token de Tempo.
+
+Después del cutover: `captureTempoHours`, `syncJiraWorkspace` → `syncGiroWorkspace`, y
+borrar `TempoClient`/`JiraClient`.
 
 ---
 
