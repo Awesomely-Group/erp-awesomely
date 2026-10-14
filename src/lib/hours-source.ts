@@ -45,6 +45,12 @@ type ProyectoVinculable = {
   workspace: { giroApiKey: string | null; tempoApiToken: string | null };
 };
 
+/** Lo que hace falta para hablar con Jira/Tempo mientras siga existiendo esa rama. */
+type ProyectoConJira = ProyectoVinculable & {
+  jiraId: string;
+  workspace: { giroApiKey: string | null; tempoApiToken: string | null; domain: string; email: string; apiToken: string };
+};
+
 /**
  * Giro se usa cuando el proyecto está vinculado y hay credenciales. Tempo solo mientras
  * siga configurado: el día que se le quite el token al workspace, un proyecto sin
@@ -125,4 +131,90 @@ export function canResolvePeopleFromGiro(workspaces: { giroApiKey: string | null
   return (
     (process.env.GIRO_BASE_URL ?? "") !== "" && workspaces.some((w) => w.giroApiKey !== null)
   );
+}
+
+/**
+ * Quién imputó en un proyecto durante un rango, en la forma que el ERP indexa: por
+ * `accountId` de Jira.
+ *
+ * El ERP guarda los roles y las tarifas contra `ProjectUserRole.jiraAccountId` y
+ * `SupplierJiraUser.accountId`, así que aunque las horas vengan ya de Giro hay que
+ * volver al `accountId` para cruzarlas. Ese es justo el papel del puente, y el motivo
+ * de que se conserve el `accountId` en vez de jubilarlo: es la llave de todo lo que el
+ * ERP ya tiene escrito.
+ *
+ * `incluirTodoElHistorico` existe para los proyectos de fee regular: ahí interesa quién
+ * ha tocado el proyecto alguna vez, no solo en el mes que se está mirando, porque el
+ * fee se reparte entre el equipo asignado y no entre quien casualmente imputó.
+ */
+export async function projectAuthors(
+  project: ProyectoConJira,
+  rango: { from: string; to: string; incluirTodoElHistorico?: boolean },
+): Promise<{ source: HoursSource; authors: { accountId: string; displayName: string }[] }> {
+  const source = resolveHoursSource(project);
+  if (source === "UNAVAILABLE") return { source, authors: [] };
+
+  if (source === "GIRO") {
+    const { GiroClient } = await import("@/lib/giro-client");
+    const client = new GiroClient(process.env.GIRO_BASE_URL!, project.workspace.giroApiKey!);
+
+    const periodos = rango.incluirTodoElHistorico
+      ? [
+          { from: rango.from, to: rango.to },
+          { from: "2020-01-01", to: new Date().toISOString().slice(0, 10) },
+        ]
+      : [{ from: rango.from, to: rango.to }];
+
+    const emails = new Set<string>();
+    for (const periodo of periodos) {
+      const worklogs = await client.listWorklogs(project.giroProjectId!, periodo.from, periodo.to);
+      for (const worklog of worklogs) emails.add(worklog.authorEmail.toLowerCase());
+    }
+    if (emails.size === 0) return { source, authors: [] };
+
+    // Una sola llamada: una organización son decenas de personas, y pedirlas de una vez
+    // deja resolver el nombre y el accountId en el mismo sitio.
+    const personas = await client.listUsers();
+    const authors: { accountId: string; displayName: string }[] = [];
+    for (const persona of personas) {
+      if (!emails.has(persona.email.toLowerCase())) continue;
+      for (const accountId of persona.accountIds) {
+        authors.push({ accountId, displayName: persona.name ?? persona.email });
+      }
+    }
+    return { source, authors };
+  }
+
+  const { TempoClient } = await import("@/lib/tempo");
+  const { JiraClient } = await import("@/lib/jira");
+  const tempo = new TempoClient(project.workspace.tempoApiToken!);
+
+  const accountIds = new Set<string>();
+  const worklogs = await tempo.getWorklogs(project.jiraId, rango.from, rango.to);
+  for (const worklog of worklogs) accountIds.add(worklog.author.accountId);
+
+  if (rango.incluirTodoElHistorico) {
+    const todos = await tempo.getWorklogs(
+      project.jiraId,
+      "2020-01-01",
+      new Date().toISOString().slice(0, 10),
+    );
+    for (const worklog of todos) accountIds.add(worklog.author.accountId);
+  }
+  if (accountIds.size === 0) return { source, authors: [] };
+
+  const jira = new JiraClient(
+    project.workspace.domain,
+    project.workspace.email,
+    project.workspace.apiToken,
+  );
+  const nombres = await jira.getUsersByAccountIds([...accountIds]);
+
+  return {
+    source,
+    authors: [...accountIds].map((accountId) => ({
+      accountId,
+      displayName: nombres.get(accountId) ?? accountId,
+    })),
+  };
 }

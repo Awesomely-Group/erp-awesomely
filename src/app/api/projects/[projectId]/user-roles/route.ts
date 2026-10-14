@@ -1,12 +1,17 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { JiraClient } from "@/lib/jira";
-import { TempoClient } from "@/lib/tempo";
+import { projectAuthors } from "@/lib/hours-source";
 import { NextResponse } from "next/server";
 
 export interface UserRoleOption {
   id: string;
   name: string;
+}
+
+export interface ProjectUserRoleResponse {
+  /** De dónde salieron los autores. `UNAVAILABLE` = proyecto sin vincular a Giro. */
+  source: "GIRO" | "TEMPO" | "UNAVAILABLE";
+  entries: ProjectUserRoleEntry[];
 }
 
 export interface ProjectUserRoleEntry {
@@ -38,31 +43,31 @@ export async function GET(
     include: { workspace: true },
   });
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!project.workspace.tempoApiToken) return NextResponse.json([], { status: 200 });
 
-  const tempo = new TempoClient(project.workspace.tempoApiToken);
+  // Quién imputó sale de Giro si el proyecto está vinculado, y de Tempo mientras no lo
+  // esté. `projectAuthors` devuelve ya el `accountId`, que es por donde el ERP tiene
+  // escritos los roles y las tarifas.
+  //
+  // Para un proyecto de fee regular interesa quién ha tocado el proyecto **alguna vez**
+  // y no solo en el mes mirado: el fee se reparte entre el equipo asignado, no entre
+  // quien casualmente imputó esas semanas.
+  const { source, authors } = await projectAuthors(project, {
+    from,
+    to,
+    incluirTodoElHistorico: project.isFeeRegular,
+  });
 
-  let accountIds: string[];
-  if (project.isFeeRegular) {
-    const today = new Date().toISOString().slice(0, 10);
-    const [periodWorklogs, allWorklogs] = await Promise.all([
-      tempo.getWorklogs(project.jiraId, from, to),
-      tempo.getWorklogs(project.jiraId, "2020-01-01", today),
-    ]);
-    const seen = new Set<string>();
-    for (const w of allWorklogs) seen.add(w.author.accountId);
-    for (const w of periodWorklogs) seen.add(w.author.accountId);
-    accountIds = [...seen];
-  } else {
-    const worklogs = await tempo.getWorklogs(project.jiraId, from, to);
-    accountIds = [...new Set(worklogs.map((w) => w.author.accountId))];
+  const accountIds = [...new Set(authors.map((autor) => autor.accountId))];
+  const nameMap = new Map(authors.map((autor) => [autor.accountId, autor.displayName]));
+
+  // `source` viaja en la respuesta aunque no haya nadie: una lista vacía porque el
+  // proyecto no está vinculado no significa lo mismo que una lista vacía porque nadie
+  // imputó, y la pantalla tiene que poder decirlo.
+  if (accountIds.length === 0) {
+    return NextResponse.json({ source, entries: [] } satisfies ProjectUserRoleResponse);
   }
 
-  if (accountIds.length === 0) return NextResponse.json([], { status: 200 });
-
-  const jira = new JiraClient(project.workspace.domain, project.workspace.email, project.workspace.apiToken);
-  const [nameMap, roleTemplates, projectOverrides, suppliers] = await Promise.all([
-    jira.getUsersByAccountIds(accountIds),
+  const [roleTemplates, projectOverrides, suppliers] = await Promise.all([
     prisma.roleTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.projectUserRole.findMany({
       where: { projectId, jiraAccountId: { in: accountIds } },
@@ -112,5 +117,5 @@ export async function GET(
     };
   });
 
-  return NextResponse.json(entries);
+  return NextResponse.json({ source, entries } satisfies ProjectUserRoleResponse);
 }

@@ -243,19 +243,19 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       )}
 
       {/* Equipo tab */}
+      {/*
+        Ya no se condiciona a tener token de Tempo: desde el Bloque E el equipo puede
+        salir de Giro, y decidirlo aquí significaría tener la regla en dos sitios. La
+        sección pregunta por la fuente y explica el caso en que no hay ninguna
+        ("proyecto sin vincular"), que es más de lo que decía este guard.
+      */}
       {activeTab === "equipo" && (
-        !!project.workspace.tempoApiToken ? (
-          <ProjectBucketTeamSection
-            projectId={project.id}
-            from={fromStr}
-            to={toStr}
-            bucketRoleIds={project.isBolsasHoras ? project.hourBuckets.map((b) => b.roleId) : []}
-          />
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
-            Configura el token de Tempo en la configuración del workspace para ver el equipo
-          </div>
-        )
+        <ProjectBucketTeamSection
+          projectId={project.id}
+          from={fromStr}
+          to={toStr}
+          bucketRoleIds={project.isBolsasHoras ? project.hourBuckets.map((b) => b.roleId) : []}
+        />
       )}
 
       {/* Facturas tab */}
