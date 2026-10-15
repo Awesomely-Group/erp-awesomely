@@ -18,6 +18,7 @@
  * Formato del fichero en docs/crm-import.md. Nada se escribe si hay un solo error de
  * validación: media carga es peor que ninguna, porque deja que adivinar qué entró.
  */
+import "dotenv/config";
 import { readFileSync } from "node:fs";
 import {
   PrismaClient,
