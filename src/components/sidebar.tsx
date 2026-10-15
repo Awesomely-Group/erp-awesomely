@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronRight,
   Banknote,
+  Inbox,
   KanbanSquare,
   Building2,
   Handshake,
@@ -45,8 +46,8 @@ type NavGroup = {
  * flujo marketing/ventas → operaciones → facturación → contabilidad → sistema.
  *
  * "Marketing y Ventas" se renombró a "Growth" (revisión 2026-09-18, plan Growth/CRM):
- * la subsección "CRM" ya tiene páginas reales (pipeline, cuentas, actividades,
- * comisiones); "Campañas" sigue siendo un placeholder a propósito — la integración
+ * la subsección "CRM" ya tiene páginas reales (leads, pipeline, cuentas,
+ * actividades, comisiones); "Campañas" sigue siendo un placeholder a propósito — la integración
  * real de ads vive pausada en otra rama, fuera de este módulo (ver /campanas).
  */
 const NAVIGATION_GROUPS: NavGroup[] = [
@@ -61,6 +62,7 @@ const NAVIGATION_GROUPS: NavGroup[] = [
       {
         label: "CRM",
         items: [
+          { name: "Leads", href: "/crm/leads", icon: Inbox },
           { name: "Pipeline", href: "/crm", icon: KanbanSquare },
           { name: "Cuentas", href: "/crm/cuentas", icon: Building2 },
           { name: "Actividades", href: "/crm/actividades", icon: CalendarDays },

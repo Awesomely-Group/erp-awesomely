@@ -40,21 +40,26 @@ const FUNNELS: { marca: string; lineOfBusiness: string; stages: StageSeed[] }[] 
   (marca) => ({ marca, lineOfBusiness: "GENERAL", stages: GENERAL_STAGES })
 );
 
-// Ejemplo para activar el funnel de Odoo cuando el plan de activación esté aprobado
-// (deck: Leads/Calificación → Demo → Propuestas → Nuevos proyectos):
+// Línea Odoo de Gigson Solutions, activada el 2026-10-15. Sigue el embudo del deck de
+// activación (Leads/Calificación → Demo → Propuestas → Nuevos proyectos), que tiene una
+// etapa que el GENERAL no tiene: la DEMO. Es la que justifica medirla aparte — "demos al
+// mes" es objetivo propio de la línea, y mezclarla con integraciones no diría nada.
 //
-// FUNNELS.push({
-//   marca: "Gigson Solutions",
-//   lineOfBusiness: "ODOO",
-//   stages: [
-//     { name: "Nuevo", order: 1 },
-//     { name: "Calificación", order: 2, isQualified: true },
-//     { name: "Demo", order: 3, isQualified: true },
-//     { name: "Propuesta enviada", order: 4, isQualified: true },
-//     { name: "Ganado", order: 5, isWon: true, isQualified: true },
-//     { name: "Perdido", order: 6, isLost: true },
-//   ],
-// });
+// Ojo al cargar: las etapas NO se llaman igual que en GENERAL. Aquí es "Calificación",
+// no "Cualificado", y no existe "Reunión agendada". Una oportunidad de esta línea tiene
+// que traer lineOfBusiness "ODOO" y un nombre de etapa de esta lista.
+FUNNELS.push({
+  marca: "Gigson Solutions",
+  lineOfBusiness: "ODOO",
+  stages: [
+    { name: "Nuevo", order: 1 },
+    { name: "Calificación", order: 2, isQualified: true },
+    { name: "Demo", order: 3, isQualified: true },
+    { name: "Propuesta enviada", order: 4, isQualified: true },
+    { name: "Ganado", order: 5, isWon: true, isQualified: true },
+    { name: "Perdido", order: 6, isLost: true },
+  ],
+});
 
 async function main(): Promise<void> {
   console.log("Seeding CrmStage…");
