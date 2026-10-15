@@ -100,6 +100,8 @@ interface DealInput {
    */
   externalRef?: unknown;
   dealType?: unknown;
+  /** Correo del responsable. Si se omite, se usa `defaultOwner` del fichero. */
+  owner?: unknown;
   origin?: unknown;
   market?: unknown;
   seats?: unknown;
@@ -119,6 +121,8 @@ interface LeadInput {
   externalRef?: unknown;
   /** NEW (por defecto), CONTACTED, QUALIFIED o DISQUALIFIED. */
   status?: unknown;
+  /** Correo del responsable. Sin dueño no hay a quién pagarle la comisión. */
+  owner?: unknown;
   origin?: unknown;
   market?: unknown;
   seats?: unknown;
@@ -151,6 +155,8 @@ async function main(): Promise<void> {
     relations?: unknown;
     deals?: unknown;
     leads?: unknown;
+    /** Correo del responsable por defecto de todo lo que se cargue. */
+    defaultOwner?: unknown;
   };
   if (!Array.isArray(raw.accounts)) {
     console.error('El fichero debe tener una clave "accounts" con una lista.');
@@ -159,6 +165,7 @@ async function main(): Promise<void> {
   const accounts = raw.accounts as AccountInput[];
   const relations = Array.isArray(raw.relations) ? (raw.relations as RelationInput[]) : [];
   const deals = Array.isArray(raw.deals) ? (raw.deals as DealInput[]) : [];
+  const defaultOwner = str(raw.defaultOwner);
   const leads = Array.isArray(raw.leads) ? (raw.leads as LeadInput[]) : [];
 
   console.log(APPLY ? "MODO ESCRITURA (--apply)\n" : "SIMULACRO — nada se escribe. Añade --apply para aplicar.\n");
@@ -365,6 +372,36 @@ async function main(): Promise<void> {
     }
   });
 
+  // ── Responsables ─────────────────────────────────────────────────────────────
+  // Se resuelven contra User.email. Un correo que no exista es un ERROR y no un aviso:
+  // dejarlo pasar cargaría la oportunidad sin dueño, y sin dueño no se genera la comisión
+  // ni aparece en el panel de nadie — un fallo silencioso que se descubre tarde.
+  const correosResponsable = new Set<string>();
+  if (defaultOwner !== null) correosResponsable.add(defaultOwner.toLowerCase());
+  for (const x of [...deals, ...leads]) {
+    const o = str((x as { owner?: unknown }).owner);
+    if (o !== null) correosResponsable.add(o.toLowerCase());
+  }
+
+  const idPorCorreo = new Map<string, string>();
+  if (correosResponsable.size > 0) {
+    const usuarios = await prisma.user.findMany({
+      where: { email: { in: [...correosResponsable], mode: "insensitive" } },
+      select: { id: true, email: true },
+    });
+    for (const u of usuarios) idPorCorreo.set(u.email.toLowerCase(), u.id);
+    for (const correo of correosResponsable) {
+      if (!idPorCorreo.has(correo)) {
+        errores.push(`responsable "${correo}" no es ningún usuario del ERP (User.email)`);
+      }
+    }
+  }
+
+  const responsableDe = (fila: { owner?: unknown }): string | null => {
+    const correo = (str(fila.owner) ?? defaultOwner)?.toLowerCase() ?? null;
+    return correo === null ? null : (idPorCorreo.get(correo) ?? null);
+  };
+
   // El portal resuelve al cliente por el correo de la persona. Si el mismo correo está
   // en dos cuentas devuelve 409 y esa persona NO PUEDE ENTRAR — a propósito, porque la
   // alternativa sería adivinar y enseñarle las facturas de otro. Se caza aquí.
@@ -526,6 +563,7 @@ async function main(): Promise<void> {
       ...(num(d.amount) !== null ? { amount: num(d.amount) } : {}),
       ...(num(d.probability) !== null ? { probability: num(d.probability) } : {}),
       ...(str(d.notes) !== null ? { notes: str(d.notes) } : {}),
+      ...(responsableDe(d) !== null ? { ownerId: responsableDe(d) } : {}),
     };
 
     if (!APPLY) {
@@ -593,6 +631,7 @@ async function main(): Promise<void> {
       ...(str(l.email) !== null ? { email: str(l.email) } : {}),
       ...(str(l.phone) !== null ? { phone: str(l.phone) } : {}),
       ...(str(l.notes) !== null ? { notes: str(l.notes) } : {}),
+      ...(responsableDe(l) !== null ? { ownerId: responsableDe(l) } : {}),
     };
 
     if (!APPLY) {
