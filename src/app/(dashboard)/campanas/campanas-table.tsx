@@ -6,19 +6,13 @@ import { ClickableRow } from "@/components/clickable-row";
 import { SortThClick } from "@/components/sort-th";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
 import type { CampaignRow } from "@/lib/kpis/types";
+import { CAMPAIGN_STATUS_LABEL } from "./campanas-labels";
 
 type SortKey = keyof Pick<
   CampaignRow,
   "name" | "status" | "lineOfBusiness" | "dailyBudgetEur" | "costEur" | "impressions" | "clicks" | "ctrPct" | "cpcEur" | "conversionsAds" | "leadsCrm" | "cplCrmEur" | "cplQualifiedEur" | "lostIsBudgetPct"
 >;
 type SortDir = "asc" | "desc";
-
-export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
-  ENABLED: "Activa",
-  PAUSED: "Pausada",
-  REMOVED: "Eliminada",
-  UNKNOWN: "—",
-};
 
 const STATUS_CLASS: Record<string, string> = {
   ENABLED: "bg-emerald-100 text-emerald-700",

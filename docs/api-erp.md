@@ -116,7 +116,17 @@ latroupestudio.com, y el Workflow nativo de Apollo. Auth por `x-webhook-secret` 
 
 Body: `source` (`WEB_GIGSON|WEB_LATROUPE|APOLLO|REFERIDO|OTRO`), `externalRef`, `name`, `marca`
 obligatorios; al menos uno de `email`/`phone`. Opcionales: `lineOfBusiness` (default `GENERAL`),
-`contactName`, `amount`, `seats`, `origin`, `market`, `campaignSource`, `utm*`, `notes`.
+`contactName`, `amount`, `seats`, `origin`, `market`, `campaignSource`, `notes`, y la atribución de
+campaña (2026-10-16): `utmSource`, `utmMedium`, `utmCampaign`, `utmTerm`, `utmContent`, `gclid`
+(o `gbraid`/`wbraid`, que se guardan en la misma columna con prefijo), `formId` (el `form_id` del
+formulario de la web: `consultoria-odoo`, `iso27001`, `home`…) y `landingPage`.
+
+Con esos campos el lead se atribuye solo a una campaña de pago (`CrmLead.adCampaignId`, ver
+`src/lib/ads-attribution.ts`): por `utmCampaign` exacto contra una `AdCampaign` mapeada, o por
+`formId` si el formulario es de una única campaña viva **y** el lead trae gclid o `utm_medium` de
+pago. Si el formulario lo comparten varias campañas, queda sin atribuir y se vincula a mano desde
+`/campanas/[id]` o la ficha del lead. La respuesta `201` incluye `adCampaignId` y `attribution`
+(`utm_campaign|form_id|ambiguous|none`).
 
 El lead entra como `NEW`, **sin etapa y sin dueño**. No entra en el embudo: desde la separación
 lead/deal (2026-10-13) el embudo es de oportunidades, y la oportunidad nace al cualificar el lead
