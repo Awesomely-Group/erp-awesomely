@@ -20,6 +20,8 @@ export interface KPIFilters {
    * Para medirlos hay que pasar `dealType: "NEW_BUSINESS"` explícitamente.
    */
   dealType?: CrmDealType
+  /** AdCampaign.id (Growth > Campañas, 2026-10-16) — solo en getCampaignKPIs(). */
+  campaignId?: string
 }
 
 // ─── P&L KPIs ─────────────────────────────────────────────────────────────────
@@ -157,6 +159,98 @@ export interface CommercialKPIs {
   funnel: CommercialFunnelStage[]
 }
 
+// ─── Campaign KPIs (Growth > Campañas, revisión 2026-10-16) ─────────────────────
+//
+// KPIs de campañas de pago (Google Ads) tal como los planteó la agencia (Holdmin) en la
+// reunión del 2026-10-16: CTR, CPC, tasa de conversión y CPL por campaña, con histórico.
+// Cada ratio sale en dos versiones: con las conversiones que cuenta Google Ads (dependen
+// de que el visitante acepte cookies: son un mínimo) y con los leads reales del CRM
+// atribuidos a la campaña (`CrmLead.adCampaignId`), que es la cifra que manda.
+
+export interface CampaignMetricSet {
+  impressions: number
+  clicks: number
+  costEur: number
+  /** Conversiones que reporta Google Ads (fraccionales con atribución data-driven). */
+  conversionsAds: number
+  /** Leads del CRM atribuidos a la campaña, contados en su fecha de entrada. */
+  leadsCrm: number
+  /** De esos leads, los que se cualificaron (CrmLead.convertedAt). */
+  leadsQualified: number
+  /** Oportunidades ganadas nacidas de esos leads. */
+  dealsWon: number
+  /** clics / impresiones × 100 */
+  ctrPct: number | null
+  /** coste / clics */
+  cpcEur: number | null
+  /** conversiones Ads / clics × 100 */
+  convRateAdsPct: number | null
+  /** leads CRM / clics × 100 — la tasa de conversión "de verdad" */
+  convRateCrmPct: number | null
+  /** coste / conversiones Ads */
+  cplAdsEur: number | null
+  /** coste / leads CRM — el CPL de las tarjetas */
+  cplCrmEur: number | null
+  /** coste / leads cualificados */
+  cplQualifiedEur: number | null
+  /** coste / oportunidades ganadas (CPA) */
+  cpaEur: number | null
+  /** % de impresiones perdidas por presupuesto, ponderado por impresiones. */
+  lostIsBudgetPct: number | null
+  lostIsRankPct: number | null
+}
+
+export interface CampaignSeriesPoint extends CampaignMetricSet {
+  /** "2026-10-16" (día) o "2026-W42" (semana ISO). */
+  periodKey: string
+  /** "16 oct" o "S42 · 12 oct". */
+  label: string
+}
+
+export interface CampaignBudgetStatus {
+  monthKey: string
+  spentMtdEur: number
+  /** Suma de presupuestos diarios de las campañas activas del scope. */
+  dailyBudgetEur: number | null
+  /** presupuesto diario × días del mes */
+  monthlyBudgetEur: number | null
+  /** presupuesto diario × días transcurridos del mes (hoy incluido) */
+  expectedToDateEur: number | null
+  /** gastado / esperado × 100. 100 = al ritmo. */
+  pacePct: number | null
+}
+
+export interface CampaignRow extends CampaignMetricSet {
+  campaignId: string
+  externalId: string
+  name: string
+  status: string
+  marca: string | null
+  lineOfBusiness: string | null
+  dailyBudgetEur: number | null
+  /** Tiene marca y línea de negocio: se puede cruzar con el CRM. */
+  isMapped: boolean
+  /** Último día con datos dentro del rango, "YYYY-MM-DD". */
+  lastDate: string | null
+}
+
+export interface CampaignKPIs {
+  marca?: string
+  lineOfBusiness?: string
+  campaignId?: string
+  dateFrom: string
+  dateTo: string
+  granularity: "day" | "week"
+  totals: CampaignMetricSet
+  budget: CampaignBudgetStatus
+  series: CampaignSeriesPoint[]
+  campaigns: CampaignRow[]
+  /** Último volcado correcto del script (lote de campañas) y qué lotes trajo esa ejecución. */
+  lastImport: { receivedAt: string; runId: string; kinds: string[] } | null
+  /** Horas desde el último volcado correcto; null si nunca ha llegado ninguno. */
+  staleHours: number | null
+}
+
 // ─── Full response ────────────────────────────────────────────────────────────
 
 export interface KPIResponse {
@@ -165,6 +259,7 @@ export interface KPIResponse {
   derived?: DerivedKPIs
   projections?: ProjectionKPIs
   commercial?: CommercialKPIs
+  campaigns?: CampaignKPIs
   dataQuality: {
     unclassifiedCount: number
   }

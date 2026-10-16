@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCommercialKPIs } from "@/lib/kpis";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { SEMAFORO_CLASSES, semaforoLevel } from "@/lib/kpis/semaforo";
 
 interface MetricDef {
   key: string;
@@ -39,11 +40,11 @@ const METRICS: MetricDef[] = [
   },
 ];
 
+// Todas las métricas de este semáforo son "más es mejor"; la dirección inversa (CPC, CPL)
+// vive en /campanas. La lógica compartida está en src/lib/kpis/semaforo.ts.
 function semaforoColor(value: number, target: number): string {
-  const pct = target !== 0 ? (value / target) * 100 : 0;
-  if (pct >= 100) return "bg-emerald-100 text-emerald-700";
-  if (pct >= 70) return "bg-amber-100 text-amber-700";
-  return "bg-red-100 text-red-700";
+  const level = semaforoLevel(value, target, "higher");
+  return level ? SEMAFORO_CLASSES[level] : "bg-gray-100 text-gray-500";
 }
 
 /**

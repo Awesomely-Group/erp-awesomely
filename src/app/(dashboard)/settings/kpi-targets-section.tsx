@@ -29,6 +29,14 @@ const METRIC_SUGGESTIONS = [
   "ticket_medio",
   "ciclo_venta_dias",
   "pipeline_ponderado",
+  // Campañas de pago (/campanas, 2026-10-16). Las metas de Holdmin: CTR 6-8 % → 10-11 %,
+  // conversión 6-8 % → 10 %, CPL ≈ 40 €, 6-10 leads/mes. CPC y CPL son "menos es mejor".
+  "ads_ctr_pct",
+  "ads_cpc_eur",
+  "ads_conv_rate_pct",
+  "ads_leads_mes",
+  "ads_cpl_eur",
+  "ads_cpl_cualificado_eur",
 ];
 
 export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): React.JSX.Element {
@@ -68,7 +76,8 @@ export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): Rea
     <div className="space-y-4">
       <p className="text-xs text-gray-400">
         Metas por métrica/marca/línea de negocio/periodo. Alimentan el semáforo del pipeline en{" "}
-        <code className="rounded bg-gray-100 px-1">/crm</code>. Sin valores por defecto: las
+        <code className="rounded bg-gray-100 px-1">/crm</code> y el de campañas de pago en{" "}
+        <code className="rounded bg-gray-100 px-1">/campanas</code> (métricas <code className="rounded bg-gray-100 px-1">ads_*</code>). Sin valores por defecto: las
         cifras del plan de activación de Odoo son una plantilla sin aprobar.
       </p>
 

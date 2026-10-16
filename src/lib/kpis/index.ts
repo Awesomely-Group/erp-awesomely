@@ -1,9 +1,23 @@
-export type { KPIFilters, PLKPIs, CashflowKPIs, DerivedKPIs, ProjectionKPIs, CommercialKPIs, KPIResponse } from "./types";
+export type {
+  KPIFilters,
+  PLKPIs,
+  CashflowKPIs,
+  DerivedKPIs,
+  ProjectionKPIs,
+  CommercialKPIs,
+  CampaignKPIs,
+  CampaignMetricSet,
+  CampaignSeriesPoint,
+  CampaignRow,
+  CampaignBudgetStatus,
+  KPIResponse,
+} from "./types";
 export { getPLKPIs } from "./pl";
 export { getCashflowKPIs } from "./cashflow";
 export { getDerivedKPIs } from "./derived";
 export { getProjections } from "./projections";
 export { getCommercialKPIs } from "./commercial";
+export { getCampaignKPIs } from "./campaigns";
 
 import type { Prisma } from "@prisma/client";
 import { getPLKPIs } from "./pl";
@@ -11,6 +25,7 @@ import { getCashflowKPIs } from "./cashflow";
 import { getDerivedKPIs } from "./derived";
 import { getProjections } from "./projections";
 import { getCommercialKPIs } from "./commercial";
+import { getCampaignKPIs } from "./campaigns";
 import { prisma } from "@/lib/prisma";
 import { invoiceWhereMarca } from "@/lib/org";
 import type { KPIFilters, KPIResponse } from "./types";
@@ -40,12 +55,13 @@ function getDataQualityWhere(filters: KPIFilters): Prisma.InvoiceWhereInput {
 }
 
 export async function getAllKPIs(filters: KPIFilters): Promise<KPIResponse> {
-  const [pl, cashflow, derived, projections, commercial, unclassifiedCount] = await Promise.all([
+  const [pl, cashflow, derived, projections, commercial, campaigns, unclassifiedCount] = await Promise.all([
     getPLKPIs(filters),
     getCashflowKPIs(filters),
     getDerivedKPIs(filters),
     getProjections(filters),
     getCommercialKPIs(filters),
+    getCampaignKPIs(filters),
     prisma.invoice.count({
       where: getDataQualityWhere(filters),
     }),
@@ -57,6 +73,7 @@ export async function getAllKPIs(filters: KPIFilters): Promise<KPIResponse> {
     derived,
     projections,
     commercial,
+    campaigns,
     dataQuality: { unclassifiedCount },
     generatedAt: new Date().toISOString(),
   };
