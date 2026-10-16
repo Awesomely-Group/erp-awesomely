@@ -1,0 +1,17 @@
+{
+  "kind": "search_terms",
+  "runId": "11111111-2222-4333-8444-555555555555",
+  "scriptVersion": "2026-10-16",
+  "account": { "externalId": "8272097041", "name": "Gigson Solutions (España)", "currency": "EUR" },
+  "dateFrom": "2026-10-16",
+  "dateTo": "2026-10-18",
+  "part": 1,
+  "parts": 1,
+  "rows": [
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "searchTerm": "implantar odoo empresa", "matchType": "NEAR_EXACT", "status": "NONE", "date": "2026-10-16", "impressions": 30, "clicks": 3, "costEur": 2.4, "conversions": 1 },
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "searchTerm": "odoo precio licencia", "matchType": "NEAR_PHRASE", "status": "NONE", "date": "2026-10-16", "impressions": 22, "clicks": 3, "costEur": 2.1, "conversions": 0 },
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "searchTerm": "implantación odoo", "matchType": "EXACT", "status": "ADDED", "date": "2026-10-18", "impressions": 60, "clicks": 5, "costEur": 3.6, "conversions": 1 },
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "searchTerm": "curso odoo", "matchType": "BROAD", "status": "EXCLUDED", "date": "2026-10-18", "impressions": 12, "clicks": 0, "costEur": 0, "conversions": 0 },
+    { "campaignExternalId": "22000000002", "adGroupId": "330000000002", "adGroupName": "Ampliaciones Odoo", "searchTerm": "partner odoo barcelona", "matchType": "PHRASE", "status": "NONE", "date": "2026-10-18", "impressions": 25, "clicks": 4, "costEur": 3.0, "conversions": 1 }
+  ]
+}

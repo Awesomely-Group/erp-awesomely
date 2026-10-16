@@ -1,0 +1,22 @@
+{
+  "kind": "campaigns",
+  "runId": "11111111-2222-4333-8444-555555555555",
+  "scriptVersion": "2026-10-16",
+  "account": { "externalId": "8272097041", "name": "Gigson Solutions (España)", "currency": "EUR" },
+  "dateFrom": "2026-10-16",
+  "dateTo": "2026-10-18",
+  "part": 1,
+  "parts": 1,
+  "campaigns": [
+    { "externalId": "22000000001", "name": "[LEADS]_[SEARCH]_[ES]_[ODOO]_Implantación nueva", "status": "ENABLED", "dailyBudgetEur": 7 },
+    { "externalId": "22000000002", "name": "[LEADS]_[SEARCH]_[ES]_[ODOO]_Ampliaciones existentes", "status": "ENABLED", "dailyBudgetEur": 3 }
+  ],
+  "rows": [
+    { "campaignExternalId": "22000000001", "date": "2026-10-16", "impressions": 120, "clicks": 9, "costEur": 6.84, "conversions": 1, "conversionValueEur": 0, "dailyBudgetEur": 7, "searchImprShare": 0.0999, "lostIsBudget": 0.61, "lostIsRank": 0.29 },
+    { "campaignExternalId": "22000000001", "date": "2026-10-17", "impressions": 98, "clicks": 7, "costEur": 7.02, "conversions": 0, "conversionValueEur": 0, "dailyBudgetEur": 7, "searchImprShare": 0.0999, "lostIsBudget": 0.66, "lostIsRank": 0.24 },
+    { "campaignExternalId": "22000000001", "date": "2026-10-18", "impressions": 143, "clicks": 11, "costEur": 6.95, "conversions": 1, "conversionValueEur": 0, "dailyBudgetEur": 7, "searchImprShare": 0.11, "lostIsBudget": 0.58, "lostIsRank": 0.31 },
+    { "campaignExternalId": "22000000002", "date": "2026-10-16", "impressions": 41, "clicks": 3, "costEur": 2.91, "conversions": 0, "conversionValueEur": 0, "dailyBudgetEur": 3, "searchImprShare": null, "lostIsBudget": null, "lostIsRank": null },
+    { "campaignExternalId": "22000000002", "date": "2026-10-17", "impressions": 37, "clicks": 2, "costEur": 2.4, "conversions": 0, "conversionValueEur": 0, "dailyBudgetEur": 3, "searchImprShare": null, "lostIsBudget": null, "lostIsRank": null },
+    { "campaignExternalId": "22000000002", "date": "2026-10-18", "impressions": 52, "clicks": 4, "costEur": 3.0, "conversions": 1, "conversionValueEur": 0, "dailyBudgetEur": 3, "searchImprShare": null, "lostIsBudget": null, "lostIsRank": null }
+  ]
+}
