@@ -1,22 +1,13 @@
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { createMcpServer } from "@/lib/mcp/server";
-import { validateApiKey } from "@/lib/mcp/validate-key";
+/**
+ * Ruta antigua del MCP. Se mantiene **una release** redirigiendo a `/api/v1/mcp`, para
+ * no romper los clientes ya configurados el mismo día del despliegue.
+ *
+ * 307 y no 308: preserva el método y el cuerpo, que es lo que necesita un POST de
+ * JSON-RPC, y no se queda cacheado como permanente mientras dure la transición.
+ */
+export const runtime = "nodejs";
 
-export async function POST(req: Request): Promise<Response> {
-  const apiKey = req.headers.get("x-api-key");
-
-  if (!(await validateApiKey(apiKey))) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const server = createMcpServer();
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
-
-  await server.connect(transport);
-  return transport.handleRequest(req);
+export function POST(request: Request): Response {
+  const destino = new URL("/api/v1/mcp", request.url);
+  return Response.redirect(destino, 307);
 }

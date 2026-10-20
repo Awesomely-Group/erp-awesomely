@@ -247,7 +247,7 @@ export async function setProjectUserRole(
 export async function assignIssueToBucket(
   projectId: string,
   issueKey: string,
-  issueNumericId: number,
+  issueNumericId: number | null,
   hourBucketId: string | null,
 ): Promise<void> {
   const session = await auth();
@@ -262,7 +262,8 @@ export async function assignIssueToBucket(
     await prisma.issueHourBucketAssignment.upsert({
       where: { projectId_issueKey: { projectId, issueKey } },
       create: { projectId, issueKey, issueNumericId, hourBucketId },
-      update: { hourBucketId, issueNumericId },
+      // Desde Giro llega `null`; no se pisa el id que dejó la rama de Tempo.
+      update: { hourBucketId, ...(issueNumericId != null ? { issueNumericId } : {}) },
     });
   }
   revalidatePath(`/projects/${projectId}/timesheet`);

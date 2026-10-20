@@ -1,16 +1,22 @@
+/**
+ * Las consultas del P&L. **Solo servidor**: usa `prisma`.
+ *
+ * Los tipos públicos, la estructura de líneas y los formateadores viven en
+ * `pl-display.ts`, que es lo único que puede importar un componente cliente — ver el
+ * comentario de ahí. Se re-exportan desde aquí para no mover de sitio lo que ya
+ * importaban `pl/page.tsx` y `kpis/pl.ts`.
+ */
 import { prisma } from "./prisma";
-import { EMPTY_VALUE, formatNumber, formatPercent } from "@/lib/format";
+import type {
+  DataRecord,
+  FullRecord,
+  PlData,
+  PlDataKey,
+  PlEntityData,
+  PlMonthPoint,
+  PlParams,
+} from "./pl-display";
 import { resolvePeriodRange, toDateParam, type DateRange } from "@/lib/date-range";
-
-// ─── Public params ────────────────────────────────────────────────────────────
-
-export interface PlParams {
-  /** Parámetro antiguo (selector de año). Se respeta si no hay `period`/fechas. */
-  year?: string;
-  period?: string;
-  dateFrom?: string;
-  dateTo?: string;
-}
 
 /** Tope de columnas: un rango más largo se recorta por el final. */
 const MAX_PL_MONTHS = 60;
@@ -52,63 +58,19 @@ export function formatPlPeriod(range: DateRange): string {
   return `${fmt(from)} – ${fmt(to)}`;
 }
 
-// ─── P&L line structure (PGC) ─────────────────────────────────────────────────
-
-export type PlDataKey =
-  | "ventas"
-  | "aprovisionamientos"
-  | "variacion_existencias"
-  | "trabajos_activo"
-  | "otros_ingresos_explotacion"
-  | "gastos_personal"
-  | "otros_gastos_explotacion"
-  | "amortizacion"
-  | "otros_resultados"
-  | "ingresos_financieros"
-  | "gastos_financieros"
-  | "otros_resultados_financieros"
-  | "impuesto_beneficios";
-
-export type PlSubtotalKey =
-  | "margen_bruto"
-  | "ebitda"
-  | "ebit"
-  | "resultado_financiero"
-  | "resultado_antes_impuestos"
-  | "resultado_ejercicio"
-  | "cash_flow";
-
-export type PlLineKey = PlDataKey | PlSubtotalKey;
-
-export interface PlLineDef {
-  key: PlLineKey;
-  label: string;
-  type: "data" | "subtotal";
-}
-
-export const PL_LINE_DEFS: PlLineDef[] = [
-  { key: "ventas",                        label: "Ventas",                                    type: "data" },
-  { key: "aprovisionamientos",            label: "Aprovisionamientos",                        type: "data" },
-  { key: "margen_bruto",                  label: "Margen Bruto",                              type: "subtotal" },
-  { key: "variacion_existencias",         label: "Variación de existencias",                  type: "data" },
-  { key: "trabajos_activo",               label: "Trabajos realizados para su activo",         type: "data" },
-  { key: "otros_ingresos_explotacion",    label: "Otros ingresos de explotación",             type: "data" },
-  { key: "gastos_personal",               label: "Gastos de personal",                        type: "data" },
-  { key: "otros_gastos_explotacion",      label: "Otros gastos de explotación",               type: "data" },
-  { key: "amortizacion",                  label: "Amortización del inmovilizado",             type: "data" },
-  { key: "otros_resultados",              label: "Otros resultados",                          type: "data" },
-  { key: "ebitda",                        label: "EBITDA",                                    type: "subtotal" },
-  { key: "ebit",                          label: "Resultado de Explotación (EBIT)",           type: "subtotal" },
-  { key: "ingresos_financieros",          label: "Ingresos financieros",                      type: "data" },
-  { key: "gastos_financieros",            label: "Gastos financieros",                        type: "data" },
-  { key: "otros_resultados_financieros",  label: "Otros resultados financieros",              type: "data" },
-  { key: "resultado_financiero",          label: "Resultado Financiero",                      type: "subtotal" },
-  { key: "resultado_antes_impuestos",     label: "Resultado antes de impuestos",              type: "subtotal" },
-  { key: "impuesto_beneficios",           label: "Impuesto sobre beneficios",                 type: "data" },
-  { key: "resultado_ejercicio",           label: "Resultado del ejercicio",                   type: "subtotal" },
-  { key: "cash_flow",                     label: "Cash Flow",                                 type: "subtotal" },
-];
-
+export type {
+  DataRecord,
+  FullRecord,
+  PlData,
+  PlDataKey,
+  PlEntityData,
+  PlLineDef,
+  PlLineKey,
+  PlMonthPoint,
+  PlParams,
+  PlSubtotalKey,
+} from "./pl-display";
+export { PL_LINE_DEFS, formatPlAmount, formatPlRatio } from "./pl-display";
 // ─── Account prefix → P&L line (PGC ranges) ──────────────────────────────────
 
 /** Holded ObjectId: exactly 24 hex chars — must NOT be parsed as a PGC code. */
@@ -250,9 +212,6 @@ function journalAccountToPlKey(account: string, ouToSl: Map<string, string>): Pl
 
 // ─── Subtotal computation ─────────────────────────────────────────────────────
 
-type DataRecord = Record<PlDataKey, number>;
-type FullRecord = Record<PlLineKey, number>;
-
 function emptyData(): DataRecord {
   return {
     ventas: 0, aprovisionamientos: 0, variacion_existencias: 0,
@@ -299,33 +258,6 @@ function buildMonthDataMap(range: DateRange): Map<string, { label: string; data:
 
 function toMonthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-// ─── Public types ─────────────────────────────────────────────────────────────
-
-export interface PlMonthPoint {
-  monthKey: string;
-  monthLabel: string;
-  lines: FullRecord;
-}
-
-export interface PlEntityData {
-  companyId: string;
-  companyName: string;
-  months: PlMonthPoint[];
-  yearly: FullRecord;
-}
-
-export interface PlData {
-  /** Rango efectivo (meses completos). */
-  from: Date;
-  to: Date;
-  /** Rango en formato YYYY-MM-DD, listo para el selector. */
-  fromParam: string;
-  toParam: string;
-  periodLabel: string;
-  entities: PlEntityData[];
-  consolidated: PlEntityData;
 }
 
 // ─── Raw query types ──────────────────────────────────────────────────────────
@@ -535,24 +467,4 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       yearly:      computeSubtotals(consolidatedYearlyData),
     },
   };
-}
-
-/**
- * Importe de una celda del P&L. Regla propia de esta pantalla: el cero se
- * muestra como vacío y las cifras grandes se abrevian para que la tabla, que
- * es muy ancha, quepa sin scroll horizontal.
- */
-export function formatPlAmount(amount: number): string {
-  if (amount === 0) return EMPTY_VALUE;
-  const abs = Math.abs(amount);
-  if (abs >= 1_000_000) {
-    return `${formatNumber(amount / 1_000_000, { decimals: 2 })}M`;
-  }
-  return formatNumber(amount);
-}
-
-/** Peso de una línea del P&L sobre ventas. */
-export function formatPlRatio(value: number, ventas: number): string {
-  if (ventas === 0) return EMPTY_VALUE;
-  return formatPercent((value / ventas) * 100);
 }

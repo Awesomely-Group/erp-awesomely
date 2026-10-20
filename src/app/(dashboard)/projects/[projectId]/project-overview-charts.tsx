@@ -101,7 +101,7 @@ function MultiTooltip({
 
 interface Props {
   projectId: string;
-  hasTempoToken: boolean;
+  hasHoursSource: boolean;
   from: string;
   to: string;
   totalInvoicesEur: number;
@@ -111,7 +111,7 @@ interface Props {
 
 export function ProjectOverviewCharts({
   projectId,
-  hasTempoToken,
+  hasHoursSource,
   from,
   to,
   totalInvoicesEur,
@@ -123,7 +123,7 @@ export function ProjectOverviewCharts({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!hasTempoToken) return;
+    if (!hasHoursSource) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -132,7 +132,7 @@ export function ProjectOverviewCharts({
     async function load(): Promise<void> {
       try {
         const res = await fetch(
-          `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month-cost`
+          `/api/projects/${projectId}/hours?from=${from}&to=${to}&groupBy=month-cost`
         );
         const text = await res.text();
         let parsed: unknown;
@@ -146,12 +146,13 @@ export function ProjectOverviewCharts({
 
     void load();
     return () => { cancelled = true; };
-  }, [projectId, hasTempoToken, from, to]);
+  }, [projectId, hasHoursSource, from, to]);
 
-  if (!hasTempoToken && invoicesByMonth.length === 0) {
+  if (!hasHoursSource && invoicesByMonth.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 px-5 py-8 text-center text-sm text-gray-400">
-        Token de Tempo no configurado.{" "}
+        Proyecto sin vincular a Giro y sin Tempo configurado: no hay de dónde leer las
+        horas.{" "}
         <a href="/settings" className="text-indigo-600 hover:underline">Configúralo en Configuración</a>.
       </div>
     );
@@ -231,7 +232,7 @@ export function ProjectOverviewCharts({
           label="Coste real (personal)"
           value={loading ? "…" : formatCurrency(tempoTotalCost)}
           accent="red"
-          tooltip="Coste interno del equipo: horas registradas en Tempo × tarifa/hora de cada persona. Métrica informativa — no se resta del beneficio porque ya está incluido en las facturas de compra."
+          tooltip="Coste interno del equipo: horas imputadas × tarifa/hora de cada persona. Métrica informativa — no se resta del beneficio porque ya está incluido en las facturas de compra."
         />
         <KpiCard
           label="Beneficio real"
@@ -256,12 +257,12 @@ export function ProjectOverviewCharts({
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          Cargando datos de Tempo...
+          Cargando horas…
         </div>
       )}
       {error && (
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 text-sm text-red-500">
-          Error Tempo: {error}
+          Error al leer las horas: {error}
         </div>
       )}
 

@@ -11,7 +11,7 @@ interface Props {
   projectId: string;
   from: string;
   to: string;
-  hasTempoToken: boolean;
+  hasHoursSource: boolean;
 }
 
 function fmtDate(iso: string): string {
@@ -144,7 +144,7 @@ function UnassignedAlert({ users }: { users: UnassignedUser[] }): React.JSX.Elem
   );
 }
 
-export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }: Props): React.JSX.Element {
+export function ProjectHourBucketsSection({ projectId, from, to, hasHoursSource }: Props): React.JSX.Element {
   const [response, setResponse] = useState<HourBucketsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,7 +166,7 @@ export function ProjectHourBucketsSection({ projectId, from, to, hasTempoToken }
 
   // Solo avisa si de verdad no hay de dónde leer: un proyecto ya vinculado a Giro no
   // necesita token de Tempo para nada.
-  const sinFuente = response !== null && response.source === "TEMPO" && !hasTempoToken;
+  const sinFuente = response !== null && response.source === "TEMPO" && !hasHoursSource;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">

@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getAllKPIs } from "@/lib/kpis";
+import type { ApiContext } from "@/lib/api/v1";
 
-export function registerKpiTools(server: McpServer): void {
+export function registerKpiTools(server: McpServer, ctx: ApiContext): void {
   server.registerTool(
     "get_kpis",
     {
@@ -49,12 +50,30 @@ export function registerKpiTools(server: McpServer): void {
       },
     },
     async (args) => {
+      // Si la credencial está acotada a una sola sociedad o marca, **esa manda** y el
+      // parámetro que mande el modelo se ignora: una herramienta no puede ampliar el
+      // alcance que un ADMIN concedió. Con varias permitidas sí puede elegir entre ellas.
+      const companyId = ctx.companyIds.length === 1 ? ctx.companyIds[0] : args.companyId;
+      const marca = ctx.marcas.length === 1 ? ctx.marcas[0] : args.marca;
+
+      if (
+        companyId &&
+        companyId !== "consolidated" &&
+        ctx.companyIds.length > 0 &&
+        !ctx.companyIds.includes(companyId)
+      ) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: "Esa sociedad no existe" }, null, 2) }],
+          isError: true as const,
+        };
+      }
+
       const kpis = await getAllKPIs({
         year: args.year,
         dateFrom: args.dateFrom ? new Date(args.dateFrom) : undefined,
         dateTo: args.dateTo ? new Date(args.dateTo) : undefined,
-        marca: args.marca,
-        companyId: args.companyId,
+        marca,
+        companyId,
         lineOfBusiness: args.lineOfBusiness,
         campaignId: args.campaignId,
       });

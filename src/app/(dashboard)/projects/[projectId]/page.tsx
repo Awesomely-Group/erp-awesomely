@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { resolveHoursSource } from "@/lib/hours-source";
 import { ProjectDateFilters } from "./project-date-filters";
 import { ProjectOverviewCharts } from "./project-overview-charts";
 import { ProjectInvoicesSection } from "./project-invoices-section";
@@ -99,6 +100,10 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
 
   if (!project) notFound();
 
+  // Hay horas que pintar mientras el proyecto tenga alguna fuente viva: Giro si está
+  // vinculado, Tempo mientras siga configurado.
+  const hasHoursSource = resolveHoursSource(project) !== "UNAVAILABLE";
+
   const invoiceMonthMap = new Map<string, { totalSale: number; totalPurchase: number }>();
   for (const inv of relatedInvoices) {
     const month = inv.date.toISOString().slice(0, 7);
@@ -126,7 +131,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   }
 
   return (
-    <TimesheetSummaryProvider initialLoading={activeTab === "timesheet" && !!project.workspace.tempoApiToken}>
+    <TimesheetSummaryProvider initialLoading={activeTab === "timesheet" && hasHoursSource}>
     <div className="space-y-6">
       {/* Breadcrumb */}
       <Link
@@ -213,7 +218,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         <>
           <ProjectOverviewCharts
             projectId={project.id}
-            hasTempoToken={!!project.workspace.tempoApiToken}
+            hasHoursSource={hasHoursSource}
             from={fromStr}
             to={toStr}
             totalInvoicesEur={relatedInvoices.filter((inv) => inv.type === "SALE").reduce((sum, inv) => sum + Number(inv.totalEur), 0)}
@@ -224,7 +229,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
             projectId={project.id}
             from={fromStr}
             to={toStr}
-            hasTempoToken={!!project.workspace.tempoApiToken}
+            hasHoursSource={hasHoursSource}
             config={{
               isPrecioCerrado: project.isPrecioCerrado,
               isBolsasHoras: project.isBolsasHoras,
@@ -243,19 +248,19 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       )}
 
       {/* Equipo tab */}
+      {/*
+        Ya no se condiciona a tener token de Tempo: desde el Bloque E el equipo puede
+        salir de Giro, y decidirlo aquí significaría tener la regla en dos sitios. La
+        sección pregunta por la fuente y explica el caso en que no hay ninguna
+        ("proyecto sin vincular"), que es más de lo que decía este guard.
+      */}
       {activeTab === "equipo" && (
-        !!project.workspace.tempoApiToken ? (
-          <ProjectBucketTeamSection
-            projectId={project.id}
-            from={fromStr}
-            to={toStr}
-            bucketRoleIds={project.isBolsasHoras ? project.hourBuckets.map((b) => b.roleId) : []}
-          />
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-10 text-center text-sm text-gray-400">
-            Configura el token de Tempo en la configuración del workspace para ver el equipo
-          </div>
-        )
+        <ProjectBucketTeamSection
+          projectId={project.id}
+          from={fromStr}
+          to={toStr}
+          bucketRoleIds={project.isBolsasHoras ? project.hourBuckets.map((b) => b.roleId) : []}
+        />
       )}
 
       {/* Facturas tab */}
@@ -279,7 +284,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       {activeTab === "timesheet" && (
         <ProjectTimesheetSection
           projectId={project.id}
-          hasTempoToken={!!project.workspace.tempoApiToken}
+          hasHoursSource={hasHoursSource}
           workspaceDomain={project.workspace.domain}
           isBolsasHoras={project.isBolsasHoras}
           bucketByRole={Object.fromEntries(

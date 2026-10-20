@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { resolveHoursSource } from "@/lib/hours-source";
 import { ProjectStatus } from "@prisma/client";
 import { ProjectsTable, type ProjectRow } from "./projects-table";
 
@@ -22,7 +23,9 @@ export default async function ProjectsPage(): Promise<React.JSX.Element> {
       workspaceName: ws.name,
       workspaceDomain: ws.domain.replace(/^https?:\/\//, "").replace(/\/$/, ""),
       status: project.status as ProjectStatus,
-      hasTempoToken: !!ws.tempoApiToken,
+      // Si hay horas que pintar no lo decide ya el token de Tempo: un proyecto
+      // vinculado a Giro las tiene aunque el workspace no tenga Tempo.
+      hasHoursSource: resolveHoursSource({ ...project, workspace: ws }) !== "UNAVAILABLE",
       isPrecioCerrado: project.isPrecioCerrado,
       isBolsasHoras: project.isBolsasHoras,
       isFeeRegular: project.isFeeRegular,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { addJiraUser, removeJiraUser } from "../actions";
-import type { JiraUser } from "@/lib/jira";
+import type { Persona } from "@/lib/hours-source";
 
 export interface JiraUserEntry {
   accountId: string;
@@ -22,25 +22,25 @@ export function JiraUserList({ supplierId, initialUsers, workspaceId }: Props): 
   // Resolve display names client-side for any users that arrived without one
   useEffect(() => {
     const unresolved = initialUsers.filter((u) => !u.displayName);
-    if (unresolved.length === 0 || !workspaceId) return;
-    for (const u of unresolved) {
-      const params = new URLSearchParams({ accountId: u.accountId, workspaceId });
-      fetch(`/api/jira/users?${params.toString()}`)
-        .then(async (res) => {
-          if (!res.ok) return;
-          const data = (await res.json()) as JiraUser[];
-          if (data[0]?.displayName) {
-            setUsers((prev) =>
-              prev.map((p) => p.accountId === u.accountId ? { ...p, displayName: data[0].displayName } : p)
-            );
-          }
-        })
-        .catch(() => {});
-    }
+    if (unresolved.length === 0) return;
+
+    // En lote: `/api/people` resuelve varios accountId de una llamada, y pedirlos uno a
+    // uno desperdiciaría justo lo que la ruta nueva hace bien.
+    const params = new URLSearchParams({ accountIds: unresolved.map((u) => u.accountId).join(",") });
+    fetch(`/api/people?${params.toString()}`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as Persona[];
+        const porId = new Map(data.map((persona) => [persona.accountId, persona.displayName]));
+        setUsers((prev) =>
+          prev.map((p) => (porId.has(p.accountId) ? { ...p, displayName: porId.get(p.accountId)! } : p)),
+        );
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<JiraUser[]>([]);
+  const [results, setResults] = useState<Persona[]>([]);
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,16 +55,16 @@ export function JiraUserList({ supplierId, initialUsers, workspaceId }: Props): 
   }, [open]);
 
   useEffect(() => {
-    if (!query.trim() || !workspaceId) {
+    if (!query.trim()) {
       setResults([]);
       return;
     }
     const timer = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ query, workspaceId });
-        const res = await fetch(`/api/jira/users?${params.toString()}`);
+        const params = new URLSearchParams({ query });
+        const res = await fetch(`/api/people?${params.toString()}`);
         if (res.ok) {
-          const data = (await res.json()) as JiraUser[];
+          const data = (await res.json()) as Persona[];
           setResults(data);
         }
       } catch {
@@ -72,7 +72,7 @@ export function JiraUserList({ supplierId, initialUsers, workspaceId }: Props): 
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, workspaceId]);
+  }, [query]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent): void {
@@ -84,7 +84,7 @@ export function JiraUserList({ supplierId, initialUsers, workspaceId }: Props): 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
-  function handleAdd(user: JiraUser): void {
+  function handleAdd(user: Persona): void {
     if (users.some((u) => u.accountId === user.accountId)) {
       setOpen(false);
       return;
@@ -156,7 +156,7 @@ export function JiraUserList({ supplierId, initialUsers, workspaceId }: Props): 
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar usuario de Jira..."
+                placeholder="Buscar persona..."
                 className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>

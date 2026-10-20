@@ -29,7 +29,14 @@ model User {
   accounts      Account[]
   sessions      Session[]
   auditLogs     AuditLog[]
-  apiKeys       ApiKey[]
+
+  /// Acceso por API: la concesión que tiene (si alguien se la dio), las claves de las
+  /// que es dueña, y las que creó o concedió a otras personas.
+  apiAccessGrant  ApiAccessGrant?  @relation("ApiGrantOwner")
+  grantsIssued    ApiAccessGrant[] @relation("ApiGrantIssuer")
+  grantsRevoked   ApiAccessGrant[] @relation("ApiGrantRevoker")
+  apiKeys         ApiKey[]         @relation("ApiKeyOwner")
+  apiKeysCreated  ApiKey[]         @relation("ApiKeyCreator")
 
   ownedLeads      CrmLead[]           @relation("CrmLeadOwner")
   ownedDeals      CrmDeal[]           @relation("CrmDealOwner")
@@ -237,7 +244,9 @@ model IssueHourBucketAssignment {
   projectId      String
   project        JiraProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issueKey       String
-  issueNumericId Int
+  /// Id numérico de Jira. Nullable desde el Bloque E: las horas que vienen de
+  /// Giro no traen uno, y nadie lee esta columna — la llave es `issueKey`.
+  issueNumericId Int?
   hourBucketId   String
   hourBucket     HourBucket  @relation(fields: [hourBucketId], references: [id], onDelete: Cascade)
   createdAt      DateTime    @default(now())
@@ -563,12 +572,19 @@ model AuditLog {
   classificationId String?
   classification   Classification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
 
+  /// Con qué credencial se escribió, cuando vino por API o por el MCP. `null` = desde la
+  /// pantalla. El `userId` sigue siendo la persona: esto responde "con qué llave entró",
+  /// no "quién fue". Evita una tabla de auditoría aparte.
+  viaApiKeyId String?
+  viaApiKey   ApiKey? @relation(fields: [viaApiKeyId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([userId])
   @@index([invoiceId])
   @@index([classificationId])
+  @@index([viaApiKeyId])
   @@index([createdAt])
   @@map("audit_logs")
 }
@@ -1113,20 +1129,130 @@ model RoleRate {
   @@map("role_rates")
 }
 
+// ─── Puente de identidad con Giro ─────────────────────────────────────────────
+
+/// Correspondencia entre un `accountId` de Jira y una persona de Giro (Bloque E).
+///
+/// La clave de unión pasa a ser el **`giroUserId`**, no el email: el email de alguien
+/// importado como *shadow* se edita a mano cuando esa persona se da de alta de verdad
+/// (`identity.ts` en Giro lo documenta), así que indexar por él es construir sobre
+/// arena. `ProjectUserRole.giroUserEmail` se queda como override manual, no como puente.
+///
+/// `giroUserId` **no es único**: Giro fusiona cuentas de Atlassian que son la misma
+/// persona (`KNOWN_IDENTITY_MERGES`), así que dos `accountId` distintos pueden apuntar
+/// al mismo usuario. El `accountId` sí es la clave, y se conserva para siempre: es lo
+/// único que permite releer Jira/Tempo si aparece una discrepancia en un cierre.
+model GiroUserLink {
+  jiraAccountId String     @id
+  giroUserId    String
+  giroUserEmail String
+  /// Importada de Jira y todavía sin cuenta propia en Giro. No podrá imputar tras el
+  /// cutover, y eso hay que poder avisarlo.
+  isShadow      Boolean    @default(false)
+  source        LinkSource @default(API)
+  linkedAt      DateTime   @default(now())
+
+  @@index([giroUserId])
+  @@map("giro_user_links")
+}
+
+enum LinkSource {
+  /// Resuelto automáticamente contra `GET /api/v1/users` de Giro.
+  API
+  /// Casado a mano, porque Giro no tenía el accountId mapeado.
+  MANUAL
+
+  @@map("link_source")
+}
+
 // ─── API Keys ─────────────────────────────────────────────────────────────────
+
+/// Autorización nominal para usar la API del ERP. Portado del modelo de Giro
+/// (`ApiAccessGrant`), con dos diferencias que impone este producto:
+///
+/// - **El ERP no es multi-tenant**, así que no hay `orgId`: una concesión viva por
+///   persona. El equivalente de la membership es `SsoAllowedEmail` — quitar un email de
+///   ahí ya corta el login, así que es la señal correcta para cortar también la clave.
+/// - **Sí hay frontera de datos**: `companyIds`/`marcas` acotan a qué sociedad y a qué
+///   negocio alcanza la clave. Vacío = sin restricción. Se inyectan como filtro forzado
+///   en cada consulta, **nunca** se aceptan como parámetro de quien llama: una clave
+///   para un agente de latroupe() no debe poder leer la caja de Awesomely.
+///
+/// `User.role` tiene default ADMIN y casi todo el mundo lo es, así que la intersección
+/// con el rol protege poco por sí sola: aquí el peso lo llevan los scopes marcados uno
+/// a uno y la caducidad corta.
+model ApiAccessGrant {
+  id String @id @default(cuid())
+  /// Una concesión viva por persona; renovar es editar, no acumular.
+  userId String @unique
+  user   User   @relation("ApiGrantOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Techo de lo que sus claves pueden pedir. Nunca por encima de esto.
+  scopes     String[]
+  /// Vacío = todas las sociedades / todas las marcas.
+  companyIds String[]
+  marcas     String[]
+
+  /// Obligatoria y a propósito molesta: una credencial de agente que nadie recuerda es
+  /// la que se filtra. 90 días por defecto.
+  expiresAt DateTime
+
+  grantedById String?
+  grantedBy   User?     @relation("ApiGrantIssuer", fields: [grantedById], references: [id], onDelete: SetNull)
+  revokedAt   DateTime?
+  revokedById String?
+  revokedBy   User?     @relation("ApiGrantRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  keys ApiKey[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("api_access_grants")
+}
 
 /// Claves de API para acceso programático (MCP, integraciones externas). El valor real
 /// se muestra una sola vez al crearla; aquí se almacena únicamente el hash SHA-256.
 model ApiKey {
-  id          String    @id @default(cuid())
-  name        String
-  keyHash     String    @unique
-  keyPrefix   String
-  createdById String
-  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  lastUsedAt  DateTime?
+  id        String @id @default(cuid())
+  name      String
+  keyHash   String @unique
+  keyPrefix String
 
+  /// La clave **actúa como** esta persona: lo que escriba queda a su nombre y lo que
+  /// puede hacer se recorta contra su rol vivo en cada petición.
+  userId  String
+  user    User           @relation("ApiKeyOwner", fields: [userId], references: [id], onDelete: Cascade)
+  grantId String
+  grant   ApiAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  /// Subconjunto de lo que la concesión permite. No se recorta en silencio al acuñar:
+  /// pedir más de lo concedido es un error, no un ajuste.
+  scopes     String[]
+  companyIds String[]
+  marcas     String[]
+
+  /// Siempre <= la de la concesión.
+  expiresAt DateTime
+
+  /// Quién creó la fila. En el flujo nuevo coincide con `userId` (cada persona acuña
+  /// las suyas); se conserva por el histórico de las claves anteriores.
+  createdById String
+  createdBy   User   @relation("ApiKeyCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  /// Revocar deja de ser un DELETE físico: la fila con su `lastUsedAt` es lo que cuenta
+  /// desde y hasta cuándo estuvo viva una credencial. No se puede deshacer.
+  revokedAt   DateTime?
+  revokedById String?
+
+  auditLogs AuditLog[]
+
+  @@index([userId])
+  @@index([grantId])
   @@map("api_keys")
 }
 

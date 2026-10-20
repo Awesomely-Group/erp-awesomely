@@ -146,7 +146,7 @@ interface BucketOption {
 
 interface HierarchicalTableProps {
   projectId: string;
-  hasTempoToken: boolean;
+  hasHoursSource: boolean;
   from: string;
   to: string;
   workspaceDomain: string;
@@ -160,7 +160,7 @@ interface HierarchicalTableProps {
   onSummaryChange?: (summary: { users: SummaryUser[]; loading: boolean }) => void;
 }
 
-function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, buckets, onAssignIssueToBucket, onSummaryChange }: HierarchicalTableProps): React.JSX.Element {
+function HierarchicalTable({ projectId, hasHoursSource, from, to, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, buckets, onAssignIssueToBucket, onSummaryChange }: HierarchicalTableProps): React.JSX.Element {
   const [data, setData] = useState<HierarchicalHoursResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +220,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
   }
 
   useEffect(() => {
-    if (!hasTempoToken) return;
+    if (!hasHoursSource) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -229,7 +229,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
     async function load(): Promise<void> {
       try {
         const res = await fetch(
-          `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=hierarchical`
+          `/api/projects/${projectId}/hours?from=${from}&to=${to}&groupBy=hierarchical`
         );
         const text = await res.text();
         let parsed: unknown;
@@ -243,7 +243,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
 
     void load();
     return () => { cancelled = true; };
-  }, [projectId, hasTempoToken, from, to]);
+  }, [projectId, hasHoursSource, from, to]);
 
   const visibleUsers = useMemo<UserWithIssues[]>(() => {
     if (!data) return [];
@@ -288,10 +288,11 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
     });
   }, [loading, visibleUsers, onSummaryChange]);
 
-  if (!hasTempoToken) {
+  if (!hasHoursSource) {
     return (
       <p className="text-sm text-gray-400">
-        Token de Tempo no configurado.{" "}
+        Proyecto sin vincular a Giro y sin Tempo configurado: no hay de dónde leer las
+        horas.{" "}
         <a href="/settings" className="text-indigo-600 hover:underline">Configúralo en Configuración</a>.
       </p>
     );
@@ -416,7 +417,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
                               <option value="">— Sin bolsa —</option>
                               {buckets.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasTempoToken ? `${bucketConsumedDisplay[b.id] ?? 0}/${formatHours(b.totalHours)}` : formatHours(b.totalHours)}
+                                  {b.code ? `[${b.code}] ` : ""}{b.roleName}{" · "}{hasHoursSource ? `${bucketConsumedDisplay[b.id] ?? 0}/${formatHours(b.totalHours)}` : formatHours(b.totalHours)}
                                 </option>
                               ))}
                             </select>
@@ -517,7 +518,7 @@ function HierarchicalTable({ projectId, hasTempoToken, from, to, workspaceDomain
 
 interface Props {
   projectId: string;
-  hasTempoToken: boolean;
+  hasHoursSource: boolean;
   workspaceDomain: string;
   isBolsasHoras?: boolean;
   bucketByRole?: Record<string, BucketInfo>;
@@ -529,7 +530,7 @@ interface Props {
   onAssignIssueToBucket?: (issueKey: string, jiraIssueId: number, hourBucketId: string | null) => Promise<void>;
 }
 
-export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
+export function ProjectTimesheetSection({ projectId, hasHoursSource, workspaceDomain, isBolsasHoras, bucketByRole, accountToRole, filterBucketId, filterBucketRoleId, filterBucketName, buckets, onAssignIssueToBucket }: Props): React.JSX.Element {
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [periodOffset, setPeriodOffset] = useState(0);
   const { setData } = useTimesheetSummary();
@@ -566,7 +567,7 @@ export function ProjectTimesheetSection({ projectId, hasTempoToken, workspaceDom
       )}
       <HierarchicalTable
         projectId={projectId}
-        hasTempoToken={hasTempoToken}
+        hasHoursSource={hasHoursSource}
         from={from}
         to={to}
         workspaceDomain={workspaceDomain}

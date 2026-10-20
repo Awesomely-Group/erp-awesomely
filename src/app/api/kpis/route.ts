@@ -31,15 +31,18 @@ function parseFilters(url: URL): KPIFilters {
   };
 }
 
+/**
+ * Ruta **interna** de la UI: solo sesión.
+ *
+ * Hasta ahora comparaba a mano contra `ERP_API_KEY` e ignoraba las claves de la base,
+ * mientras el MCP servía exactamente los mismos KPIs con claves de la base: dos puertas
+ * al mismo dato con reglas distintas, y la de aquí sin dueño, sin caducidad y sin
+ * permisos. El acceso programático a los KPIs vive ahora en `/api/v1/kpis`, con el
+ * scope `finance:read`.
+ */
 export async function GET(req: Request): Promise<NextResponse> {
   const session = await auth();
-  const apiKey = req.headers.get("x-api-key");
-  const envKey = process.env.ERP_API_KEY;
-
-  const isSession = !!session;
-  const isApiKey = !!envKey && apiKey === envKey;
-
-  if (!isSession && !isApiKey) {
+  if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

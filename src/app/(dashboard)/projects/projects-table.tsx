@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "./actions";
 import { SortThClick } from "@/components/sort-th";
-import type { TempoWorklogsMonthCostResponse } from "@/app/api/tempo/worklogs/route";
+import type { ProjectHoursMonthCostResponse } from "@/app/api/projects/[projectId]/hours/route";
 import { formatCurrencyRounded, formatHours } from "@/lib/utils";
 
 export interface ProjectRow {
@@ -15,7 +15,7 @@ export interface ProjectRow {
   workspaceName: string;
   workspaceDomain: string;
   status: ProjectStatus;
-  hasTempoToken: boolean;
+  hasHoursSource: boolean;
   isPrecioCerrado: boolean;
   isBolsasHoras: boolean;
   isFeeRegular: boolean;
@@ -287,7 +287,7 @@ interface MonthCostData {
 
 function useMonthCostData(
   projectId: string,
-  hasTempoToken: boolean,
+  hasHoursSource: boolean,
   from: string,
   to: string,
 ): { data: MonthCostData | null; loading: boolean } {
@@ -295,7 +295,7 @@ function useMonthCostData(
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!hasTempoToken) return;
+    if (!hasHoursSource) return;
     let cancelled = false;
 
     async function load(): Promise<void> {
@@ -303,10 +303,10 @@ function useMonthCostData(
       setData(null);
       try {
         const res = await fetch(
-          `/api/tempo/worklogs?projectId=${projectId}&from=${from}&to=${to}&groupBy=month-cost`
+          `/api/projects/${projectId}/hours?from=${from}&to=${to}&groupBy=month-cost`
         );
         if (!res.ok) return;
-        const d = (await res.json()) as TempoWorklogsMonthCostResponse;
+        const d = (await res.json()) as ProjectHoursMonthCostResponse;
         const byMonth: Record<string, { hours: number; cost: number }> = {};
         for (const m of d.months) byMonth[m.month] = { hours: m.totalHours, cost: m.totalCost };
         if (!cancelled) {
@@ -320,7 +320,7 @@ function useMonthCostData(
 
     void load();
     return () => { cancelled = true; };
-  }, [projectId, hasTempoToken, from, to]);
+  }, [projectId, hasHoursSource, from, to]);
 
   return { data, loading };
 }
@@ -344,27 +344,27 @@ function ProjectTableRow({
   showTotal,
 }: ProjectRowProps): React.JSX.Element {
   const router = useRouter();
-  const { data, loading } = useMonthCostData(project.id, project.hasTempoToken, periodFrom, periodTo);
+  const { data, loading } = useMonthCostData(project.id, project.hasHoursSource, periodFrom, periodTo);
 
   const dash = <span className="text-gray-300">—</span>;
   const spin = <span className="text-gray-300 animate-pulse text-xs">…</span>;
 
   function hoursCell(key: string): React.JSX.Element {
-    if (!project.hasTempoToken) return dash;
+    if (!project.hasHoursSource) return dash;
     if (loading) return spin;
     const h = data?.byMonth[key]?.hours;
     return h != null && h > 0 ? <span className="text-gray-900">{formatHours(h)}</span> : dash;
   }
 
   function costCell(key: string): React.JSX.Element {
-    if (!project.hasTempoToken) return dash;
+    if (!project.hasHoursSource) return dash;
     if (loading) return spin;
     const c = data?.byMonth[key]?.cost;
     return c != null && c > 0 ? <span className="text-indigo-600 tabular-nums">{formatCurrencyRounded(c)}</span> : dash;
   }
 
   function totalHoursCell(): React.JSX.Element {
-    if (!project.hasTempoToken) return dash;
+    if (!project.hasHoursSource) return dash;
     if (loading) return spin;
     if (!data || data.totalHours === 0) return dash;
     const overBudget = data.estimateHours != null && data.totalHours > data.estimateHours;
@@ -372,7 +372,7 @@ function ProjectTableRow({
   }
 
   function totalCostCell(): React.JSX.Element {
-    if (!project.hasTempoToken) return dash;
+    if (!project.hasHoursSource) return dash;
     if (loading) return spin;
     if (!data || data.totalCost === 0) return dash;
     const overBudget = data.estimateCost != null && data.totalCost > data.estimateCost;
@@ -380,7 +380,7 @@ function ProjectTableRow({
   }
 
   function estHoursCell(): React.JSX.Element {
-    if (!project.hasTempoToken) return dash;
+    if (!project.hasHoursSource) return dash;
     if (loading) return spin;
     return data?.estimateHours != null && data.estimateHours > 0
       ? <span className="text-gray-500">{formatHours(data.estimateHours)}</span>
@@ -388,7 +388,7 @@ function ProjectTableRow({
   }
 
   function estCostCell(): React.JSX.Element {
-    if (!project.hasTempoToken) return dash;
+    if (!project.hasHoursSource) return dash;
     if (loading) return spin;
     return data?.estimateCost != null && data.estimateCost > 0
       ? <span className="text-gray-400 tabular-nums">{formatCurrencyRounded(data.estimateCost)}</span>

@@ -2,8 +2,10 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prisma } from "@/lib/prisma";
 import { invoiceWhereMarca } from "@/lib/org";
+import type { ApiContext } from "@/lib/api/v1";
+import { companyWhere, marcaWhere, narrowCompany } from "../shared";
 
-export function registerInvoiceTools(server: McpServer): void {
+export function registerInvoiceTools(server: McpServer, ctx: ApiContext): void {
   server.registerTool(
     "list_invoices",
     {
@@ -55,6 +57,12 @@ export function registerInvoiceTools(server: McpServer): void {
 
       const where = {
         holdedStatus: { not: -1 },
+        // Una factura borrada en Holded no debe reaparecer por MCP. La ruta REST ya lo
+        // filtraba y esta herramienta no: dos puertas al mismo dato con reglas distintas.
+        removedFromHoldedAt: null,
+        // La frontera de la credencial, que no viene del modelo.
+        ...companyWhere(ctx),
+        ...marcaWhere(ctx),
         ...(args.type ? { type: args.type } : {}),
         ...(args.status ? { status: args.status } : {}),
         ...(args.dateFrom || args.dateTo
@@ -65,7 +73,9 @@ export function registerInvoiceTools(server: McpServer): void {
               },
             }
           : {}),
-        ...(args.companyId ? { companyId: args.companyId } : {}),
+        ...(narrowCompany(ctx, args.companyId) === undefined
+          ? {}
+          : { companyId: narrowCompany(ctx, args.companyId) }),
         ...marcaFilter,
       };
 
@@ -143,8 +153,11 @@ export function registerInvoiceTools(server: McpServer): void {
       },
     },
     async (args) => {
-      const invoice = await prisma.invoice.findUnique({
-        where: { id: args.invoiceId },
+      // `findFirst` y no `findUnique`: hace falta meter la frontera de la credencial en
+      // el `where`, o una clave acotada a una sociedad podría leer por id la factura de
+      // la otra. Fuera de alcance responde "no existe", igual que una que no existe.
+      const invoice = await prisma.invoice.findFirst({
+        where: { id: args.invoiceId, ...companyWhere(ctx), ...marcaWhere(ctx) },
         include: {
           lines: {
             include: {
@@ -216,11 +229,16 @@ export function registerInvoiceTools(server: McpServer): void {
       const invoices = await prisma.invoice.findMany({
         where: {
           holdedStatus: { not: -1 },
+          removedFromHoldedAt: null,
+          ...companyWhere(ctx),
+          ...marcaWhere(ctx),
           OR: [
             { counterparty: { contains: q, mode: "insensitive" } },
             { number: { contains: q, mode: "insensitive" } },
           ],
-          ...(args.companyId ? { companyId: args.companyId } : {}),
+          ...(narrowCompany(ctx, args.companyId) === undefined
+          ? {}
+          : { companyId: narrowCompany(ctx, args.companyId) }),
           ...marcaFilter,
         },
         select: {

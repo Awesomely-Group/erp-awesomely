@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import type { ProjectUserRoleEntry } from "@/app/api/projects/[projectId]/user-roles/route";
+import type {
+  ProjectUserRoleEntry,
+  ProjectUserRoleResponse,
+} from "@/app/api/projects/[projectId]/user-roles/route";
 import { setProjectUserRole } from "../actions";
 import { formatHourlyRate } from "@/lib/utils";
 
@@ -14,6 +17,9 @@ interface Props {
 
 export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }: Props): React.JSX.Element {
   const [entries, setEntries] = useState<ProjectUserRoleEntry[] | null>(null);
+  // De dónde salieron las horas. `UNAVAILABLE` no es "no hay horas": es "este proyecto
+  // no está vinculado a Giro", y hay que decirlo en vez de enseñar un cero tranquilo.
+  const [source, setSource] = useState<ProjectUserRoleResponse["source"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<string, string>>({});
@@ -21,17 +27,17 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntries(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
     fetch(`/api/projects/${projectId}/user-roles?from=${from}&to=${to}`)
       .then(async (r) => {
         if (!r.ok) throw new Error("Error cargando equipo");
-        return r.json() as Promise<ProjectUserRoleEntry[]>;
+        return r.json() as Promise<ProjectUserRoleResponse>;
       })
       .then((data) => {
-        setEntries(data);
+        setEntries(data.entries);
+        setSource(data.source);
         const initial: Record<string, string> = {};
-        for (const e of data) {
+        for (const e of data.entries) {
           initial[e.accountId] = (e.projectRate ?? e.supplierRate ?? "").toString();
         }
         setRates(initial);
@@ -94,7 +100,14 @@ export function ProjectBucketTeamSection({ projectId, from, to, bucketRoleIds }:
         <p className="text-sm text-red-600">{error}</p>
       )}
 
-      {entries !== null && entries.length === 0 && (
+      {entries !== null && entries.length === 0 && source === "UNAVAILABLE" && (
+        <p className="text-sm text-amber-700">
+          Este proyecto no está vinculado a Giro, así que no se pueden leer sus horas. No
+          significa que no las tenga.
+        </p>
+      )}
+
+      {entries !== null && entries.length === 0 && source !== "UNAVAILABLE" && (
         <p className="text-sm text-gray-400">Sin horas registradas en este período.</p>
       )}
 

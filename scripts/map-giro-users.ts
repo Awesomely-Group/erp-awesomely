@@ -18,6 +18,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { GiroClient } from "../src/lib/giro-client";
 import { JiraClient } from "../src/lib/jira";
+import { slugAccountId } from "../src/lib/hour-buckets";
 
 const prisma = new PrismaClient({ adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL! }) });
 
@@ -31,9 +32,8 @@ const SHADOW = /^shadow\+([^@]+)@migrated\.giro\.internal$/i;
  * transformación antes de comparar: hacerlo con el id tal cual no casa nunca, y el
  * síntoma es una persona que sale "sin candidato" teniendo su correo sombra delante.
  */
-function slugAccountId(accountId: string): string {
-  return accountId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
+// `slugAccountId` vive ahora en `src/lib/hour-buckets.ts`, compartida: tener dos copias
+// de esta regla es justo lo que dejó el bug del email sombra sin casar durante meses.
 
 /** Sin acentos y en minúsculas, para poder comparar "Víctor Hellín" con "victor.hellin". */
 function normaliza(s: string): string {

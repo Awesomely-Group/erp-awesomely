@@ -85,6 +85,45 @@ export default async function LoginPage({
               Continuar con Microsoft
             </button>
           </form>
+
+          {/*
+            Entrada de desarrollo. Solo se pinta fuera de producción y el provider que
+            hay detrás **tampoco existe** en un build de producción, así que no es una
+            puerta escondida: son dos candados independientes. Sigue exigiendo que el
+            email esté en la allowlist de SSO, igual que el flujo real.
+          */}
+          {process.env.NODE_ENV !== "production" ? (
+            <form
+              action={async (formData: FormData) => {
+                "use server";
+                await signIn("dev", {
+                  email: String(formData.get("email") ?? ""),
+                  redirectTo: "/",
+                });
+              }}
+              className="space-y-2 border-t border-gray-200 pt-4"
+            >
+              <label htmlFor="dev-email" className="block text-xs font-medium text-gray-500">
+                Solo en local: entrar como
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="dev-email"
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="tu@correo.com"
+                  className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                />
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+                >
+                  Entrar
+                </button>
+              </div>
+            </form>
+          ) : null}
         </div>
       </div>
     </div>
