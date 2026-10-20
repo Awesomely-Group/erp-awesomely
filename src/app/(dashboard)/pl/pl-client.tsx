@@ -32,8 +32,6 @@ function PctCell({ value, ventas, isSubtotal }: { value: number; ventas: number;
   );
 }
 
-const MONTH_LABELS = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-
 export function PlTable({ entity }: PlTableProps): React.JSX.Element {
   const { months, yearly } = entity;
   const yearlyVentas = yearly.ventas;
@@ -42,16 +40,16 @@ export function PlTable({ entity }: PlTableProps): React.JSX.Element {
     <table className="w-full table-fixed text-sm border-collapse">
       <colgroup>
         <col className="w-52" />
-        {MONTH_LABELS.map((m) => <col key={m} />)}
+        {months.map((m) => <col key={m.monthKey} />)}
         <col className="w-28" />
         <col className="w-16" />
       </colgroup>
       <thead>
         <tr className="border-b-2 border-gray-200 bg-gray-50">
           <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide" />
-          {MONTH_LABELS.map((m) => (
-            <th key={m} className="px-1 py-2.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wide">
-              {m}
+          {months.map((m) => (
+            <th key={m.monthKey} className="px-1 py-2.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+              {m.monthLabel}
             </th>
           ))}
           <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">

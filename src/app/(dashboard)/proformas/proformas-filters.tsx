@@ -4,17 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { MARCA_FILTER_UNASSIGNED, MARCA_OPTIONS } from "@/lib/org";
 import { PROFORMA_STATUS_FILTER_OPTIONS } from "@/lib/proforma-status";
-
-const PERIODS = [
-  { value: "", label: "Todos los períodos" },
-  { value: "this_month", label: "Este mes" },
-  { value: "last_month", label: "Mes pasado" },
-  { value: "this_quarter", label: "Este trimestre" },
-  { value: "last_quarter", label: "Trimestre pasado" },
-  { value: "this_year", label: "Año en curso" },
-  { value: "last_year", label: "Año pasado" },
-  { value: "custom", label: "Personalizado…" },
-];
+import { DateRangePicker } from "@/components/date-range-picker";
+import { resolvePeriodRange, serializePeriodRange } from "@/lib/date-range";
 
 const STATUSES = PROFORMA_STATUS_FILTER_OPTIONS;
 
@@ -50,9 +41,11 @@ export function ProformasFilters({
   const sp = useSearchParams();
 
   const [search, setSearch] = useState(sp.get("search") ?? "");
-  const [period, setPeriod] = useState(sp.get("period") ?? "");
-  const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
-  const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
+  // El periodo vive solo en la URL: el selector lo lee de ahí y lo escribe vía applyWith.
+  const period = sp.get("period") ?? "";
+  const dateFrom = sp.get("dateFrom") ?? "";
+  const dateTo = sp.get("dateTo") ?? "";
+  const range = resolvePeriodRange(period, dateFrom, dateTo);
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [project, setProject] = useState(sp.get("project") ?? "");
 
@@ -96,9 +89,6 @@ export function ProformasFilters({
 
   function reset(): void {
     setSearch("");
-    setPeriod("");
-    setDateFrom("");
-    setDateTo("");
     setStatus("");
     setProject("");
     setSelectedMarcas([]);
@@ -132,45 +122,13 @@ export function ProformasFilters({
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Periodo</label>
-        <select
-          value={period}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPeriod(v);
-            if (v !== "custom") applyWith({ period: v, dateFrom: "", dateTo: "" });
-          }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          {PERIODS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
-        </select>
+        <DateRangePicker
+          from={range?.from ?? null}
+          to={range?.to ?? null}
+          allowClear
+          onChange={(r) => applyWith(serializePeriodRange(r))}
+        />
       </div>
-
-      {period === "custom" && (
-        <>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Desde</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              onBlur={(e) => applyWith({ dateFrom: e.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Hasta</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              onBlur={(e) => applyWith({ dateTo: e.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-            />
-          </div>
-        </>
-      )}
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Estado</label>

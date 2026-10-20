@@ -64,36 +64,22 @@ type ForecastMonthRow = { month: Date; type: string; pessimistic: unknown; optim
 type ManualPaymentMonthRow = { month: Date; direction: string; total_eur: unknown };
 
 /**
- * Resuelve el rango de fechas de un filtro de periodo.
+ * Resuelve el rango de fechas de un filtro de periodo. Sin periodo → últimos 12 meses.
  *
  * OJO (E8, revisión 2026-09-03): los casos "last_X_months" solo ponían `gte`, sin
  * `lte` — así que aunque el selector diga "últimos X meses", los KPIs de previsión
  * (proformas + previsiones manuales, que sí pueden tener fecha futura) incluían
  * también meses futuros sin límite. Esto fue el origen real de una confusión de
  * cifras en la reunión ("¿por qué la previsión de últimos 12 meses incluye 2027?").
- * Ahora "últimos X meses" es explícitamente [hoy - X meses, fin del mes en curso] —
- * para ver previsión de meses futuros hay que usar "Personalizado" con una fecha
- * "Hasta" más adelante.
+ * "Últimos X meses" es explícitamente [hoy - X meses, fin del mes en curso] (la
+ * definición vive ahora en `lib/date-range.ts`, compartida con el selector) —
+ * para ver previsión de meses futuros hay que elegir un rango personalizado con
+ * una fecha "Hasta" más adelante.
  */
 export function resolveDateRange(params: CashflowParams): { gte?: Date; lte?: Date } {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const endOfCurrentMonth = new Date(y, m + 1, 0, 23, 59, 59, 999);
-
-  switch (params.period) {
-    case "last_3_months":
-      return { gte: new Date(y, m - 3, 1), lte: endOfCurrentMonth };
-    case "last_6_months":
-      return { gte: new Date(y, m - 6, 1), lte: endOfCurrentMonth };
-    case "last_12_months":
-      return { gte: new Date(y, m - 12, 1), lte: endOfCurrentMonth };
-    case "this_year":
-    case "custom":
-      return getDateRange(params.period, params.dateFrom, params.dateTo);
-    default:
-      return { gte: new Date(y, m - 12, 1), lte: endOfCurrentMonth };
-  }
+  const range = getDateRange(params.period ?? "", params.dateFrom, params.dateTo);
+  if (range.gte || range.lte) return range;
+  return getDateRange("last_12_months");
 }
 
 export async function getCashflowData(
