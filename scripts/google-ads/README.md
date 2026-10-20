@@ -14,23 +14,17 @@ Google Ads tiene que ser esto. Si se cambia, se cambia aquí primero.
    redesplegar. Sin la variable el webhook responde 401 a todo.
 2. **Script en Google Ads.** Entrar en la cuenta `827-209-7041 · Gigson Solutions (España)`
    (hace falta acceso de *administrador* o *estándar*; Holdmin lo tiene desde su MCC) →
-   Herramientas → Acciones en bloque → **Scripts** → `+` → pegar el contenido de
-   `push-metrics.js` → nombre `ERP · push-metrics`.
-3. **Script Properties.** En el editor: Configuración del proyecto (icono de engranaje) →
-   Propiedades del script:
-
-   | Propiedad            | Valor                                                  |
-   |----------------------|--------------------------------------------------------|
-   | `ERP_URL`            | `https://<host del ERP>/api/webhooks/ads-metrics`      |
-   | `ERP_WEBHOOK_SECRET` | el mismo valor que `ADS_WEBHOOK_SECRET` en Vercel       |
-   | `LOOKBACK_DAYS`      | opcional, por defecto `60`                             |
-   | `NOTIFY_EMAIL`       | opcional, correo al que avisar si un lote falla        |
-
+   Herramientas → Acciones en bloque → **Secuencias de comandos** (así traduce Google
+   "Scripts") → `+` → se abre el editor con un `function main() {}` vacío.
+3. **Pegar y rellenar.** Borrar ese contenido, pegar `push-metrics.js` entero y, en el bloque
+   `CONFIG` del principio, sustituir `PEGA_AQUI_EL_SECRETO` por el valor de
+   `ADS_WEBHOOK_SECRET` de Vercel. `ERP_URL` ya apunta a producción. El editor de Google
+   Ads no tiene pantalla de propiedades: el secreto vive solo en esa copia, nunca en el repo.
+   Nombre sugerido: `ERP · push-metrics`.
 4. **Autorizar y previsualizar.** `Vista previa` la primera vez pide autorizar el script
    (lectura de la cuenta + `UrlFetchApp` + correo). La vista previa **sí envía** los POST:
-   es la prueba de extremo a extremo. En el log tienen que salir tres líneas `OK`
-   (`campaigns`, `keywords`, `search_terms`) y en el ERP tres filas en `ads_imports` con el
-   mismo `runId`.
+   es la prueba de extremo a extremo. En el registro tienen que salir tres líneas `OK`
+   (`campaigns`, `keywords`, `search_terms`) y en `/campanas` del ERP aparecen las campañas.
 5. **Programar.** Frecuencia *Diaria*, hora `04:00` (zona horaria de la cuenta). Google Ads
    consolida el día anterior de madrugada; a las 04:00 ya está.
 
@@ -68,11 +62,11 @@ ventana entera y el ERP borra y reinserta las combinaciones (campaña, día) que
 Repetir una ejecución no duplica nada.
 
 Para un backfill puntual más largo (p.ej. traer el histórico de agosto), poner
-`LOOKBACK_DAYS=365`, ejecutar una vez a mano y devolverlo a `60`.
+`LOOKBACK_DAYS: 365` en `CONFIG`, ejecutar una vez a mano y devolverlo a `60`.
 
 ## Si algo falla
 
-- **401 en todos los lotes**: el secreto no coincide o `ADS_WEBHOOK_SECRET` no está en Vercel.
+- **401 en todos los lotes**: el secreto de `CONFIG` no coincide con `ADS_WEBHOOK_SECRET` de Vercel.
 - **400 con `issues`**: el payload no pasa el contrato; el mensaje dice qué campo. Suele ser
   una versión vieja del script frente a un ERP nuevo (o al revés): comparar `SCRIPT_VERSION`.
 - **La consulta GAQL de campañas falla por las cuotas de impresiones** (cuentas con muy poco

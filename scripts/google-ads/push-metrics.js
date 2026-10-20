@@ -15,14 +15,23 @@
  * Qué NO hace: no toca la cuenta (solo lectura), no decide nada. El cruce con los leads
  * del CRM, el CPL y el semáforo se calculan en el ERP.
  *
- * Configuración (Script Properties, en el editor: Configuración del proyecto → Propiedades):
- *   ERP_URL             https://<host-del-erp>/api/webhooks/ads-metrics   (obligatoria)
- *   ERP_WEBHOOK_SECRET  el valor de ADS_WEBHOOK_SECRET del ERP            (obligatoria)
- *   LOOKBACK_DAYS       opcional, por defecto 60 (para un backfill puntual: 365)
- *   NOTIFY_EMAIL        opcional: a quién avisar si algún lote falla
- *
- * Nada sensible va en este fichero: el repo es visible para más gente que la cuenta de Ads.
+ * Configuración: el bloque CONFIG de justo debajo. El editor de Google Ads no tiene una
+ * pantalla de propiedades, así que el secreto se pega en la COPIA que vive en Google Ads.
+ * En el repo se queda el marcador: nada sensible va aquí, el repo lo ve más gente que la
+ * cuenta de Ads. (Como alternativa, el script también lee ERP_WEBHOOK_SECRET de
+ * PropertiesService si alguien lo dejó ahí con una ejecución previa.)
  */
+
+var CONFIG = {
+  /** Webhook del ERP (obligatoria). */
+  ERP_URL: 'https://erp.awesomelygroup.com/api/webhooks/ads-metrics',
+  /** Valor de ADS_WEBHOOK_SECRET en Vercel. Sustituir el marcador al pegar en Google Ads. */
+  ERP_WEBHOOK_SECRET: 'PEGA_AQUI_EL_SECRETO',
+  /** Días hacia atrás que se reescriben en cada ejecución (backfill puntual: 365). */
+  LOOKBACK_DAYS: 60,
+  /** Correo al que avisar si algún lote falla; vacío para no avisar. */
+  NOTIFY_EMAIL: '',
+};
 
 var SCRIPT_VERSION = '2026-10-16';
 var DEFAULT_LOOKBACK_DAYS = 60;
@@ -31,13 +40,14 @@ var RETRY_WAIT_MS = 2000;
 
 function main() {
   var props = PropertiesService.getScriptProperties();
-  var erpUrl = props.getProperty('ERP_URL');
-  var secret = props.getProperty('ERP_WEBHOOK_SECRET');
+  var erpUrl = CONFIG.ERP_URL || props.getProperty('ERP_URL');
+  var secret = CONFIG.ERP_WEBHOOK_SECRET;
+  if (!secret || secret === 'PEGA_AQUI_EL_SECRETO') secret = props.getProperty('ERP_WEBHOOK_SECRET');
   if (!erpUrl || !secret) {
-    throw new Error('Faltan las Script Properties ERP_URL y/o ERP_WEBHOOK_SECRET');
+    throw new Error('Falta ERP_URL o ERP_WEBHOOK_SECRET: rellena el bloque CONFIG al principio del script');
   }
-  var lookbackDays = parseInt(props.getProperty('LOOKBACK_DAYS') || '', 10) || DEFAULT_LOOKBACK_DAYS;
-  var notifyEmail = props.getProperty('NOTIFY_EMAIL') || '';
+  var lookbackDays = parseInt(String(CONFIG.LOOKBACK_DAYS || ''), 10) || DEFAULT_LOOKBACK_DAYS;
+  var notifyEmail = CONFIG.NOTIFY_EMAIL || '';
 
   var account = AdsApp.currentAccount();
   var tz = account.getTimeZone();
