@@ -116,7 +116,17 @@ latroupestudio.com, y el Workflow nativo de Apollo. Auth por `x-webhook-secret` 
 
 Body: `source` (`WEB_GIGSON|WEB_LATROUPE|APOLLO|REFERIDO|OTRO`), `externalRef`, `name`, `marca`
 obligatorios; al menos uno de `email`/`phone`. Opcionales: `lineOfBusiness` (default `GENERAL`),
-`contactName`, `amount`, `seats`, `origin`, `market`, `campaignSource`, `utm*`, `notes`.
+`contactName`, `amount`, `seats`, `origin`, `market`, `campaignSource`, `notes`, y la atribución de
+campaña (2026-10-16): `utmSource`, `utmMedium`, `utmCampaign`, `utmTerm`, `utmContent`, `gclid`
+(o `gbraid`/`wbraid`, que se guardan en la misma columna con prefijo), `formId` (el `form_id` del
+formulario de la web: `consultoria-odoo`, `iso27001`, `home`…) y `landingPage`.
+
+Con esos campos el lead se atribuye solo a una campaña de pago (`CrmLead.adCampaignId`, ver
+`src/lib/ads-attribution.ts`): por `utmCampaign` exacto contra una `AdCampaign` mapeada, o por
+`formId` si el formulario es de una única campaña viva **y** el lead trae gclid o `utm_medium` de
+pago. Si el formulario lo comparten varias campañas, queda sin atribuir y se vincula a mano desde
+`/campanas/[id]` o la ficha del lead. La respuesta `201` incluye `adCampaignId` y `attribution`
+(`utm_campaign|form_id|ambiguous|none`).
 
 El lead entra como `NEW`, **sin etapa y sin dueño**. No entra en el embudo: desde la separación
 lead/deal (2026-10-13) el embudo es de oportunidades, y la oportunidad nace al cualificar el lead
@@ -211,6 +221,42 @@ bypass de prefijo `/api/webhooks/`, que ya está.
 
 Conviene aprovechar para pasar la lista de igualdades exactas a prefijos: hoy `/api/kpis` está
 por igualdad, así que `/api/kpis/targets` **no** quedaría cubierto.
+
+### 4.5 Campañas de pago — `POST /api/webhooks/ads-metrics`
+
+Entrada de **métricas de Google Ads** para Growth > Campañas (`/campanas`, 2026-10-16). La llama
+un Google Ads Script que corre dentro de la propia cuenta de Ads (`scripts/google-ads/push-metrics.js`,
+instalación en `scripts/google-ads/README.md`): sin developer token ni OAuth, el ERP solo recibe.
+Sustituye a la integración por API que quedó pausada en `marketing-google-ads-wip`; sus tablas
+`google_ads_*` (vacías) se borraron en la migración `20261016120000_add_ads_campaigns`.
+
+Auth por `x-webhook-secret` contra `ADS_WEBHOOK_SECRET` (un solo secreto, como `/webhooks/leads`).
+Contrato en `src/lib/ads-webhook.ts` (zod, `discriminatedUnion("kind")`); escritura en
+`src/lib/ads-ingest.ts`.
+
+Body común: `kind` (`campaigns|keywords|search_terms`), `runId` (uno por ejecución del script),
+`scriptVersion`, `account{externalId (10 dígitos sin guiones), name, currency}`, `dateFrom`/`dateTo`
+(`YYYY-MM-DD`, fecha local de la cuenta), `part`/`parts`, `rows[]` (≤ 5.000). `kind=campaigns`
+añade `campaigns[]` (externalId, name, status, dailyBudgetEur) y sus `rows` son una por campaña y
+día (impresiones, clics, `costEur`, `conversions`, `conversionValueEur`, `dailyBudgetEur`, cuotas de
+impresiones 0-1 o `null`). `keywords` y `search_terms` llevan una fila por elemento y día. Importes
+**ya en EUR**; el script convierte los micros.
+
+Semántica: **idempotente por borrado y reinserción** de las combinaciones (campaña, día) que trae el
+lote, en una transacción — repetir un POST deja la base igual, y los días que no vienen en ningún
+lote no se tocan. Las campañas se crean/actualizan (nombre, estado, presupuesto) con el lote de
+`campaigns`; si llegan keywords o términos de una campaña desconocida, se crea mínima para no perder
+filas. **Nunca toca el mapeo manual** de la campaña (marca, línea de negocio, `formIds`,
+`utmCampaign`): eso se edita en `/campanas`.
+
+Respuestas: `200 { importId, kind, part, parts, rowsReceived, rowsUpserted, campaignsCreated[] }`;
+`400 { error, issues[] }` si el payload no pasa el contrato; `401` sin secreto; `500 { error }` si
+falla la escritura. Cada POST deja una fila en `ads_imports` (también los fallidos) — es lo que
+`/campanas` usa para "actualizado hace N horas" y para avisar si el script dejó de llegar.
+
+El webhook de leads (`/webhooks/leads`) acepta desde la misma revisión `gclid` (o `gbraid`/`wbraid`),
+`utmTerm`, `utmContent`, `formId` y `landingPage`, y rellena `CrmLead.adCampaignId` cuando
+`utmCampaign` o `formId` casan con una campaña mapeada — ver §4.1.
 
 ## 5. Checklist para añadir un endpoint
 

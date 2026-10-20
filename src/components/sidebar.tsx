@@ -45,9 +45,9 @@ type NavGroup = {
  * flujo marketing/ventas → operaciones → facturación → contabilidad → sistema.
  *
  * "Marketing y Ventas" se renombró a "Growth" (revisión 2026-09-18, plan Growth/CRM):
- * la subsección "CRM" ya tiene páginas reales (pipeline, cuentas, actividades,
- * comisiones); "Campañas" sigue siendo un placeholder a propósito — la integración
- * real de ads vive pausada en otra rama, fuera de este módulo (ver /campanas).
+ * la subsección "CRM" tiene el pipeline, cuentas, actividades y comisiones; "Campañas"
+ * (2026-10-16) muestra los KPIs de Google Ads que entran por el webhook de métricas
+ * (CTR, CPC, conversión, CPL), y dejó de ser un placeholder.
  */
 const NAVIGATION_GROUPS: NavGroup[] = [
   {

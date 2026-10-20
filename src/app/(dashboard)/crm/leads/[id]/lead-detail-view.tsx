@@ -13,6 +13,7 @@ import {
   markLeadContacted,
   reactivateLead,
 } from "../../actions";
+import { linkLeadToAdCampaign } from "@/app/(dashboard)/campanas/actions";
 import type { CrmActivityType, CrmDealType, CrmLeadStatus, CrmOrigin } from "@prisma/client";
 import { DEAL_TYPE_OPTIONS, leadStatusLabel, originLabel } from "@/lib/crm-relations";
 
@@ -34,7 +35,17 @@ export interface LeadDetail {
   seats: number | null;
   campaignSource: string | null;
   utmSource: string | null;
+  utmMedium: string | null;
   utmCampaign: string | null;
+  utmTerm: string | null;
+  utmContent: string | null;
+  /** Click id de Google Ads (gclid, o gbraid:/wbraid: en iOS). */
+  gclid: string | null;
+  /** form_id del formulario de la web. */
+  formId: string | null;
+  landingPage: string | null;
+  /** Campaña de pago a la que se atribuye (Growth > Campañas). */
+  adCampaignId: string | null;
   ownerId: string | null;
   accountId: string | null;
   accountName: string | null;
@@ -195,10 +206,13 @@ export function LeadDetailView({
   lead,
   users,
   accounts,
+  campaigns,
 }: {
   lead: LeadDetail;
   users: { id: string; label: string }[];
   accounts: { id: string; name: string }[];
+  /** Campañas de pago a las que se puede atribuir el lead (misma marca o sin marca). */
+  campaigns: { id: string; name: string }[];
 }): React.JSX.Element {
   const [isPending, startTransition] = useTransition();
   const [showConvert, setShowConvert] = useState(false);
@@ -370,11 +384,33 @@ export function LeadDetailView({
               )}
               {(lead.campaignSource ?? lead.utmSource ?? lead.utmCampaign) && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Campaña</dt>
-                  <dd className="text-gray-900">
-                    {[lead.campaignSource, lead.utmSource, lead.utmCampaign]
+                  <dt className="text-gray-500">Origen de campaña</dt>
+                  <dd className="text-right text-gray-900">
+                    {[lead.campaignSource, lead.utmSource, lead.utmMedium, lead.utmCampaign]
                       .filter(Boolean)
                       .join(" · ")}
+                    {(lead.utmTerm ?? lead.utmContent) && (
+                      <span className="block text-xs text-gray-400">
+                        {[lead.utmTerm, lead.utmContent].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {lead.formId && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Formulario</dt>
+                  <dd className="text-gray-900">
+                    {lead.formId}
+                    {lead.landingPage && <span className="ml-1 text-xs text-gray-400">({lead.landingPage})</span>}
+                  </dd>
+                </div>
+              )}
+              {lead.gclid && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Click id (Google Ads)</dt>
+                  <dd className="font-mono text-xs text-gray-700" title={lead.gclid}>
+                    {lead.gclid.length > 18 ? `${lead.gclid.slice(0, 18)}…` : lead.gclid}
                   </dd>
                 </div>
               )}
@@ -573,6 +609,32 @@ export function LeadDetailView({
             </select>
             <p className="mt-1 text-xs text-gray-400">
               Opcional: si no la enlazas, al cualificar se crea una con el nombre del lead.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-900">Campaña de pago</h2>
+            <select
+              value={lead.adCampaignId ?? ""}
+              disabled={isPending || campaigns.length === 0}
+              onChange={(e) =>
+                startTransition(async () => {
+                  await linkLeadToAdCampaign(lead.id, e.target.value || null);
+                })
+              }
+              className="mt-2 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50"
+            >
+              <option value="">— Sin campaña (orgánico, referido…) —</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              {campaigns.length === 0
+                ? "Todavía no hay campañas de pago en el ERP."
+                : "Define en qué CPL cuenta este lead en /campanas. Se rellena solo cuando la web manda el utm_campaign; aquí se corrige."}
             </p>
           </div>
         </div>

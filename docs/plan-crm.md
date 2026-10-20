@@ -184,7 +184,7 @@ configuren y no se cableen.
 | Desviación horas vs presupuesto | Proyectos | `HourBucket.totalHours` + `BudgetLine.estimatedHours` vs horas reales (Tempo/Giro) | Datos sí; falta el informe |
 | CSAT (>80%) | Proyectos / Clientes | — | **Hueco total**: no hay captura |
 | Metas y semáforo | Transversal | `KpiTarget` | Nuevo (F7) |
-| CAC / CPA por canal | Marketing | Adspirer / Google Ads | Fuera del ERP |
+| CAC / CPA por canal | Marketing | `AdCampaign*` + `CrmLead.adCampaignId` | **Dentro del ERP desde 2026-10-16** (`/campanas`, ingesta por Google Ads Script → `/api/webhooks/ads-metrics`); revierte la decisión de dejarlo fuera |
 
 ### Propuesta de métricas por marca
 
@@ -457,8 +457,11 @@ propio y conviene decidirlas por separado, no colarlas en el CRM:
 - **Ratio 3x servicios/licencias y usuarios vendidos** → Facturación/P&L. `InvoiceLine` +
   `Classification` ya clasifican por línea, marca y proyecto, pero **no distinguen servicio de
   licencia**: hace falta una cuenta contable dedicada o una marca de tipo de línea.
-- **CAC/CPA por canal** → vive en Adspirer/Google Ads. Dejarlo fuera salvo que se quiera importar
-  el coste por canal para calcular CAC contra los leads del CRM.
+- **CAC/CPA por canal** → desde el 2026-10-16 vive **dentro** del ERP (`/campanas`): el coste
+  por campaña entra por `POST /api/webhooks/ads-metrics` desde un Google Ads Script y se cruza con
+  `CrmLead.adCampaignId` para el CPL real y el CPL cualificado. Revierte la decisión anterior de
+  dejarlo en Adspirer/Google Ads, a raíz de la reunión con Holdmin del 16/10 (KPIs: CTR, CPC,
+  tasa de conversión, CPL).
 
 ## Verificación
 

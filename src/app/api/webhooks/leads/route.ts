@@ -2,7 +2,8 @@ import { json, badRequest, unauthorized } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import { authenticateLeadsWebhook, isWebhookLeadSource } from "@/lib/leads-webhook";
 import { MARCA_OPTIONS } from "@/lib/org";
-import { CrmOrigin, Prisma } from "@prisma/client";
+import { packClickId, resolveAdCampaign } from "@/lib/ads-attribution";
+import { AdCampaignStatus, CrmOrigin, Prisma } from "@prisma/client";
 
 const MARCA_VALUES = new Set(MARCA_OPTIONS.map((o) => o.value));
 const ORIGIN_VALUES = new Set<string>(Object.values(CrmOrigin));
@@ -24,6 +25,17 @@ interface LeadWebhookPayload {
   utmSource?: string | null;
   utmMedium?: string | null;
   utmCampaign?: string | null;
+  // Atribución a campañas de pago (Growth > Campañas, 2026-10-16). Son los campos que ya
+  // captura la web (gigson-marketing, src/lib/attribution.ts): con ellos el lead se cuelga
+  // de su AdCampaign (ver src/lib/ads-attribution.ts) y sale en el CPL real de /campanas.
+  utmTerm?: string | null;
+  utmContent?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  /** form_id del formulario de la web ("consultoria-odoo", "iso27001", "home"…). */
+  formId?: string | null;
+  landingPage?: string | null;
   notes?: string | null;
   // Impacto del plan de activación de Odoo (revisión 2026-09-18): mix inside-out/
   // outside-in, mercado (LaTroupe) y nº de usuarios propuestos (Odoo).
@@ -41,6 +53,10 @@ interface LeadWebhookPayload {
  * Auth: header `x-webhook-secret` contra `LEADS_WEBHOOK_SECRET` (ver
  * src/lib/leads-webhook.ts). Idempotente por (source, externalRef) — mismo patrón que
  * /api/webhooks/proposals.
+ *
+ * Atribución a campañas de pago (2026-10-16): si el payload trae `utmCampaign`/`formId`
+ * (+ gclid o utm_medium de pago) que casan con una AdCampaign mapeada, el lead nace con
+ * `adCampaignId` y cuenta en el CPL de /campanas. La respuesta dice qué regla aplicó.
  *
  * El lead entra como NEW y sin `ownerId` (sin asignar) — hoy no hay ningún usuario con
  * rol COMERCIAL todavía (D8); un admin lo reparte a mano desde /crm/leads. NO entra en
@@ -77,6 +93,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const source = payload.source;
   const lineOfBusiness = payload.lineOfBusiness ?? "GENERAL";
+  const gclid = packClickId(payload);
 
   const existing = await prisma.crmLead.findUnique({
     where: { source_externalRef: { source, externalRef: payload.externalRef } },
@@ -85,6 +102,17 @@ export async function POST(req: Request): Promise<Response> {
   if (existing) {
     return json({ leadId: existing.id, idempotent: true }, 200);
   }
+
+  // Campañas vivas para la atribución automática. Si no hay ninguna mapeada, el lead entra
+  // igual, sin campaña: el enlace se puede hacer a mano desde la ficha.
+  const campaigns = await prisma.adCampaign.findMany({
+    where: { status: { not: AdCampaignStatus.REMOVED } },
+    select: { id: true, marca: true, utmCampaign: true, formIds: true, status: true },
+  });
+  const attribution = resolveAdCampaign(
+    { marca: payload.marca, utmCampaign: payload.utmCampaign, utmMedium: payload.utmMedium, formId: payload.formId, gclid },
+    campaigns,
+  );
 
   try {
     const lead = await prisma.crmLead.create({
@@ -102,6 +130,12 @@ export async function POST(req: Request): Promise<Response> {
         utmSource: payload.utmSource ?? null,
         utmMedium: payload.utmMedium ?? null,
         utmCampaign: payload.utmCampaign ?? null,
+        utmTerm: payload.utmTerm ?? null,
+        utmContent: payload.utmContent ?? null,
+        gclid,
+        formId: payload.formId ?? null,
+        landingPage: payload.landingPage ?? null,
+        adCampaignId: attribution.campaignId,
         notes: payload.notes ?? null,
         origin: (payload.origin as CrmOrigin | null | undefined) ?? null,
         market: payload.market ?? null,
@@ -109,7 +143,7 @@ export async function POST(req: Request): Promise<Response> {
       },
       select: { id: true },
     });
-    return json({ leadId: lead.id }, 201);
+    return json({ leadId: lead.id, adCampaignId: attribution.campaignId, attribution: attribution.reason }, 201);
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       const raced = await prisma.crmLead.findUnique({
