@@ -30,7 +30,9 @@ export default auth((req) => {
     p === "/api/sync" ||
     p === "/api/sync/hours" ||
     p === "/api/notify/proformas" ||
-    // Legacy: el MCP vive todavía aquí. Se mueve a /api/v1/mcp en la fase siguiente.
+    // Ruta vieja del MCP: hoy solo devuelve un 307 a /api/v1/mcp. Tiene que seguir
+    // fuera de la sesión o un cliente ya configurado recibiría el redirect al login
+    // en vez del suyo. Se borra cuando se borre la ruta.
     p === "/api/mcp";
 
   if (isApiAuth || isApiInternal) return NextResponse.next();

@@ -1,10 +1,12 @@
 import { json, unauthorized } from "@/lib/api-auth";
+import { webhookSecretValido } from "@/lib/webhook-secret";
 import { prisma } from "@/lib/prisma";
 import { syncJiraWorkspace } from "@/lib/sync";
 
 /**
  * Receives Jira webhooks. Configure in Jira: System → WebHooks → Create a WebHook.
- * Add x-webhook-secret header matching CRON_SECRET or ERP_API_KEY.
+ * Add x-webhook-secret header matching WEBHOOK_SYNC_SECRET (ver src/lib/webhook-secret.ts;
+ * CRON_SECRET y ERP_API_KEY se aceptan una ventana más, avisando en el log).
  *
  * Supported events:
  *   - Any event: triggers a full Jira sync for the matching workspace
@@ -12,14 +14,7 @@ import { syncJiraWorkspace } from "@/lib/sync";
  */
 export async function POST(req: Request): Promise<Response> {
   const secret = req.headers.get("x-webhook-secret") ?? req.headers.get("x-api-key");
-  const cronSecret = process.env.CRON_SECRET;
-  const erpKey = process.env.ERP_API_KEY;
-
-  const isValid =
-    (cronSecret && secret === cronSecret) ||
-    (erpKey && secret === erpKey);
-
-  if (!isValid) return unauthorized();
+  if (!webhookSecretValido(secret, "jira")) return unauthorized();
 
   let payload: Record<string, unknown> = {};
   try {

@@ -1,4 +1,5 @@
 import { json, unauthorized } from "@/lib/api-auth";
+import { webhookSecretValido } from "@/lib/webhook-secret";
 import { prisma } from "@/lib/prisma";
 import { syncAll, SyncAlreadyRunningError } from "@/lib/sync";
 import { SyncSource } from "@prisma/client";
@@ -30,13 +31,7 @@ export const maxDuration = 300;
 export async function POST(req: Request): Promise<Response> {
   const secret =
     req.headers.get("x-webhook-secret") ?? req.headers.get("x-api-key");
-  const cronSecret = process.env.CRON_SECRET;
-  const erpKey = process.env.ERP_API_KEY;
-
-  const isValid =
-    (cronSecret && secret === cronSecret) || (erpKey && secret === erpKey);
-
-  if (!isValid) return unauthorized();
+  if (!webhookSecretValido(secret, "holded")) return unauthorized();
 
   try {
     const cooldownMinutes = minIntervalMinutes();
