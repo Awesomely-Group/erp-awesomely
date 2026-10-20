@@ -1840,9 +1840,11 @@ enum KpiTargetPeriodType {
 /// Meta configurable por métrica/marca/línea de negocio/periodo, transversal (no
 /// solo CRM — sirve igual para métricas de entrega o financieras el día que se
 /// construyan). Alimenta el semáforo Verde (≥100% meta) / Ámbar (70-99%) / Rojo
-/// (<70%) de la rutina mensual comercial. Se edita en /settings — el ERP no asume
-/// valores por defecto: las cifras del plan de activación de Odoo (88/44/22/9, 75
-/// usuarios, ratio 3x) son una plantilla sin aprobar, no se siembran aquí.
+/// (<70%) de la rutina mensual comercial. Se edita en /settings. Las metas comerciales
+/// no tienen valores por defecto (las cifras del plan de activación de Odoo —
+/// 88/44/22/9, 75 usuarios, ratio 3x — son una plantilla sin aprobar); las de campañas
+/// de pago (`ads_*`) sí: los números de la agencia, en src/lib/ads-targets-defaults.ts,
+/// se cargan desde /settings como filas normales y se editan después.
 model KpiTarget {
   id String @id @default(cuid())
 

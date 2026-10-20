@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { MARCA_OPTIONS } from "@/lib/org";
-import { createKpiTarget, deleteKpiTarget } from "./kpi-targets-actions";
+import { applyAdsTargetDefaults, createKpiTarget, deleteKpiTarget, updateKpiTargetValue } from "./kpi-targets-actions";
+import { ADS_TARGET_DEFAULTS, ADS_TARGET_PHASE_LABEL, ADS_TARGET_SCOPE, type AdsTargetPhase } from "@/lib/ads-targets-defaults";
 import type { KpiTargetPeriodType } from "@prisma/client";
 
 export interface KpiTargetRow {
@@ -47,6 +48,11 @@ export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): Rea
   const [periodType, setPeriodType] = useState<KpiTargetPeriodType>("MONTH");
   const [periodKey, setPeriodKey] = useState("");
   const [value, setValue] = useState("");
+  const [adsPhase, setAdsPhase] = useState<AdsTargetPhase>("arranque");
+  const [adsMonth, setAdsMonth] = useState(currentMonthKey());
+  const [adsMessage, setAdsMessage] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   function handleSubmit(e: React.FormEvent): void {
     e.preventDefault();
@@ -72,14 +78,90 @@ export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): Rea
     });
   }
 
+  function startEdit(t: KpiTargetRow): void {
+    setEditingId(t.id);
+    setEditingValue(String(t.value));
+  }
+
+  function commitEdit(): void {
+    const id = editingId;
+    const next = Number(editingValue);
+    if (!id || !Number.isFinite(next)) {
+      setEditingId(null);
+      return;
+    }
+    startTransition(async () => {
+      await updateKpiTargetValue(id, next);
+      setEditingId(null);
+    });
+  }
+
+  function handleApplyAdsDefaults(): void {
+    setAdsMessage(null);
+    startTransition(async () => {
+      try {
+        const created = await applyAdsTargetDefaults(adsPhase, adsMonth);
+        const total = ADS_TARGET_DEFAULTS[adsPhase].length;
+        setAdsMessage(
+          created === 0
+            ? `Las ${total} metas de ${adsMonth} ya existían; no se ha tocado ninguna.`
+            : `Creadas ${created} de ${total} metas para ${adsMonth}${created < total ? " (las demás ya existían y se respetan)" : ""}.`,
+        );
+      } catch (err) {
+        setAdsMessage(err instanceof Error ? err.message : "No se pudieron cargar las metas");
+      }
+    });
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-gray-400">
         Metas por métrica/marca/línea de negocio/periodo. Alimentan el semáforo del pipeline en{" "}
         <code className="rounded bg-gray-100 px-1">/crm</code> y el de campañas de pago en{" "}
-        <code className="rounded bg-gray-100 px-1">/campanas</code> (métricas <code className="rounded bg-gray-100 px-1">ads_*</code>). Sin valores por defecto: las
-        cifras del plan de activación de Odoo son una plantilla sin aprobar.
+        <code className="rounded bg-gray-100 px-1">/campanas</code> (métricas <code className="rounded bg-gray-100 px-1">ads_*</code>). Las metas comerciales
+        no tienen valores por defecto (las cifras del plan de activación de Odoo son una plantilla sin aprobar); las de campañas de pago sí: los
+        números de la agencia, cargables abajo y editables después. Haz clic en una meta para cambiarla.
       </p>
+
+      <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+        <p className="text-xs font-medium text-gray-700">
+          Metas de campañas de pago · {ADS_TARGET_SCOPE.marca} / {ADS_TARGET_SCOPE.lineOfBusiness}
+        </p>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Valores de Holdmin (reuniones 08/10 y 16/10/2026). Solo se crean las que no existan para ese mes; lo que ya hayas editado no se pisa.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+            value={adsPhase}
+            onChange={(e) => setAdsPhase(e.target.value as AdsTargetPhase)}
+          >
+            {(Object.keys(ADS_TARGET_PHASE_LABEL) as AdsTargetPhase[]).map((phase) => (
+              <option key={phase} value={phase}>
+                {ADS_TARGET_PHASE_LABEL[phase]}
+              </option>
+            ))}
+          </select>
+          <input
+            type="month"
+            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+            value={adsMonth}
+            onChange={(e) => setAdsMonth(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={handleApplyAdsDefaults}
+            disabled={isPending || !adsMonth}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            Cargar metas del mes
+          </button>
+          <span className="text-xs text-gray-500">
+            {ADS_TARGET_DEFAULTS[adsPhase].map((d) => `${d.label}: ${d.value}`).join(" · ")}
+          </span>
+        </div>
+        {adsMessage && <p className="mt-2 text-xs text-gray-600">{adsMessage}</p>}
+      </div>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 p-3 md:grid-cols-6">
         <input
@@ -165,7 +247,33 @@ export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): Rea
               <td className="px-2 py-1 text-gray-500">
                 {PERIOD_LABEL[t.periodType]} {t.periodKey}
               </td>
-              <td className="px-2 py-1 text-gray-900">{t.value}</td>
+              <td className="px-2 py-1 text-gray-900">
+                {editingId === t.id ? (
+                  <input
+                    autoFocus
+                    type="number"
+                    step="any"
+                    className="w-24 rounded-md border border-indigo-300 px-2 py-0.5 text-sm"
+                    value={editingValue}
+                    disabled={isPending}
+                    onChange={(e) => setEditingValue(e.target.value)}
+                    onBlur={commitEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(t)}
+                    className="rounded px-1 text-left hover:bg-gray-100"
+                    title="Editar meta"
+                  >
+                    {t.value}
+                  </button>
+                )}
+              </td>
               <td className="px-2 py-1 text-right">
                 <button
                   onClick={() => handleDelete(t.id)}
@@ -188,4 +296,9 @@ export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): Rea
       </table>
     </div>
   );
+}
+
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
