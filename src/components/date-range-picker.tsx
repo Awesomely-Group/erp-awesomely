@@ -1,405 +1,488 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
   addMonths,
-  subMonths,
-  isSameMonth,
-  isSameDay,
-  isWithinInterval,
-  startOfDay,
-  endOfDay,
-  startOfYear,
-  endOfYear,
-  startOfQuarter,
-  endOfQuarter,
-  subDays,
-  subYears,
-  startOfYesterday,
-  endOfYesterday,
   eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
 } from "date-fns";
+import { es } from "date-fns/locale";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import {
+  DEFAULT_PRESET_KEYS,
+  getPreset,
+  matchPreset,
+  shiftRange,
+  type DatePresetKey,
+  type DateRange,
+} from "@/lib/date-range";
 
 export interface DateRangePickerProps {
-  from?: Date | null;
-  to?: Date | null;
-  onChange: (from: Date, to: Date) => void;
-  placeholder?: string;
+  from: Date | null;
+  to: Date | null;
+  /** `null` solo llega cuando `allowClear` está activo (opción "Todas las fechas"). */
+  onChange: (range: DateRange | null) => void;
+  /** Atajos del panel izquierdo, en orden. Por defecto los de facturas/dashboard. */
+  presets?: readonly DatePresetKey[];
+  /** Muestra la opción para quitar el filtro de fechas. */
+  allowClear?: boolean;
+  clearLabel?: string;
+  /** Botones Anterior / Siguiente que desplazan el rango un paso. */
+  showNavigation?: boolean;
   className?: string;
 }
 
-const WEEK_DAYS = ["LU", "MA", "MI", "JU", "VI", "SA", "DO"];
+type Submenu = "years" | "quarters" | "months";
 
-function getCalendarDays(month: Date): Date[] {
-  const monthStart = startOfMonth(month);
-  const monthEnd = endOfMonth(month);
-  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-  return eachDayOfInterval({ start: calStart, end: calEnd });
+interface SubmenuItem {
+  label: string;
+  range: DateRange;
 }
+
+/** Ancho aproximado del desplegable: se usa para decidir si se alinea a la derecha. */
+const POPOVER_WIDTH = 720;
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function endOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+function formatDay(d: Date): string {
+  return format(d, "dd/MM/yyyy");
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function buildSubmenuItems(kind: Submenu, now: Date): SubmenuItem[] {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const items: SubmenuItem[] = [];
+
+  if (kind === "years") {
+    for (let i = 0; i < 6; i++) {
+      const year = y - i;
+      items.push({
+        label: String(year),
+        range: { from: new Date(year, 0, 1), to: endOfDay(new Date(year, 11, 31)) },
+      });
+    }
+  } else if (kind === "quarters") {
+    const currentQ = Math.floor(m / 3);
+    for (let i = 0; i < 8; i++) {
+      const startMonth = currentQ * 3 - i * 3;
+      const from = new Date(y, startMonth, 1);
+      items.push({
+        label: `T${Math.floor(from.getMonth() / 3) + 1} ${from.getFullYear()}`,
+        range: { from, to: endOfDay(new Date(y, startMonth + 3, 0)) },
+      });
+    }
+  } else {
+    for (let i = 0; i < 24; i++) {
+      const from = new Date(y, m - i, 1);
+      items.push({
+        label: capitalize(format(from, "MMMM yyyy", { locale: es })),
+        range: { from, to: endOfDay(endOfMonth(from)) },
+      });
+    }
+  }
+  return items;
+}
+
+const SUBMENU_TITLES: Record<Submenu, string> = {
+  years: "Años",
+  quarters: "Trimestres",
+  months: "Meses",
+};
 
 interface CalendarGridProps {
   month: Date;
-  selectedFrom: Date | null;
-  selectedTo: Date | null;
+  draftFrom: Date | null;
+  draftTo: Date | null;
   hoverDate: Date | null;
   onDayClick: (day: Date) => void;
   onDayHover: (day: Date | null) => void;
-  showLeftNav: boolean;
-  showRightNav: boolean;
-  onPrev: () => void;
-  onNext: () => void;
 }
 
 function CalendarGrid({
   month,
-  selectedFrom,
-  selectedTo,
+  draftFrom,
+  draftTo,
   hoverDate,
   onDayClick,
   onDayHover,
-  showLeftNav,
-  showRightNav,
-  onPrev,
-  onNext,
 }: CalendarGridProps): React.JSX.Element {
-  const days = getCalendarDays(month);
+  const days = useMemo(() => {
+    const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
+    return eachDayOfInterval({ start, end });
+  }, [month]);
 
-  function getRangeEnd(): Date | null {
-    if (selectedFrom && !selectedTo && hoverDate) return hoverDate;
-    return selectedTo;
+  const weekDays = useMemo(() => {
+    const monday = startOfWeek(new Date(2024, 0, 1), { weekStartsOn: 1 });
+    return Array.from({ length: 7 }, (_, i) =>
+      format(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i), "EEE", { locale: es })
+    );
+  }, []);
+
+  // Mientras se elige el fin, el día bajo el ratón hace de fin provisional.
+  const previewTo = draftFrom && !draftTo ? hoverDate : draftTo;
+  let rangeStart: Date | null = null;
+  let rangeEnd: Date | null = null;
+  if (draftFrom && previewTo) {
+    rangeStart = draftFrom <= previewTo ? draftFrom : previewTo;
+    rangeEnd = draftFrom <= previewTo ? previewTo : draftFrom;
+  } else if (draftFrom) {
+    rangeStart = draftFrom;
+    rangeEnd = draftFrom;
   }
 
-  function getDayClasses(day: Date): string {
-    const rangeEnd = getRangeEnd();
-    const isStart = selectedFrom ? isSameDay(day, selectedFrom) : false;
-    const isEnd = selectedTo ? isSameDay(day, selectedTo) : false;
-    const isHoverEnd =
-      selectedFrom !== null && selectedTo === null && hoverDate !== null
-        ? isSameDay(day, hoverDate)
-        : false;
-
-    let rangeFrom: Date | null = null;
-    let rangeTo: Date | null = null;
-
-    if (selectedFrom && rangeEnd) {
-      const start = selectedFrom <= rangeEnd ? selectedFrom : rangeEnd;
-      const end = selectedFrom <= rangeEnd ? rangeEnd : selectedFrom;
-      rangeFrom = start;
-      rangeTo = end;
-    }
-
-    const isInRange =
-      rangeFrom && rangeTo
-        ? isWithinInterval(day, { start: startOfDay(rangeFrom), end: endOfDay(rangeTo) }) &&
-          !isSameDay(day, rangeFrom) &&
-          !isSameDay(day, rangeTo)
-        : false;
-
-    const isCurrentMonth = isSameMonth(day, month);
-
-    let base = "w-8 h-8 flex items-center justify-center text-xs rounded-full cursor-pointer select-none transition-colors";
-
-    if (!isCurrentMonth) {
-      base += " text-gray-300";
-    } else {
-      base += " text-gray-700";
-    }
-
-    if (isStart || isEnd) {
-      base += " bg-indigo-600 text-white rounded-full font-semibold";
-    } else if (isHoverEnd) {
-      base += " bg-indigo-600 text-white rounded-full font-semibold";
-    } else if (isInRange) {
-      base += " bg-indigo-50 text-indigo-800 rounded-full";
-    } else if (isCurrentMonth) {
-      base += " hover:bg-gray-100";
-    }
-
-    return base;
+  function dayClasses(day: Date): string {
+    const base =
+      "h-8 w-8 flex items-center justify-center rounded-full text-xs select-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500";
+    if (!rangeStart || !rangeEnd) return `${base} text-gray-700 hover:bg-gray-100`;
+    const isEdge = isSameDay(day, rangeStart) || isSameDay(day, rangeEnd);
+    if (isEdge) return `${base} bg-indigo-600 text-white font-semibold`;
+    const inRange = day > rangeStart && day < rangeEnd;
+    if (inRange) return `${base} bg-indigo-100 text-indigo-800`;
+    return `${base} text-gray-700 hover:bg-gray-100`;
   }
 
   return (
-    <div className="flex-1 min-w-0">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3 px-1">
-        {showLeftNav ? (
-          <button
-            type="button"
-            onClick={onPrev}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500"
-            aria-label="Mes anterior"
-          >
-            ‹
-          </button>
-        ) : (
-          <div className="w-6 h-6" />
-        )}
-        <span className="text-sm font-medium text-gray-900 capitalize">
-          {format(month, "MMMM yyyy", { locale: undefined })}
-        </span>
-        {showRightNav ? (
-          <button
-            type="button"
-            onClick={onNext}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500"
-            aria-label="Mes siguiente"
-          >
-            ›
-          </button>
-        ) : (
-          <div className="w-6 h-6" />
-        )}
-      </div>
-
-      {/* Week day headers */}
+    <div className="w-[15rem]">
+      <p className="mb-2 text-center text-sm font-medium text-gray-900 capitalize">
+        {format(month, "MMMM 'de' yyyy", { locale: es })}
+      </p>
       <div className="grid grid-cols-7 mb-1">
-        {WEEK_DAYS.map((d) => (
-          <div key={d} className="w-8 h-6 flex items-center justify-center text-xs font-medium text-gray-400">
+        {weekDays.map((d) => (
+          <div key={d} className="h-6 flex items-center justify-center text-[11px] text-gray-400">
             {d}
           </div>
         ))}
       </div>
-
-      {/* Days */}
       <div className="grid grid-cols-7 gap-y-0.5">
-        {days.map((day) => (
-          <div
-            key={day.toISOString()}
-            className="flex items-center justify-center"
-            onClick={() => onDayClick(day)}
-            onMouseEnter={() => onDayHover(day)}
-            onMouseLeave={() => onDayHover(null)}
-          >
-            <span className={getDayClasses(day)}>
-              {format(day, "d")}
-            </span>
-          </div>
-        ))}
+        {days.map((day) =>
+          isSameMonth(day, month) ? (
+            <div key={day.toISOString()} className="flex items-center justify-center">
+              <button
+                type="button"
+                aria-label={format(day, "d 'de' MMMM 'de' yyyy", { locale: es })}
+                onClick={() => onDayClick(day)}
+                onMouseEnter={() => onDayHover(day)}
+                onMouseLeave={() => onDayHover(null)}
+                className={dayClasses(day)}
+              >
+                {format(day, "d")}
+              </button>
+            </div>
+          ) : (
+            <div key={day.toISOString()} className="h-8" />
+          )
+        )}
       </div>
     </div>
   );
-}
-
-interface Preset {
-  label: string;
-  getRange: () => { from: Date; to: Date };
-}
-
-function buildPresets(): Preset[] {
-  const now = new Date();
-  return [
-    {
-      label: "Hoy",
-      getRange: () => ({ from: startOfDay(now), to: endOfDay(now) }),
-    },
-    {
-      label: "Ayer",
-      getRange: () => ({ from: startOfYesterday(), to: endOfYesterday() }),
-    },
-    {
-      label: "Últimos 7 días",
-      getRange: () => ({ from: startOfDay(subDays(now, 6)), to: endOfDay(now) }),
-    },
-    {
-      label: "Últimas 4 semanas",
-      getRange: () => ({ from: startOfDay(subDays(now, 27)), to: endOfDay(now) }),
-    },
-    {
-      label: "Mes actual",
-      getRange: () => ({ from: startOfMonth(now), to: endOfMonth(now) }),
-    },
-    {
-      label: "Mes anterior",
-      getRange: () => {
-        const prev = subMonths(now, 1);
-        return { from: startOfMonth(prev), to: endOfMonth(prev) };
-      },
-    },
-    {
-      label: "Trimestre actual",
-      getRange: () => ({ from: startOfQuarter(now), to: endOfQuarter(now) }),
-    },
-    {
-      label: "Trimestre anterior",
-      getRange: () => {
-        const prev = subMonths(now, 3);
-        return { from: startOfQuarter(prev), to: endOfQuarter(prev) };
-      },
-    },
-    {
-      label: "Año actual",
-      getRange: () => ({ from: startOfYear(now), to: endOfYear(now) }),
-    },
-    {
-      label: "Año anterior",
-      getRange: () => {
-        const prev = subYears(now, 1);
-        return { from: startOfYear(prev), to: endOfYear(prev) };
-      },
-    },
-    {
-      label: "Últimos 12 meses",
-      getRange: () => ({ from: startOfDay(subMonths(now, 12)), to: endOfDay(now) }),
-    },
-  ];
 }
 
 export function DateRangePicker({
   from,
   to,
   onChange,
-  placeholder = "Seleccionar rango",
+  presets = DEFAULT_PRESET_KEYS,
+  allowClear = false,
+  clearLabel = "Todas las fechas",
+  showNavigation = true,
   className = "",
 }: DateRangePickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const [leftMonth, setLeftMonth] = useState<Date>(
-    from ? startOfMonth(from) : startOfMonth(new Date())
-  );
-  const [pendingFrom, setPendingFrom] = useState<Date | null>(from ?? null);
-  const [pendingTo, setPendingTo] = useState<Date | null>(to ?? null);
+  const [alignRight, setAlignRight] = useState(false);
+  const [submenu, setSubmenu] = useState<Submenu | null>(null);
+  const [submenuItems, setSubmenuItems] = useState<SubmenuItem[]>([]);
+  const [leftMonth, setLeftMonth] = useState<Date>(() => startOfMonth(from ?? new Date()));
+  const [draftFrom, setDraftFrom] = useState<Date | null>(from);
+  const [draftTo, setDraftTo] = useState<Date | null>(to);
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
-  const [selecting, setSelecting] = useState<"from" | "to">("from");
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasRange = from !== null && to !== null;
 
-  const rightMonth = addMonths(leftMonth, 1);
-
-  // Sync controlled external values back into draft state when they change
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    setPendingFrom(from ?? null);
-    setPendingTo(to ?? null);
-  }, [from, to]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent): void {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const handleDayClick = useCallback(
-    (day: Date): void => {
-      if (selecting === "from" || !pendingFrom) {
-        setPendingFrom(day);
-        setPendingTo(null);
-        setSelecting("to");
-      } else {
-        // Second click
-        let f = pendingFrom;
-        let t = day;
-        if (t < f) {
-          [f, t] = [t, f];
-        }
-        setPendingFrom(f);
-        setPendingTo(t);
-        setSelecting("from");
-        onChange(f, t);
-        setOpen(false);
-      }
-    },
-    [selecting, pendingFrom, onChange]
+  const activePreset = useMemo(
+    () => (from && to ? matchPreset(from, to) : null),
+    [from, to]
   );
 
-  const handlePreset = useCallback(
-    (preset: Preset): void => {
-      const { from: f, to: t } = preset.getRange();
-      setPendingFrom(f);
-      setPendingTo(t);
-      setSelecting("from");
-      onChange(f, t);
-      setOpen(false);
-    },
-    [onChange]
-  );
+  const close = useCallback((): void => {
+    setOpen(false);
+    setSubmenu(null);
+    setHoverDate(null);
+  }, []);
 
-  function formatTriggerLabel(): string {
-    if (from && to) {
-      return `${format(from, "dd/MM/yyyy")} – ${format(to, "dd/MM/yyyy")}`;
-    }
-    return placeholder;
+  function openPopover(): void {
+    // Cada apertura parte del rango aplicado, no de un borrador anterior.
+    setDraftFrom(from);
+    setDraftTo(to);
+    setLeftMonth(startOfMonth(from ?? new Date()));
+    setSubmenu(null);
+    const rect = containerRef.current?.getBoundingClientRect();
+    setAlignRight(rect !== undefined && rect.left + POPOVER_WIDTH > window.innerWidth);
+    setOpen(true);
   }
 
-  const presets = buildPresets();
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: PointerEvent): void {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) close();
+    }
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, close]);
+
+  function apply(range: DateRange | null): void {
+    onChange(range);
+    close();
+  }
+
+  function handleDayClick(day: Date): void {
+    if (!draftFrom || draftTo) {
+      setDraftFrom(startOfDay(day));
+      setDraftTo(null);
+      return;
+    }
+    const start = startOfDay(day <= draftFrom ? day : draftFrom);
+    const end = endOfDay(day <= draftFrom ? draftFrom : day);
+    setDraftFrom(start);
+    setDraftTo(end);
+  }
+
+  function handleApply(): void {
+    if (!draftFrom) return;
+    apply({ from: startOfDay(draftFrom), to: endOfDay(draftTo ?? draftFrom) });
+  }
+
+  function handleShift(direction: -1 | 1): void {
+    if (!from || !to) return;
+    onChange(shiftRange({ from, to }, direction));
+  }
+
+  function openSubmenu(kind: Submenu): void {
+    setSubmenuItems(buildSubmenuItems(kind, new Date()));
+    setSubmenu(kind);
+  }
+
+  const triggerLabel = hasRange ? `${formatDay(from)} - ${formatDay(to)}` : clearLabel;
+  const draftLabel = draftFrom
+    ? `${formatDay(draftFrom)} - ${draftTo ? formatDay(draftTo) : "…"}`
+    : "Elige un rango en el calendario";
+
+  const navButtonClass =
+    "inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const presetItemClass = (active: boolean): string =>
+    `w-full text-left rounded-md px-3 py-1.5 text-sm transition-colors ${
+      active ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-700 hover:bg-gray-50"
+    }`;
 
   return (
-    <div ref={containerRef} className={`relative inline-block ${className}`}>
-      {/* Trigger button */}
+    <div ref={containerRef} className={`relative inline-flex items-center gap-2 ${className}`}>
+      {showNavigation && (
+        <>
+          <button
+            type="button"
+            onClick={() => handleShift(-1)}
+            disabled={!hasRange}
+            className={navButtonClass}
+            aria-label="Periodo anterior"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+            Anterior
+          </button>
+          <button
+            type="button"
+            onClick={() => handleShift(1)}
+            disabled={!hasRange}
+            className={navButtonClass}
+            aria-label="Periodo siguiente"
+          >
+            Siguiente
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </>
+      )}
+
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+        onClick={() => (open ? close() : openPopover())}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={`inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm transition-colors whitespace-nowrap ${
+          open ? "border-indigo-400 ring-2 ring-indigo-100" : "border-gray-300 hover:bg-gray-50"
+        }`}
       >
-        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
-        <span className={from && to ? "text-gray-900" : "text-gray-400"}>
-          {formatTriggerLabel()}
-        </span>
+        <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" aria-hidden />
+        <span className={hasRange ? "text-gray-900" : "text-gray-500"}>{triggerLabel}</span>
+        <ChevronDown
+          className={`h-4 w-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
       </button>
 
-      {/* Popover */}
       {open && (
-        <div className="absolute left-0 top-full mt-1.5 z-50 bg-white rounded-xl border border-gray-200 shadow-lg flex">
-          {/* Left calendar */}
+        <div
+          role="dialog"
+          aria-label="Seleccionar periodo"
+          className={`absolute top-full mt-1.5 z-50 flex max-w-[calc(100vw-2rem)] overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-lg ${
+            alignRight ? "right-0" : "left-0"
+          }`}
+        >
+          {/* Atajos */}
+          <div className="w-48 flex-shrink-0 border-r border-gray-100 p-2 flex flex-col gap-0.5">
+            {submenu === null ? (
+              <>
+                {allowClear && (
+                  <button
+                    type="button"
+                    onClick={() => apply(null)}
+                    className={presetItemClass(!hasRange)}
+                  >
+                    {clearLabel}
+                  </button>
+                )}
+                {presets.map((key) => {
+                  const preset = getPreset(key);
+                  if (!preset) return null;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => apply(preset.getRange(new Date()))}
+                      className={presetItemClass(activePreset === key)}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+                <div className="my-1.5 border-t border-gray-100" />
+                {(["years", "quarters", "months"] as const).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => openSubmenu(kind)}
+                    className="w-full flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    {SUBMENU_TITLES[kind]}
+                    <ChevronRight className="h-4 w-4 text-gray-400" aria-hidden />
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSubmenu(null)}
+                  className="w-full flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:bg-gray-50"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                  {SUBMENU_TITLES[submenu]}
+                </button>
+                <div className="max-h-80 overflow-y-auto flex flex-col gap-0.5">
+                  {submenuItems.map((item) => {
+                    const active =
+                      from !== null && to !== null &&
+                      isSameDay(item.range.from, from) && isSameDay(item.range.to, to);
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => apply(item.range)}
+                        className={presetItemClass(active)}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Personalizado */}
           <div className="p-4">
-            <CalendarGrid
-              month={leftMonth}
-              selectedFrom={pendingFrom}
-              selectedTo={pendingTo}
-              hoverDate={hoverDate}
-              onDayClick={handleDayClick}
-              onDayHover={setHoverDate}
-              showLeftNav
-              showRightNav={false}
-              onPrev={() => setLeftMonth((m) => subMonths(m, 1))}
-              onNext={() => setLeftMonth((m) => addMonths(m, 1))}
-            />
-          </div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">Personalizado</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setLeftMonth((m) => subMonths(m, 1))}
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                  aria-label="Mes anterior"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeftMonth((m) => addMonths(m, 1))}
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                  aria-label="Mes siguiente"
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </div>
 
-          {/* Right calendar */}
-          <div className="p-4 pl-2">
-            <CalendarGrid
-              month={rightMonth}
-              selectedFrom={pendingFrom}
-              selectedTo={pendingTo}
-              hoverDate={hoverDate}
-              onDayClick={handleDayClick}
-              onDayHover={setHoverDate}
-              showLeftNav={false}
-              showRightNav
-              onPrev={() => setLeftMonth((m) => subMonths(m, 1))}
-              onNext={() => setLeftMonth((m) => addMonths(m, 1))}
-            />
-          </div>
+            <div className="flex gap-6">
+              <CalendarGrid
+                month={leftMonth}
+                draftFrom={draftFrom}
+                draftTo={draftTo}
+                hoverDate={hoverDate}
+                onDayClick={handleDayClick}
+                onDayHover={setHoverDate}
+              />
+              <CalendarGrid
+                month={addMonths(leftMonth, 1)}
+                draftFrom={draftFrom}
+                draftTo={draftTo}
+                hoverDate={hoverDate}
+                onDayClick={handleDayClick}
+                onDayHover={setHoverDate}
+              />
+            </div>
 
-          {/* Presets panel */}
-          <div className="w-44 flex-shrink-0 border-l border-gray-100 py-3 flex flex-col gap-0.5">
-            {presets.map((preset) => (
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <span className="text-sm text-gray-600 tabular-nums">{draftLabel}</span>
               <button
-                key={preset.label}
                 type="button"
-                onClick={() => handlePreset(preset)}
-                className="w-full text-left px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={handleApply}
+                disabled={!draftFrom}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {preset.label}
+                Aplicar
               </button>
-            ))}
+            </div>
           </div>
         </div>
       )}

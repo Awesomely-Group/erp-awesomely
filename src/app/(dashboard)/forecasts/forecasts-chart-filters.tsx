@@ -9,15 +9,13 @@ import {
   groupAccountsByL1,
   toggleAccountGroup,
 } from "@/lib/org";
-
-const PERIODS = [
-  { value: "", label: "Últimos 12 meses (por defecto)" },
-  { value: "last_3_months", label: "Últimos 3 meses" },
-  { value: "last_6_months", label: "Últimos 6 meses" },
-  { value: "last_12_months", label: "Últimos 12 meses" },
-  { value: "this_year", label: "Año en curso" },
-  { value: "custom", label: "Personalizado…" },
-];
+import { DateRangePicker } from "@/components/date-range-picker";
+import {
+  MONTHLY_PRESET_KEYS,
+  presetRange,
+  resolvePeriodRange,
+  serializePeriodRange,
+} from "@/lib/date-range";
 
 const MARCA_ALL_OPTIONS = [
   { value: MARCA_FILTER_UNASSIGNED, label: "Sin asignar" },
@@ -61,9 +59,12 @@ export function ForecastsChartFilters({
   const router = useRouter();
   const sp = useSearchParams();
 
-  const [period, setPeriod] = useState(sp.get("period") ?? "");
-  const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
-  const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
+  // El periodo vive solo en la URL: el selector lo lee de ahí y lo escribe vía applyWith.
+  // Sin parámetro, el servidor (resolveDateRange) aplica "últimos 12 meses".
+  const period = sp.get("period") ?? "";
+  const dateFrom = sp.get("dateFrom") ?? "";
+  const dateTo = sp.get("dateTo") ?? "";
+  const range = resolvePeriodRange(period, dateFrom, dateTo) ?? presetRange("last_12_months");
   const [company, setCompany] = useState(sp.get("company") ?? "");
   const [scenario, setScenario] = useState(sp.get("scenario") ?? "pessimistic");
 
@@ -202,9 +203,6 @@ export function ForecastsChartFilters({
   }
 
   function reset(): void {
-    setPeriod("");
-    setDateFrom("");
-    setDateTo("");
     setCompany("");
     setScenario("pessimistic");
     setSelectedMarcas([]);
@@ -249,45 +247,13 @@ export function ForecastsChartFilters({
     <div className="flex flex-wrap gap-3 items-end">
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Periodo</label>
-        <select
-          value={period}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPeriod(v);
-            if (v !== "custom") applyWith({ period: v, dateFrom: "", dateTo: "" });
-          }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          {PERIODS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
-        </select>
+        <DateRangePicker
+          from={range.from}
+          to={range.to}
+          presets={MONTHLY_PRESET_KEYS}
+          onChange={(r) => { if (r) applyWith(serializePeriodRange(r)); }}
+        />
       </div>
-
-      {period === "custom" && (
-        <>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Desde</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              onBlur={(e) => applyWith({ dateFrom: e.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Hasta</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              onBlur={(e) => applyWith({ dateTo: e.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-            />
-          </div>
-        </>
-      )}
 
       {/* Marca multiselect */}
       <div className="flex flex-col gap-1" ref={marcasContainerRef}>
