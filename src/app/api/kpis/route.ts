@@ -6,6 +6,7 @@ import {
   getDerivedKPIs,
   getProjections,
   getCommercialKPIs,
+  getCampaignKPIs,
   getAllKPIs,
 } from "@/lib/kpis";
 import type { KPIFilters } from "@/lib/kpis";
@@ -17,6 +18,7 @@ function parseFilters(url: URL): KPIFilters {
   const companyId = url.searchParams.get("companyId") ?? undefined;
   const marca = url.searchParams.get("marca") ?? undefined;
   const lineOfBusiness = url.searchParams.get("lineOfBusiness") ?? undefined;
+  const campaignId = url.searchParams.get("campaignId") ?? undefined;
 
   return {
     year: year ? parseInt(year, 10) : undefined,
@@ -25,6 +27,7 @@ function parseFilters(url: URL): KPIFilters {
     companyId,
     marca,
     lineOfBusiness,
+    campaignId,
   };
 }
 
@@ -68,6 +71,10 @@ export async function GET(req: Request): Promise<NextResponse> {
       case "commercial": {
         const commercial = await getCommercialKPIs(filters);
         return NextResponse.json({ commercial, generatedAt: new Date().toISOString() });
+      }
+      case "campaigns": {
+        const campaigns = await getCampaignKPIs(filters);
+        return NextResponse.json({ campaigns, generatedAt: new Date().toISOString() });
       }
       case "all":
       default: {

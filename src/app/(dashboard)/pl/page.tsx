@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getPlData, getPlYears } from "@/lib/pl-data";
+import { getPlData } from "@/lib/pl-data";
 import type { PlParams } from "@/lib/pl-data";
 import { PlTable } from "./pl-client";
 import { PlFilters } from "./pl-filters";
@@ -12,10 +12,8 @@ export default async function PlPage({
   searchParams: Promise<PlParams & { entity?: string }>;
 }): Promise<React.JSX.Element> {
   const params = await searchParams;
-  const [plData, years] = await Promise.all([getPlData(params), getPlYears()]);
-
-  const displayYears = years.length > 0 ? years : [new Date().getFullYear()];
-  const { year, entities, consolidated } = plData;
+  const plData = await getPlData(params);
+  const { periodLabel, entities, consolidated } = plData;
 
   const entityParam  = params.entity ?? "consolidated";
   const activeEntity =
@@ -32,14 +30,14 @@ export default async function PlPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">P&L</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {activeEntity.companyName} · {year} · en EUR (base imponible)
+            {activeEntity.companyName} · {periodLabel} · en EUR (base imponible)
           </p>
         </div>
         <Suspense>
           <PlFilters
-            years={displayYears}
             entities={entities.map((e) => ({ companyId: e.companyId, companyName: e.companyName }))}
-            currentYear={year}
+            from={plData.fromParam}
+            to={plData.toParam}
             currentEntity={entityParam}
           />
         </Suspense>
@@ -90,7 +88,7 @@ export default async function PlPage({
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {yearly.ventas === 0 && yearly.aprovisionamientos === 0 ? (
           <p className="px-6 py-16 text-center text-sm text-gray-400">
-            No hay datos para {activeEntity.companyName} en {year}.
+            No hay datos para {activeEntity.companyName} en {periodLabel}.
           </p>
         ) : (
           <PlTable entity={activeEntity} />

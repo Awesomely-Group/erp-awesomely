@@ -8,7 +8,7 @@ export function registerKpiTools(server: McpServer, ctx: ApiContext): void {
     "get_kpis",
     {
       description:
-        "Devuelve KPIs financieros del ERP: P&L (cuenta de resultados), cashflow mensual, métricas derivadas, proyecciones y KPIs comerciales de Growth/CRM (leads, conversión por etapa, ciclo de venta, pipeline ponderado). Acepta filtros por año, rango de fechas, marca, línea de negocio y empresa.",
+        "Devuelve KPIs financieros del ERP: P&L (cuenta de resultados), cashflow mensual, métricas derivadas, proyecciones, KPIs comerciales de Growth/CRM (leads, conversión por etapa, ciclo de venta, pipeline ponderado) y KPIs de campañas de pago de Google Ads (impresiones, clics, coste, CTR, CPC, tasa de conversión y CPL en versión Google Ads y versión CRM, CPL cualificado, CPA, gasto vs presupuesto, serie temporal). Acepta filtros por año, rango de fechas, marca, línea de negocio, empresa y campaña.",
       inputSchema: {
         year: z
           .number()
@@ -41,8 +41,12 @@ export function registerKpiTools(server: McpServer, ctx: ApiContext): void {
           .string()
           .optional()
           .describe(
-            'Línea de negocio dentro de la marca, solo para KPIs comerciales (p.ej. "GENERAL", "ODOO"). Si no se indica, agrega todas las líneas.'
+            'Línea de negocio dentro de la marca, solo para KPIs comerciales y de campañas (p.ej. "GENERAL", "ODOO"). Si no se indica, agrega todas las líneas.'
           ),
+        campaignId: z
+          .string()
+          .optional()
+          .describe("Id interno de una campaña de pago (AdCampaign.id), solo para los KPIs de campañas."),
       },
     },
     async (args) => {
@@ -71,6 +75,7 @@ export function registerKpiTools(server: McpServer, ctx: ApiContext): void {
         marca,
         companyId,
         lineOfBusiness: args.lineOfBusiness,
+        campaignId: args.campaignId,
       });
 
       return {

@@ -1,15 +1,18 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { parseDateParam, serializePeriodRange, type DateRange } from "@/lib/date-range";
 
 interface PlFiltersProps {
-  years: number[];
   entities: { companyId: string; companyName: string }[];
-  currentYear: number;
+  /** Rango efectivo del P&L (YYYY-MM-DD), ya resuelto por el servidor. */
+  from: string;
+  to: string;
   currentEntity: string;
 }
 
-export function PlFilters({ years, entities, currentYear, currentEntity }: PlFiltersProps): React.JSX.Element {
+export function PlFilters({ entities, from, to, currentEntity }: PlFiltersProps): React.JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -22,19 +25,21 @@ export function PlFilters({ years, entities, currentYear, currentEntity }: PlFil
     router.push(`/pl?${params.toString()}`);
   }
 
+  function handleRange(range: DateRange | null): void {
+    if (!range) return;
+    // `year` era el parámetro antiguo (selector de año): se limpia al elegir un rango.
+    push({ ...serializePeriodRange(range), year: "" });
+  }
+
   return (
     <div className="flex flex-wrap gap-3 items-end">
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500 font-medium">Año</label>
-        <select
-          value={currentYear}
-          onChange={(e) => push({ year: e.target.value })}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
+        <label className="text-xs text-gray-500 font-medium">Periodo</label>
+        <DateRangePicker
+          from={parseDateParam(from)}
+          to={parseDateParam(to)}
+          onChange={handleRange}
+        />
       </div>
 
       <div className="flex flex-col gap-1">

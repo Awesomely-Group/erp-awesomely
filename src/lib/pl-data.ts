@@ -16,6 +16,47 @@ import type {
   PlMonthPoint,
   PlParams,
 } from "./pl-display";
+import { resolvePeriodRange, toDateParam, type DateRange } from "@/lib/date-range";
+
+/** Tope de columnas: un rango más largo se recorta por el final. */
+const MAX_PL_MONTHS = 60;
+
+/**
+ * Rango efectivo del P&L: el de la URL, o el año indicado por `year`, o el año
+ * en curso. Siempre se amplía a meses completos porque la tabla es mensual.
+ */
+export function resolvePlRange(params: PlParams, now: Date = new Date()): DateRange {
+  const fromUrl = resolvePeriodRange(params.period, params.dateFrom, params.dateTo, now);
+  let from: Date;
+  let to: Date;
+  if (fromUrl) {
+    from = new Date(fromUrl.from.getFullYear(), fromUrl.from.getMonth(), 1);
+    to = new Date(fromUrl.to.getFullYear(), fromUrl.to.getMonth() + 1, 0, 23, 59, 59, 999);
+  } else {
+    const parsed = params.year ? parseInt(params.year, 10) : NaN;
+    const year = Number.isNaN(parsed) ? now.getFullYear() : parsed;
+    from = new Date(year, 0, 1);
+    to = new Date(year, 11, 31, 23, 59, 59, 999);
+  }
+  const months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1;
+  if (months > MAX_PL_MONTHS) {
+    to = new Date(from.getFullYear(), from.getMonth() + MAX_PL_MONTHS, 0, 23, 59, 59, 999);
+  }
+  return { from, to };
+}
+
+/** "2026" si el rango es un año natural; si no, "01/10/2026 – 31/12/2026". */
+export function formatPlPeriod(range: DateRange): string {
+  const { from, to } = range;
+  const isFullYear =
+    from.getMonth() === 0 && from.getDate() === 1 &&
+    to.getMonth() === 11 && to.getDate() === 31 &&
+    from.getFullYear() === to.getFullYear();
+  if (isFullYear) return String(from.getFullYear());
+  const fmt = (d: Date): string =>
+    d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${fmt(from)} – ${fmt(to)}`;
+}
 
 export type {
   DataRecord,
@@ -201,12 +242,15 @@ function computeSubtotals(d: DataRecord): FullRecord {
 
 // ─── Month helpers ────────────────────────────────────────────────────────────
 
-function buildMonthDataMap(year: number): Map<string, { label: string; data: DataRecord }> {
+function buildMonthDataMap(range: DateRange): Map<string, { label: string; data: DataRecord }> {
   const map = new Map<string, { label: string; data: DataRecord }>();
-  for (let m = 0; m < 12; m++) {
-    const d = new Date(year, m, 1);
-    const monthKey = `${year}-${String(m + 1).padStart(2, "0")}`;
-    const label = d.toLocaleDateString("es-ES", { month: "short" }).replace(".", "").toUpperCase();
+  const multiYear = range.from.getFullYear() !== range.to.getFullYear();
+  const end = new Date(range.to.getFullYear(), range.to.getMonth(), 1);
+  for (let d = new Date(range.from.getFullYear(), range.from.getMonth(), 1); d <= end; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+    const monthKey = toMonthKey(d);
+    const month = d.toLocaleDateString("es-ES", { month: "short" }).replace(".", "").toUpperCase();
+    // Si el rango cruza de año, el año abreviado evita columnas ambiguas (OCT 25 / OCT 26).
+    const label = multiYear ? `${month} ${String(d.getFullYear()).slice(-2)}` : month;
     map.set(monthKey, { label, data: emptyData() });
   }
   return map;
@@ -245,9 +289,9 @@ interface JournalRow {
 // ─── Main data function ───────────────────────────────────────────────────────
 
 export async function getPlData(params: PlParams): Promise<PlData> {
-  const year       = params.year ? parseInt(params.year, 10) : new Date().getFullYear();
-  const startDate  = new Date(year, 0, 1);
-  const endDate    = new Date(year + 1, 0, 1);
+  const range      = resolvePlRange(params);
+  const startDate  = range.from;
+  const endDate    = new Date(range.to.getFullYear(), range.to.getMonth() + 1, 1); // exclusivo
 
   const [revenueRows, expenseRows, journalRows, accountMappingRows] = await Promise.all([
     // ── Facturas de venta ────────────────────────────────────────────────────
@@ -324,7 +368,7 @@ export async function getPlData(params: PlParams): Promise<PlData> {
   const entityMap = new Map<string, { name: string; months: Map<string, { label: string; data: DataRecord }> }>();
 
   const ensureEntity = (id: string, name: string) => {
-    if (!entityMap.has(id)) entityMap.set(id, { name, months: buildMonthDataMap(year) });
+    if (!entityMap.has(id)) entityMap.set(id, { name, months: buildMonthDataMap(range) });
     return entityMap.get(id)!;
   };
 
@@ -371,7 +415,7 @@ export async function getPlData(params: PlParams): Promise<PlData> {
 
   // ── Build consolidated accumulator ─────────────────────────────────────────
 
-  const consolidatedMonths = buildMonthDataMap(year);
+  const consolidatedMonths = buildMonthDataMap(range);
   const entities: PlEntityData[] = [];
 
   for (const [companyId, { name, months }] of entityMap) {
@@ -410,7 +454,11 @@ export async function getPlData(params: PlParams): Promise<PlData> {
   }
 
   return {
-    year,
+    from: range.from,
+    to: range.to,
+    fromParam: toDateParam(range.from),
+    toParam: toDateParam(range.to),
+    periodLabel: formatPlPeriod(range),
     entities,
     consolidated: {
       companyId:   "consolidated",
@@ -419,16 +467,4 @@ export async function getPlData(params: PlParams): Promise<PlData> {
       yearly:      computeSubtotals(consolidatedYearlyData),
     },
   };
-}
-
-// ─── Years available ──────────────────────────────────────────────────────────
-
-export async function getPlYears(): Promise<number[]> {
-  const rows = await prisma.$queryRaw<{ year: number }[]>`
-    SELECT DISTINCT DATE_PART('year', COALESCE("accountingMonth", date))::int AS year
-    FROM invoices
-    WHERE "holdedStatus" IS NULL OR "holdedStatus" NOT IN (-1, 0)
-    ORDER BY year DESC
-  `;
-  return rows.map((r) => Number(r.year));
 }

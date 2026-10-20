@@ -9,17 +9,8 @@ import {
   STATUS_FILTER_UNASSIGNED,
 } from "@/lib/org";
 import { OPTIONAL_COLUMNS, type ColumnKey } from "./columns";
-
-const PERIODS = [
-  { value: "", label: "Todos los periodos" },
-  { value: "this_month", label: "Este mes" },
-  { value: "last_month", label: "Mes pasado" },
-  { value: "this_quarter", label: "Este trimestre" },
-  { value: "last_quarter", label: "Trimestre pasado" },
-  { value: "this_year", label: "Este año" },
-  { value: "last_year", label: "Año pasado" },
-  { value: "custom", label: "Personalizado…" },
-];
+import { DateRangePicker } from "@/components/date-range-picker";
+import { resolvePeriodRange, serializePeriodRange } from "@/lib/date-range";
 
 const MARCA_ALL_OPTIONS = [
   { value: MARCA_FILTER_UNASSIGNED, label: "Sin asignar" },
@@ -42,9 +33,11 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType, dueBe
   const sp = useSearchParams();
 
   const [search, setSearch] = useState(sp.get("search") ?? "");
-  const [period, setPeriod] = useState(sp.get("period") ?? "");
-  const [dateFrom, setDateFrom] = useState(sp.get("dateFrom") ?? "");
-  const [dateTo, setDateTo] = useState(sp.get("dateTo") ?? "");
+  // El periodo vive solo en la URL: el selector lo lee de ahí y lo escribe vía applyWith.
+  const period = sp.get("period") ?? "";
+  const dateFrom = sp.get("dateFrom") ?? "";
+  const dateTo = sp.get("dateTo") ?? "";
+  const range = resolvePeriodRange(period, dateFrom, dateTo);
   const [status, setStatus] = useState(sp.get("status") ?? "");
   const [selectedMarca, setSelectedMarca] = useState(sp.get("marca") ?? "");
   const [selectedProject, setSelectedProject] = useState(sp.get("project") ?? "");
@@ -107,9 +100,6 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType, dueBe
 
   function reset(): void {
     setSearch("");
-    setPeriod("");
-    setDateFrom("");
-    setDateTo("");
     setStatus("");
     setSelectedMarca("");
     setSelectedProject("");
@@ -176,45 +166,13 @@ export function InvoicesFilters({ projects = [], visibleCols, invoiceType, dueBe
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Periodo</label>
-        <select
-          value={period}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPeriod(v);
-            if (v !== "custom") applyWith({ period: v, dateFrom: "", dateTo: "" });
-          }}
-          className={selectClass}
-        >
-          {PERIODS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
-        </select>
+        <DateRangePicker
+          from={range?.from ?? null}
+          to={range?.to ?? null}
+          allowClear
+          onChange={(r) => applyWith(serializePeriodRange(r))}
+        />
       </div>
-
-      {period === "custom" && (
-        <>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Desde</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              onBlur={(e) => applyWith({ dateFrom: e.target.value })}
-              className={selectClass}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Hasta</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              onBlur={(e) => applyWith({ dateTo: e.target.value })}
-              className={selectClass}
-            />
-          </div>
-        </>
-      )}
 
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-500 font-medium">Estado</label>

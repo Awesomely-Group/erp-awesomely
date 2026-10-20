@@ -25,9 +25,16 @@ export default async function LeadDetailPage({
   });
   if (!lead) notFound();
 
-  const [users, accounts] = await Promise.all([
+  const [users, accounts, campaigns] = await Promise.all([
     prisma.user.findMany({ select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
     prisma.crmAccount.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    // Campañas de pago a las que se puede atribuir el lead (Growth > Campañas, 2026-10-16):
+    // las de su marca o sin marca, sin las eliminadas.
+    prisma.adCampaign.findMany({
+      where: { status: { not: "REMOVED" }, OR: [{ marca: lead.marca }, { marca: null }] },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const detail: LeadDetail = {
@@ -48,7 +55,14 @@ export default async function LeadDetailPage({
     seats: lead.seats,
     campaignSource: lead.campaignSource,
     utmSource: lead.utmSource,
+    utmMedium: lead.utmMedium,
     utmCampaign: lead.utmCampaign,
+    utmTerm: lead.utmTerm,
+    utmContent: lead.utmContent,
+    gclid: lead.gclid,
+    formId: lead.formId,
+    landingPage: lead.landingPage,
+    adCampaignId: lead.adCampaignId,
     ownerId: lead.ownerId,
     accountId: lead.accountId,
     accountName: lead.account?.name ?? null,
@@ -81,6 +95,7 @@ export default async function LeadDetailPage({
       lead={detail}
       users={users.map((u) => ({ id: u.id, label: u.name ?? u.email }))}
       accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+      campaigns={campaigns}
     />
   );
 }

@@ -16,7 +16,11 @@ import { EMPTY_VALUE, formatNumber, formatPercent } from "@/lib/format";
 // ─── Public params ────────────────────────────────────────────────────────────
 
 export interface PlParams {
+  /** Parámetro antiguo (selector de año). Se respeta si no hay `period`/fechas. */
   year?: string;
+  period?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 // ─── P&L line structure (PGC) ─────────────────────────────────────────────────
@@ -97,7 +101,13 @@ export interface PlEntityData {
 }
 
 export interface PlData {
-  year: number;
+  /** Rango efectivo (meses completos). */
+  from: Date;
+  to: Date;
+  /** Rango en formato YYYY-MM-DD, listo para el selector. */
+  fromParam: string;
+  toParam: string;
+  periodLabel: string;
   entities: PlEntityData[];
   consolidated: PlEntityData;
 }

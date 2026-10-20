@@ -1,0 +1,17 @@
+{
+  "kind": "keywords",
+  "runId": "11111111-2222-4333-8444-555555555555",
+  "scriptVersion": "2026-10-16",
+  "account": { "externalId": "8272097041", "name": "Gigson Solutions (España)", "currency": "EUR" },
+  "dateFrom": "2026-10-16",
+  "dateTo": "2026-10-18",
+  "part": 1,
+  "parts": 1,
+  "rows": [
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "criterionId": "440000000001", "keywordText": "implantación odoo", "matchType": "EXACT", "date": "2026-10-16", "impressions": 70, "clicks": 6, "costEur": 4.5, "conversions": 1, "qualityScore": null },
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "criterionId": "440000000002", "keywordText": "consultoría odoo", "matchType": "EXACT", "date": "2026-10-16", "impressions": 50, "clicks": 3, "costEur": 2.34, "conversions": 0, "qualityScore": null },
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "criterionId": "440000000001", "keywordText": "implantación odoo", "matchType": "EXACT", "date": "2026-10-18", "impressions": 90, "clicks": 8, "costEur": 5.1, "conversions": 1, "qualityScore": 6 },
+    { "campaignExternalId": "22000000001", "adGroupId": "330000000001", "adGroupName": "Implantación Odoo", "criterionId": "440000000002", "keywordText": "consultoría odoo", "matchType": "EXACT", "date": "2026-10-18", "impressions": 53, "clicks": 3, "costEur": 1.85, "conversions": 0, "qualityScore": 5 },
+    { "campaignExternalId": "22000000002", "adGroupId": "330000000002", "adGroupName": "Ampliaciones Odoo", "criterionId": "440000000003", "keywordText": "partner odoo", "matchType": "PHRASE", "date": "2026-10-18", "impressions": 52, "clicks": 4, "costEur": 3.0, "conversions": 1, "qualityScore": 7 }
+  ]
+}

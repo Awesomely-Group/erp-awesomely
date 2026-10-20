@@ -1605,18 +1605,33 @@ model CrmLead {
   accountId String?
   account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
-  // Atribución de campaña (F2, para cruzar con Growth > Campañas más adelante).
+  // Atribución de campaña (F2). Desde 2026-10-16 se cruza con Growth > Campañas: la
+  // web manda gclid/UTM/formId con el lead y `adCampaignId` fija a qué campaña de pago
+  // se atribuye (automático si utmCampaign/formId casan con una AdCampaign mapeada,
+  // a mano si no). Es lo que permite el CPL sobre leads reales y no solo sobre lo que
+  // cuenta Google.
   campaignSource String?
   utmSource      String?
   utmMedium      String?
   utmCampaign    String?
+  utmTerm        String?
+  utmContent     String?
+  /// Click id de Google Ads. gbraid/wbraid (iOS) se guardan aquí con prefijo "gbraid:" /
+  /// "wbraid:" — son excluyentes entre sí y no merecen tres columnas.
+  gclid          String?
+  /// form_id del formulario de la web ("consultoria-odoo", "iso27001", "home"…).
+  formId         String?
+  landingPage    String?
+
+  adCampaignId String?
+  adCampaign   AdCampaign? @relation(fields: [adCampaignId], references: [id], onDelete: SetNull)
 
   // Idempotencia de los 3 canales de entrada — único por origen (D7).
   externalRef String?
 
-  notes               String?
-  disqualifiedReason  String?
-  convertedAt         DateTime?
+  notes              String?
+  disqualifiedReason String?
+  convertedAt        DateTime?
 
   activities  CrmActivity[]
   deals       CrmDeal[]
@@ -1631,6 +1646,8 @@ model CrmLead {
   @@index([ownerId])
   @@index([accountId])
   @@index([source])
+  @@index([adCampaignId])
+  @@index([gclid])
   @@map("crm_leads")
 }
 
@@ -1949,9 +1966,11 @@ enum KpiTargetPeriodType {
 /// Meta configurable por métrica/marca/línea de negocio/periodo, transversal (no
 /// solo CRM — sirve igual para métricas de entrega o financieras el día que se
 /// construyan). Alimenta el semáforo Verde (≥100% meta) / Ámbar (70-99%) / Rojo
-/// (<70%) de la rutina mensual comercial. Se edita en /settings — el ERP no asume
-/// valores por defecto: las cifras del plan de activación de Odoo (88/44/22/9, 75
-/// usuarios, ratio 3x) son una plantilla sin aprobar, no se siembran aquí.
+/// (<70%) de la rutina mensual comercial. Se edita en /settings. Las metas comerciales
+/// no tienen valores por defecto (las cifras del plan de activación de Odoo —
+/// 88/44/22/9, 75 usuarios, ratio 3x — son una plantilla sin aprobar); las de campañas
+/// de pago (`ads_*`) sí: los números de la agencia, en src/lib/ads-targets-defaults.ts,
+/// se cargan desde /settings como filas normales y se editan después.
 model KpiTarget {
   id String @id @default(cuid())
 
@@ -1977,4 +1996,216 @@ model KpiTarget {
   @@unique([metric, marca, lineOfBusiness, periodType, periodKey])
   @@index([metric])
   @@map("kpi_targets")
+}
+
+// ─── Ads (Growth > Campañas, revisión 2026-10-16) ───────────────────────────────
+//
+// Métricas de campañas de pago, hoy Google Ads. Entran por POST /api/webhooks/ads-metrics
+// desde un Google Ads Script que corre dentro de la propia cuenta (ver
+// scripts/google-ads/push-metrics.js): sin developer token ni OAuth, el ERP solo recibe.
+// Sustituye a la integración por API que quedó pausada en `marketing-google-ads-wip`
+// (tablas google_ads_* vacías en producción, borradas en la migración
+// 20261016120000_add_ads_campaigns). El plan de CRM dejaba el CAC/CPA fuera del ERP
+// (docs/plan-crm.md); la reunión con Holdmin del 2026-10-16 lo trae dentro: CTR, CPC,
+// tasa de conversión y CPL por campaña, con el histórico, en vez de mirarlos en Google Ads.
+
+enum AdsPlatform {
+  GOOGLE_ADS
+
+  @@map("ads_platform")
+}
+
+/// Cuenta publicitaria: una fila por customer id de Google Ads (827-209-7041 "Gigson
+/// Solutions (España)"). Se crea sola en el primer volcado. El secreto del webhook es
+/// global (`ADS_WEBHOOK_SECRET`), como en leads-webhook.ts, no por cuenta.
+model AdsAccount {
+  id         String      @id @default(cuid())
+  platform   AdsPlatform @default(GOOGLE_ADS)
+  /// customer id sin guiones, tal como lo devuelve AdsApp ("8272097041")
+  externalId String
+  name       String
+  currency   String      @default("EUR")
+  /// Marca por defecto para las campañas nuevas que lleguen sin mapear.
+  marca      String?
+
+  campaigns AdCampaign[]
+  imports   AdsImport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([platform, externalId])
+  @@map("ads_accounts")
+}
+
+enum AdCampaignStatus {
+  ENABLED
+  PAUSED
+  REMOVED
+  UNKNOWN
+
+  @@map("ad_campaign_status")
+}
+
+/// Campaña. Nombre, estado y presupuesto los actualiza cada volcado; el resto (marca,
+/// línea de negocio, formIds, utmCampaign) lo rellena a mano quien gestiona /campanas y
+/// es el puente con `CrmLead`: es lo que permite calcular CPL sobre leads reales del CRM
+/// y no solo sobre las conversiones que cuenta Google (que dependen de las cookies).
+model AdCampaign {
+  id          String           @id @default(cuid())
+  accountId   String
+  account     AdsAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// campaign.id de Google Ads (int64, como texto)
+  externalId  String
+  name        String
+  status      AdCampaignStatus @default(UNKNOWN)
+  /// Último presupuesto diario visto, en EUR.
+  dailyBudget Decimal?
+
+  // ── Mapeo editable desde la UI ──
+  marca          String?
+  /// Misma convención que CrmStage.lineOfBusiness ("ODOO", "ISO27001", "GENERAL"…).
+  lineOfBusiness String?
+  /// form_id de los formularios de la web que alimenta esta campaña (p.ej.
+  /// "consultoria-odoo"). Si un formulario lo comparten varias campañas, la atribución
+  /// automática por formId no decide y hay que vincular el lead a mano.
+  formIds        String[] @default([])
+  /// Valor exacto de utm_campaign en las URLs finales de los anuncios.
+  utmCampaign    String?
+  landingPath    String?
+  notes          String?
+
+  dailyStats      AdCampaignDailyStat[]
+  keywordStats    AdKeywordStat[]
+  searchTermStats AdSearchTermStat[]
+  leads           CrmLead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, externalId])
+  @@index([marca, lineOfBusiness])
+  @@map("ad_campaigns")
+}
+
+/// Una fila por campaña y día. El script reescribe los últimos 60 días en cada volcado
+/// porque Google Ads rellena las conversiones hacia atrás durante días; por eso la clave
+/// natural incluye la fecha y la ingesta borra y reinserta, nunca apila.
+model AdCampaignDailyStat {
+  id         String     @id @default(cuid())
+  campaignId String
+  campaign   AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// Fecha local de la cuenta de Ads (sin hora), para que coincida con la UI de Google.
+  date       DateTime   @db.Date
+
+  impressions        Int      @default(0)
+  clicks             Int      @default(0)
+  costEur            Decimal  @default(0)
+  /// Google devuelve conversiones fraccionales (atribución basada en datos).
+  conversions        Decimal  @default(0)
+  conversionValueEur Decimal  @default(0)
+  /// Presupuesto diario vigente ese día, para el pacing del mes.
+  dailyBudgetEur     Decimal?
+  /// Cuota de impresiones (0-1). Google la devuelve como 0.0999 cuando es "< 10 %" y
+  /// null cuando no hay volumen; se guarda tal cual.
+  searchImprShare    Decimal?
+  lostIsBudget       Decimal?
+  lostIsRank         Decimal?
+
+  importedAt DateTime @default(now())
+
+  @@unique([campaignId, date])
+  @@index([date])
+  @@map("ad_campaign_daily_stats")
+}
+
+/// Keyword por día (la "matriz de keywords" de la agencia: qué palabras gastan más).
+/// `qualityScore` es un valor actual, no histórico: solo tiene sentido en la fila del
+/// día más reciente.
+model AdKeywordStat {
+  id          String     @id @default(cuid())
+  campaignId  String
+  campaign    AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adGroupId   String
+  adGroupName String
+  /// ad_group_criterion.criterion_id
+  criterionId String
+  keywordText String
+  /// EXACT | PHRASE | BROAD
+  matchType   String
+  date        DateTime   @db.Date
+
+  impressions  Int     @default(0)
+  clicks       Int     @default(0)
+  costEur      Decimal @default(0)
+  conversions  Decimal @default(0)
+  qualityScore Int?
+
+  @@unique([campaignId, adGroupId, criterionId, date])
+  @@index([campaignId, date])
+  @@map("ad_keyword_stats")
+}
+
+/// Término de búsqueda real por día (la "matriz de términos": qué escribió el usuario
+/// para que saltara el anuncio y cuánto costó). El mismo término puede casar por BROAD
+/// y por PHRASE el mismo día, de ahí `matchType` en la clave.
+model AdSearchTermStat {
+  id          String     @id @default(cuid())
+  campaignId  String
+  campaign    AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adGroupId   String
+  adGroupName String
+  searchTerm  String
+  matchType   String
+  /// ADDED | EXCLUDED | NONE — si el término ya es keyword o negativa.
+  status      String?
+  date        DateTime   @db.Date
+
+  impressions Int     @default(0)
+  clicks      Int     @default(0)
+  costEur     Decimal @default(0)
+  conversions Decimal @default(0)
+
+  @@unique([campaignId, adGroupId, searchTerm, matchType, date])
+  @@index([campaignId, date])
+  @@map("ad_search_term_stats")
+}
+
+enum AdsImportKind {
+  CAMPAIGNS
+  KEYWORDS
+  SEARCH_TERMS
+
+  @@map("ads_import_kind")
+}
+
+enum AdsImportResult {
+  SUCCESS
+  ERROR
+
+  @@map("ads_import_result")
+}
+
+/// Registro de cada POST del script. Da la "última actualización" de /campanas y permite
+/// avisar cuando el script dejó de llegar. Separado de SyncLog a propósito: SyncLog modela
+/// ejecuciones del ERP contra Holded/Jira (RUNNING, duración, companyId); aquí la
+/// ejecución la hace Google y el ERP solo recibe.
+model AdsImport {
+  id            String          @id @default(cuid())
+  accountId     String
+  account       AdsAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind          AdsImportKind
+  result        AdsImportResult
+  /// Generado por el script en cada ejecución y repetido en todos sus POST.
+  runId         String
+  dateFrom      DateTime        @db.Date
+  dateTo        DateTime        @db.Date
+  rowsReceived  Int
+  rowsUpserted  Int
+  errorMessage  String?
+  scriptVersion String?
+  receivedAt    DateTime        @default(now())
+
+  @@index([accountId, kind, receivedAt])
+  @@map("ads_imports")
 }
