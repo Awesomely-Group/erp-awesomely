@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireAdmin } from "@/lib/roles";
+import { normalizeDealFields, type DealFieldInput } from "@/lib/crm-deal-input";
 import { revalidatePath } from "next/cache";
 import {
   CrmAccountType,
@@ -599,4 +600,41 @@ export async function updateCommissionStatus(
   await requireAdmin();
   await prisma.commission.update({ where: { id: commissionId }, data: { status } });
   revalidatePath("/crm/comisiones");
+}
+
+interface UpdateDealPayload extends DealFieldInput {
+  dealId: string;
+}
+
+/**
+ * Edita los datos de la operación (2026-10-21). Hasta ahora importe, probabilidad,
+ * fecha de cierre, origen, mercado, seats, notas y el propio nombre eran de escritura
+ * única: se fijaban en `createDealManual`/`convertLeadToDeal` y después no había forma
+ * de corregirlos sin entrar en la base de datos. Un importe mal tecleado al dar de alta
+ * el deal se quedaba dentro del pipeline ponderado para siempre.
+ *
+ * NO se tocan aquí `marca` ni `lineOfBusiness`: juntos eligen el embudo, y cambiarlos
+ * dejaría el `stageId` apuntando a una etapa de otro funnel (ver la nota del modelo:
+ * no hay constraint de BD que lo impida). Tampoco `accountId`, que arrastra propuestas
+ * y comisiones. Mover un deal de embudo o de cuenta es otra operación, con su remapeo.
+ *
+ * La validación de cada campo vive en src/lib/crm-deal-input.ts, que se prueba sin BD.
+ */
+export async function updateDeal(payload: UpdateDealPayload): Promise<void> {
+  await requireSession();
+
+  const { dealId, ...fields } = payload;
+  const data = normalizeDealFields(fields);
+  if (Object.keys(data).length === 0) return;
+
+  const deal = await prisma.crmDeal.update({
+    where: { id: dealId },
+    data,
+    select: { accountId: true },
+  });
+
+  revalidatePath(`/crm/deals/${dealId}`);
+  // El importe y la probabilidad alimentan el pipeline ponderado del semáforo.
+  revalidatePath("/crm");
+  revalidatePath(`/crm/cuentas/${deal.accountId}`);
 }

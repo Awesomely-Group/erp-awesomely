@@ -11,6 +11,7 @@ import {
   updateDealType,
   setDealContactRole,
   removeDealContact,
+  updateDeal,
 } from "../../actions";
 import type {
   CrmActivityType,
@@ -18,7 +19,12 @@ import type {
   CrmDecisionRole,
   CrmOrigin,
 } from "@prisma/client";
-import { DEAL_TYPE_OPTIONS, DECISION_ROLE_OPTIONS, originLabel } from "@/lib/crm-relations";
+import {
+  DEAL_TYPE_OPTIONS,
+  DECISION_ROLE_OPTIONS,
+  ORIGIN_OPTIONS,
+  originLabel,
+} from "@/lib/crm-relations";
 
 /** Persona que participa en la decisión — puede ser de otra cuenta (asesor externo). */
 export interface DealDecisionContact {
@@ -66,6 +72,43 @@ export interface DealDetail {
   commissions: { id: string; type: string; amount: number; status: string }[];
 }
 
+/**
+ * Los datos de la operación en edición. Todo son cadenas porque es lo que devuelven los
+ * inputs; la conversión a número/fecha/null ocurre al guardar, en un solo sitio.
+ */
+interface DealForm {
+  name: string;
+  amount: string;
+  probability: string;
+  expectedCloseDate: string;
+  origin: string;
+  market: string;
+  seats: string;
+  notes: string;
+}
+
+function formFromDeal(deal: DealDetail): DealForm {
+  return {
+    name: deal.name,
+    amount: deal.amount !== null ? String(deal.amount) : "",
+    probability: deal.probability !== null ? String(deal.probability) : "",
+    // <input type="date"> quiere YYYY-MM-DD, no el ISO completo.
+    expectedCloseDate: deal.expectedCloseDate ? deal.expectedCloseDate.slice(0, 10) : "",
+    origin: deal.origin ?? "",
+    market: deal.market ?? "",
+    seats: deal.seats !== null ? String(deal.seats) : "",
+    notes: deal.notes ?? "",
+  };
+}
+
+/** Campo numérico opcional: en blanco es "no hay dato", no un cero. */
+function optionalNumber(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
 const ACTIVITY_TYPES: { value: CrmActivityType; label: string }[] = [
   { value: "NOTE", label: "Nota" },
   { value: "CALL", label: "Llamada" },
@@ -89,6 +132,46 @@ export function DealDetailView({
   const [activityType, setActivityType] = useState<CrmActivityType>("NOTE");
   const [activityTitle, setActivityTitle] = useState("");
   const [activityNotes, setActivityNotes] = useState("");
+  const [editingDeal, setEditingDeal] = useState(false);
+  const [form, setForm] = useState<DealForm>(() => formFromDeal(deal));
+  const [dealError, setDealError] = useState<string | null>(null);
+
+  function startEditDeal(): void {
+    setForm(formFromDeal(deal));
+    setDealError(null);
+    setEditingDeal(true);
+  }
+
+  function setField(field: keyof DealForm, value: string): void {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function handleSaveDeal(e: React.FormEvent): void {
+    e.preventDefault();
+    if (!form.name.trim()) {
+      setDealError("La oportunidad necesita un nombre");
+      return;
+    }
+    setDealError(null);
+    startTransition(async () => {
+      try {
+        await updateDeal({
+          dealId: deal.id,
+          name: form.name,
+          amount: optionalNumber(form.amount),
+          probability: optionalNumber(form.probability),
+          expectedCloseDate: form.expectedCloseDate.trim() || null,
+          origin: (form.origin || null) as CrmOrigin | null,
+          market: form.market,
+          seats: optionalNumber(form.seats),
+          notes: form.notes,
+        });
+        setEditingDeal(false);
+      } catch (err) {
+        setDealError(err instanceof Error ? err.message : "No se pudo guardar");
+      }
+    });
+  }
 
   function handleStageChange(stageId: string): void {
     startTransition(async () => {
@@ -173,51 +256,190 @@ export function DealDetailView({
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="space-y-4 md:col-span-2">
           <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-gray-900">La operación</h2>
-            <dl className="mt-2 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Importe</dt>
-                <dd className="text-gray-900">
-                  {deal.amount !== null ? formatCurrency(deal.amount) : "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Probabilidad</dt>
-                <dd className="text-gray-900">
-                  {deal.probability !== null ? `${deal.probability}%` : "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Cierre previsto</dt>
-                <dd className="text-gray-900">
-                  {deal.expectedCloseDate ? formatDate(deal.expectedCloseDate) : "—"}
-                </dd>
-              </div>
-              {deal.origin && (
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900">La operación</h2>
+              {!editingDeal && (
+                <button
+                  onClick={startEditDeal}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                >
+                  Editar
+                </button>
+              )}
+            </div>
+
+            {editingDeal ? (
+              <form onSubmit={handleSaveDeal} className="mt-3 space-y-2 rounded-md bg-gray-50 p-3">
+                <label className="block">
+                  <span className="text-xs text-gray-500">Nombre</span>
+                  <input
+                    className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    value={form.name}
+                    disabled={isPending}
+                    onChange={(e) => setField("name", e.target.value)}
+                  />
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Importe (€)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Sin importe"
+                      className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={form.amount}
+                      disabled={isPending}
+                      onChange={(e) => setField("amount", e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Probabilidad (%)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      placeholder="Sin estimar"
+                      className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={form.probability}
+                      disabled={isPending}
+                      onChange={(e) => setField("probability", e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Cierre previsto</span>
+                    <input
+                      type="date"
+                      className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={form.expectedCloseDate}
+                      disabled={isPending}
+                      onChange={(e) => setField("expectedCloseDate", e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Origen</span>
+                    <select
+                      className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={form.origin}
+                      disabled={isPending}
+                      onChange={(e) => setField("origin", e.target.value)}
+                    >
+                      <option value="">Sin origen</option>
+                      {ORIGIN_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Mercado</span>
+                    <input
+                      placeholder="Sin mercado"
+                      className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={form.market}
+                      disabled={isPending}
+                      onChange={(e) => setField("market", e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Usuarios/seats</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="Sin definir"
+                      className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={form.seats}
+                      disabled={isPending}
+                      onChange={(e) => setField("seats", e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <label className="block">
+                  <span className="text-xs text-gray-500">Notas</span>
+                  <textarea
+                    rows={3}
+                    className="mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    value={form.notes}
+                    disabled={isPending}
+                    onChange={(e) => setField("notes", e.target.value)}
+                  />
+                </label>
+
+                {dealError && <p className="text-xs text-red-600">{dealError}</p>}
+
+                <p className="text-xs text-gray-400">
+                  La marca, la línea de negocio y la cuenta no se editan aquí: las dos
+                  primeras eligen el embudo y la tercera arrastra propuestas y comisiones.
+                </p>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingDeal(false)}
+                    className="text-xs text-gray-500"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <dl className="mt-2 space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Origen</dt>
-                  <dd className="text-gray-900">{originLabel(deal.origin)}</dd>
+                  <dt className="text-gray-500">Importe</dt>
+                  <dd className="text-gray-900">
+                    {deal.amount !== null ? formatCurrency(deal.amount) : "—"}
+                  </dd>
                 </div>
-              )}
-              {deal.market && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Mercado</dt>
-                  <dd className="text-gray-900">{deal.market}</dd>
+                  <dt className="text-gray-500">Probabilidad</dt>
+                  <dd className="text-gray-900">
+                    {deal.probability !== null ? `${deal.probability}%` : "—"}
+                  </dd>
                 </div>
-              )}
-              {deal.seats !== null && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Usuarios/seats propuestos</dt>
-                  <dd className="text-gray-900">{deal.seats}</dd>
+                  <dt className="text-gray-500">Cierre previsto</dt>
+                  <dd className="text-gray-900">
+                    {deal.expectedCloseDate ? formatDate(deal.expectedCloseDate) : "—"}
+                  </dd>
                 </div>
-              )}
-              {deal.notes && (
-                <div className="pt-2">
-                  <dt className="text-gray-500">Notas</dt>
-                  <dd className="mt-1 whitespace-pre-wrap text-gray-900">{deal.notes}</dd>
-                </div>
-              )}
-            </dl>
+                {deal.origin && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Origen</dt>
+                    <dd className="text-gray-900">{originLabel(deal.origin)}</dd>
+                  </div>
+                )}
+                {deal.market && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Mercado</dt>
+                    <dd className="text-gray-900">{deal.market}</dd>
+                  </div>
+                )}
+                {deal.seats !== null && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Usuarios/seats propuestos</dt>
+                    <dd className="text-gray-900">{deal.seats}</dd>
+                  </div>
+                )}
+                {deal.notes && (
+                  <div className="pt-2">
+                    <dt className="text-gray-500">Notas</dt>
+                    <dd className="mt-1 whitespace-pre-wrap text-gray-900">{deal.notes}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
