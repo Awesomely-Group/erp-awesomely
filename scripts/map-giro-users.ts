@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { GiroClient } from "../src/lib/giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 import { JiraClient } from "../src/lib/jira";
 import { slugAccountId } from "../src/lib/hour-buckets";
 
@@ -102,8 +102,8 @@ async function main(): Promise<void> {
     // Horas por autor en Giro, de todo el histórico que pueda haber.
     const horasPorCorreo = new Map<string, number>();
     try {
-      const worklogs = await new GiroClient(baseUrl, project.workspace.giroApiKey)
-        .listWorklogs(project.giroProjectId!, "2020-01-01", hoy);
+      const worklogs = await new GiroClient({ baseUrl, apiKey: project.workspace.giroApiKey })
+        .listWorklogs("2020-01-01", hoy, project.giroProjectId!);
       for (const w of worklogs) {
         const email = w.authorEmail.toLowerCase();
         horasPorCorreo.set(email, (horasPorCorreo.get(email) ?? 0) + w.timeSpentSeconds / 3600);

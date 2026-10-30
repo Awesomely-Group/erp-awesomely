@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ProjectStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { GiroClient } from "@/lib/giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 
 async function generateBucketCode(): Promise<string> {
   const year = new Date().getFullYear();
@@ -97,7 +97,7 @@ export async function updateGiroProjectId(
 
   let giroProjects;
   try {
-    const client = new GiroClient(process.env.GIRO_BASE_URL, project.workspace.giroApiKey);
+    const client = new GiroClient({ baseUrl: process.env.GIRO_BASE_URL, apiKey: project.workspace.giroApiKey });
     giroProjects = await client.listProjects();
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Error consultando Giro" };

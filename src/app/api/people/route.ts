@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { GiroClient } from "@/lib/giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 import { canResolvePeopleFromGiro, type Persona } from "@/lib/hours-source";
 import { JiraClient } from "@/lib/jira";
 import { prisma } from "@/lib/prisma";
@@ -61,7 +61,7 @@ async function desdeGiro(
   for (const workspace of workspaces) {
     if (!workspace.giroApiKey) continue;
 
-    const usuarios = await new GiroClient(baseUrl, workspace.giroApiKey).listUsers(
+    const usuarios = await new GiroClient({ baseUrl, apiKey: workspace.giroApiKey }).listUsers(
       filtros.accountIds.length > 0
         ? { accountIds: filtros.accountIds }
         : { q: filtros.query! },

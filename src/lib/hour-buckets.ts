@@ -8,7 +8,7 @@
  * distinta de la nuestra.
  */
 import { prisma } from "./prisma";
-import { GiroClient, type GiroWorklog } from "./giro-client";
+import { GiroClient, type Worklog } from "@awesomely-group/giro-contracts";
 import { TempoClient } from "./tempo";
 import {
   computeBucketConsumption,
@@ -133,7 +133,7 @@ function pickSource(project: LoadedProject): HoursSource {
   return canUseGiro ? "GIRO" : "TEMPO";
 }
 
-function fromGiro(worklogs: GiroWorklog[]): ConsumptionWorklog[] {
+function fromGiro(worklogs: Worklog[]): ConsumptionWorklog[] {
   return worklogs.map((w) => ({
     authorId: w.authorEmail,
     issueKey: w.issueKey,
@@ -172,8 +172,8 @@ export async function getProjectConsumption(projectId: string): Promise<ProjectC
   let worklogs: ConsumptionWorklog[] = [];
   if (project.hourBuckets.length > 0) {
     if (source === "GIRO") {
-      const client = new GiroClient(process.env.GIRO_BASE_URL!, project.workspace.giroApiKey!);
-      worklogs = fromGiro(await client.listWorklogs(project.giroProjectId!, from, to));
+      const client = new GiroClient({ baseUrl: process.env.GIRO_BASE_URL!, apiKey: project.workspace.giroApiKey! });
+      worklogs = fromGiro(await client.listWorklogs(from, to, project.giroProjectId!));
     } else if (project.workspace.tempoApiToken !== null) {
       const client = new TempoClient(project.workspace.tempoApiToken);
       worklogs = fromTempo(await client.getWorklogs(project.jiraId, from, to));
