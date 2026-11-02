@@ -174,7 +174,7 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
             className={cn(
               "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
               l1Filter === ""
-                ? "bg-gray-800 text-white border-gray-800"
+                ? "bg-gray-800 text-white dark:text-gray-50 border-gray-800"
                 : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"
             )}
           >
@@ -187,7 +187,7 @@ export function AccountMappingTable({ mappings: initial }: Props): React.JSX.Ele
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
                 l1Filter === l1
-                  ? "bg-gray-800 text-white border-gray-800"
+                  ? "bg-gray-800 text-white dark:text-gray-50 border-gray-800"
                   : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"
               )}
             >

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/actions";
+import { ThemeToggle } from "./theme-toggle";
 
 type NavItem = { name: string; href: string; icon: typeof LayoutDashboard };
 type NavSubsection = { label: string; items: NavItem[] };
@@ -253,7 +254,8 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="px-3 py-4 border-t border-gray-200">
+      <div className="px-3 py-4 border-t border-gray-200 space-y-1">
+        <ThemeToggle />
         <form action={signOutAction}>
           <button
             type="submit"
