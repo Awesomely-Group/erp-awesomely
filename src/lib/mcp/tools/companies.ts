@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ApiContext } from "@/lib/api/v1";
 import { prisma } from "@/lib/prisma";
-import { SOLO_LECTURA, companyWhere, ok, type ToolResult } from "../shared";
+import { SOLO_LECTURA, ok, type ToolResult } from "../shared";
 
 /**
  * Las sociedades que esta credencial alcanza.
@@ -18,8 +18,12 @@ export function registerCompanyTools(server: McpServer, ctx: ApiContext): void {
       annotations: SOLO_LECTURA,
     },
     async (): Promise<ToolResult> => {
+      // Aquí no vale `companyWhere`: `Company` no tiene `companyId`, su clave es `id`.
       const companies = await prisma.company.findMany({
-        where: { active: true, ...companyWhere(ctx) },
+        where: {
+          active: true,
+          ...(ctx.companyIds.length === 0 ? {} : { id: { in: ctx.companyIds } }),
+        },
         select: { id: true, name: true, currency: true },
         orderBy: { name: "asc" },
       });
