@@ -306,7 +306,7 @@ export function VerificationRow({ verification: v, availableInvoices }: Props): 
             <button
               onClick={handleSaveNotes}
               disabled={isPending}
-              className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-700 disabled:opacity-50"
+              className="text-xs bg-gray-600 text-white dark:text-gray-50 px-2 py-1 rounded hover:bg-gray-700 disabled:opacity-50"
             >
               {isPending ? "..." : "Guardar nota"}
             </button>
