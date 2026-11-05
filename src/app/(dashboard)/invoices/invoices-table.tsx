@@ -221,7 +221,7 @@ export function InvoicesTable({ invoices, selectedId, projects, visibleCols, inv
                 <button
                   onClick={handleBulkIgnoreProject}
                   disabled={isPending}
-                  className="rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white hover:bg-gray-600 disabled:opacity-50"
+                  className="rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white dark:text-gray-50 hover:bg-gray-600 disabled:opacity-50"
                 >
                   {isPending ? "Aplicando…" : "Clasificar sin proyecto"}
                 </button>

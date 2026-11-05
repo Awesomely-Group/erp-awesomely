@@ -328,7 +328,7 @@ export function LeadDetailView({
           <button
             type="submit"
             disabled={isPending || !reason.trim()}
-            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-50"
+            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-50 hover:bg-gray-900 disabled:opacity-50"
           >
             Descartar
           </button>
