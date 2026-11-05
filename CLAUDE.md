@@ -208,6 +208,15 @@ que saber antes de tocar esta zona:
 Mientras tanto, las rutas de `/api/v1` se prueban **como handlers** con `prisma`
 mockeado (`src/app/api/v1/routes.test.ts`), que es la verificación honesta disponible.
 
+## Staging
+
+`https://erp-staging.awesomelygroup.com` es la rama git `staging` del mismo proyecto
+Vercel, contra la rama `staging` de Neon (copia de producción refrescada cada madrugada,
+con las claves de Holded vaciadas). Se despliega con Actions → **Deploy staging** → rama,
+que migra antes de mover la rama. Detalle y variables en `docs/staging.md`.
+
+---
+
 ## Current Phase
 
 Bloque E (el ERP deja de leer de Jira/Tempo y lee de Giro): **los tres consumidores de
