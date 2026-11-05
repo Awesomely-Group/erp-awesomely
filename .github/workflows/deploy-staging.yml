@@ -48,7 +48,7 @@ jobs:
         env:
           PROD_DATABASE_URL: ${{ secrets.DATABASE_URL }}
           STAGING_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
-          STAGING_DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          STAGING_UNPOOLED_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING_UNPOOLED }}
         run: bash .github/scripts/check-staging-db.sh
 
   build:
@@ -107,7 +107,7 @@ jobs:
         env:
           # Endpoint directo, no pooled: mismo motivo que en deploy.yml (advisory locks
           # de Prisma y PgBouncer en modo transacción).
-          DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING_UNPOOLED }}
 
   publish:
     # Solo cuando se lanza a mano: en un push a `staging` la rama ya está donde tiene que
