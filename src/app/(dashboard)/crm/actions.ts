@@ -83,23 +83,39 @@ interface CreateDealPayload {
   expectedCloseDate?: string | null;
   /** De qué lead nace, si nace de uno. */
   sourceLeadId?: string | null;
+  /**
+   * Etapa en la que nace: la de la columna del tablero desde la que se crea. Sin ella,
+   * la primera del embudo.
+   */
+  stageId?: string | null;
 }
 
 /**
- * Crea una oportunidad en la primera etapa de su embudo. Una cuenta puede tener varias
- * abiertas a la vez: el retainer de Moda re- tiene siete frentes vivos y cada uno se gana
- * o se pierde por su cuenta.
+ * Crea una oportunidad en la etapa pedida o, si no se pide ninguna, en la primera de su
+ * embudo. Una cuenta puede tener varias abiertas a la vez: el retainer de Moda re- tiene
+ * siete frentes vivos y cada uno se gana o se pierde por su cuenta.
+ *
+ * La etapa pedida se busca dentro del embudo de la oportunidad (marca + línea), igual
+ * que en `moveDealStage`: un `stageId` de otro funnel no se acepta aunque exista.
  */
 export async function createDealManual(payload: CreateDealPayload): Promise<{ id: string }> {
-  await requireSession();
+  const session = await requireSession();
 
   const lineOfBusiness = payload.lineOfBusiness ?? "GENERAL";
-  const firstStage = await prisma.crmStage.findFirst({
-    where: { marca: payload.marca, lineOfBusiness },
+  const stage = await prisma.crmStage.findFirst({
+    where: {
+      marca: payload.marca,
+      lineOfBusiness,
+      ...(payload.stageId ? { id: payload.stageId } : {}),
+    },
     orderBy: { order: "asc" },
   });
-  if (!firstStage) {
-    throw new Error(`No hay etapas configuradas para "${payload.marca}" / línea "${lineOfBusiness}"`);
+  if (!stage) {
+    throw new Error(
+      payload.stageId
+        ? "La etapa elegida no pertenece al embudo de la oportunidad"
+        : `No hay etapas configuradas para "${payload.marca}" / línea "${lineOfBusiness}"`
+    );
   }
 
   const deal = await prisma.crmDeal.create({
@@ -108,7 +124,7 @@ export async function createDealManual(payload: CreateDealPayload): Promise<{ id
       marca: payload.marca,
       lineOfBusiness,
       accountId: payload.accountId,
-      stageId: firstStage.id,
+      stageId: stage.id,
       amount: payload.amount ?? null,
       notes: payload.notes ?? null,
       ownerId: payload.ownerId ?? null,
@@ -118,7 +134,9 @@ export async function createDealManual(payload: CreateDealPayload): Promise<{ id
       dealType: payload.dealType ?? "NEW_BUSINESS",
       expectedCloseDate: payload.expectedCloseDate ? new Date(payload.expectedCloseDate) : null,
       sourceLeadId: payload.sourceLeadId ?? null,
-      stageEvents: { create: { toStageId: firstStage.id, trigger: "MANUAL_DRAG" } },
+      stageEvents: {
+        create: { toStageId: stage.id, trigger: "MANUAL_DRAG", changedByUserId: session.user.id },
+      },
     },
     select: { id: true },
   });
