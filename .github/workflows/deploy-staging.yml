@@ -22,9 +22,16 @@ jobs:
         with:
           node-version: "20"
           cache: "pnpm"
+          # `@awesomely-group/giro-contracts` vive en GitHub Packages.
+          registry-url: https://npm.pkg.github.com
+          scope: "@awesomely-group"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          # Lo lee `.npmrc`. El token del propio job basta si el paquete da acceso a
+          # este repositorio desde sus ajustes en la organización.
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Prisma client
         run: pnpm prisma generate

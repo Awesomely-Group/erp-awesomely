@@ -18,7 +18,7 @@
  * La consecuencia de las dos juntas es que **el saldo que ve el cliente sube** el día
  * del flip. Eso no es un fallo, pero sí algo que se cuenta antes y no después.
  */
-import { GiroClient } from "../src/lib/giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 import { prisma } from "../src/lib/prisma";
 import { TempoClient } from "../src/lib/tempo";
 import { resolvePersonKeys } from "../src/lib/hours-source";
@@ -84,14 +84,14 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const giro = new GiroClient(baseUrl, proyecto.workspace.giroApiKey);
+    const giro = new GiroClient({ baseUrl, apiKey: proyecto.workspace.giroApiKey });
     const tempo = new TempoClient(proyecto.workspace.tempoApiToken);
 
     for (const mes of meses(desde, hasta)) {
       const { from, to } = rangoDelMes(mes);
 
       const [deGiro, deTempo] = await Promise.all([
-        giro.listWorklogs(proyecto.giroProjectId!, from, to),
+        giro.listWorklogs(from, to, proyecto.giroProjectId!),
         tempo.getWorklogs(proyecto.jiraId, from, to),
       ]);
 

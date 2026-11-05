@@ -16,7 +16,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { GiroClient } from "../src/lib/giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
 
     let giroProjects;
     try {
-      giroProjects = await new GiroClient(baseUrl, workspace.giroApiKey).listProjects();
+      giroProjects = await new GiroClient({ baseUrl, apiKey: workspace.giroApiKey }).listProjects();
     } catch (error) {
       console.error(`  No se pudo consultar Giro: ${error instanceof Error ? error.message : error}`);
       continue;

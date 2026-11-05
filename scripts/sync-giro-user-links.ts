@@ -20,7 +20,7 @@
  * el trabajo que queda.
  */
 import { prisma } from "../src/lib/prisma";
-import { GiroClient } from "../src/lib/giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 
 const apply = process.argv.includes("--apply");
 
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   let actualizados = 0;
 
   for (const workspace of workspaces) {
-    const client = new GiroClient(baseUrl, workspace.giroApiKey!);
+    const client = new GiroClient({ baseUrl, apiKey: workspace.giroApiKey! });
     const usuarios = await client.listUsers();
     console.log(`\n${workspace.name} (${workspace.giroOrgSlug ?? "?"}): ${usuarios.length} personas`);
 
