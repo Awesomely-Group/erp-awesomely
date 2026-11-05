@@ -10,7 +10,7 @@
 # Entrada:
 #   PROD_DATABASE_URL            producción (de donde se copia)
 #   STAGING_DATABASE_URL         staging, pooled (la que usa la app)
-#   STAGING_DIRECT_DATABASE_URL  staging, directa (la que usa `prisma migrate deploy`)
+#   STAGING_UNPOOLED_DATABASE_URL  staging, directa (la que usa `prisma migrate deploy`)
 #
 # Nunca imprime una cadena de conexión: solo qué comprobación ha fallado.
 set -euo pipefail
@@ -33,15 +33,15 @@ fail() {
 
 [ -n "${PROD_DATABASE_URL:-}" ] || fail "Falta DATABASE_URL (producción) en el entorno staging."
 [ -n "${STAGING_DATABASE_URL:-}" ] || fail "Falta DATABASE_URL_STAGING en el entorno staging."
-[ -n "${STAGING_DIRECT_DATABASE_URL:-}" ] || fail "Falta DIRECT_DATABASE_URL en el entorno staging."
+[ -n "${STAGING_UNPOOLED_DATABASE_URL:-}" ] || fail "Falta DATABASE_URL_STAGING_UNPOOLED en el entorno staging."
 
 prod=$(db_host "$PROD_DATABASE_URL")
 staging=$(db_host "$STAGING_DATABASE_URL")
-direct=$(db_host "$STAGING_DIRECT_DATABASE_URL")
+direct=$(db_host "$STAGING_UNPOOLED_DATABASE_URL")
 
 [ -n "$prod" ] && [ -n "$staging" ] && [ -n "$direct" ] || fail "Alguna cadena de conexión no tiene host reconocible."
 [ "$staging" != "$prod" ] || fail "DATABASE_URL_STAGING apunta al mismo host que producción."
-[ "$direct" != "$prod" ] || fail "DIRECT_DATABASE_URL apunta al mismo host que producción."
-[ "$direct" = "$staging" ] || fail "DIRECT_DATABASE_URL y DATABASE_URL_STAGING no son el mismo endpoint de Neon."
+[ "$direct" != "$prod" ] || fail "DATABASE_URL_STAGING_UNPOOLED apunta al mismo host que producción."
+[ "$direct" = "$staging" ] || fail "DATABASE_URL_STAGING_UNPOOLED y DATABASE_URL_STAGING no son el mismo endpoint de Neon."
 
 echo "Staging y producción son bases distintas."

@@ -35,7 +35,7 @@ jobs:
         env:
           PROD_DATABASE_URL: ${{ secrets.DATABASE_URL }}
           STAGING_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
-          STAGING_DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          STAGING_UNPOOLED_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING_UNPOOLED }}
         run: bash .github/scripts/check-staging-db.sh
 
       - name: Install PostgreSQL client
@@ -86,4 +86,4 @@ jobs:
         run: pnpm prisma migrate deploy
         working-directory: staging
         env:
-          DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING_UNPOOLED }}
