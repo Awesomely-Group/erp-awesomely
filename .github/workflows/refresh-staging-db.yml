@@ -1,15 +1,43 @@
 name: Refresh staging database from production
 
+# Cada madrugada deja la rama `staging` de Neon como una copia de producción, sin las
+# credenciales que permitirían escribir fuera, y con el esquema que espera el código que
+# hay desplegado en staging. Ver docs/staging.md.
+#
+# Por qué el último paso: la copia trae el esquema de producción. Si en staging hay una
+# rama con una migración nueva, al refrescar desaparecería y la app desplegada quedaría
+# rota contra un esquema viejo hasta el siguiente deploy. Por eso, tras copiar, se aplican
+# las migraciones del commit que está en la rama `staging`.
 on:
   schedule:
-    - cron: '0 5 * * *'
+    - cron: "0 5 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: staging
+  cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     environment: staging
     steps:
+      # Dos checkouts: `main` (donde vive este workflow) para la guarda, y la rama
+      # `staging` en un subdirectorio para aplicar sus migraciones al final.
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: staging
+          path: staging
+
+      - name: Comprobar que staging no es producción
+        env:
+          PROD_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STAGING_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          STAGING_DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+        run: bash .github/scripts/check-staging-db.sh
+
       - name: Install PostgreSQL client
         run: sudo apt-get install -y postgresql-client
 
@@ -19,9 +47,43 @@ jobs:
           DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
         run: |
           echo "Dropping staging schema..."
-          psql "$DATABASE_URL_STAGING" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;"
+          psql "$DATABASE_URL_STAGING" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;"
 
           echo "Dumping production and restoring to staging..."
-          pg_dump "$DATABASE_URL_PROD" | psql "$DATABASE_URL_STAGING"
+          pg_dump "$DATABASE_URL_PROD" | psql "$DATABASE_URL_STAGING" -q
 
-          echo "Staging database refreshed successfully"
+          echo "Staging database refreshed"
+
+      # Las claves de Holded viven en la base (Company.holdedApiKey), así que la copia las
+      # trae. Desde staging el módulo de presupuestos crea documentos en Holded y el sync
+      # lee de allí: con la clave vacía, Holded responde 401 y nada sale de staging. Para
+      # probar algo de Holded en staging hay que pegar una clave a mano en esa fila, y el
+      # siguiente refresco la vuelve a quitar. Las de Jira/Tempo/Giro se quedan: el ERP solo
+      # lee de ahí.
+      - name: Apagar las escrituras a Holded
+        env:
+          DATABASE_URL_STAGING: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          psql "$DATABASE_URL_STAGING" -v ON_ERROR_STOP=1 -c "UPDATE companies SET \"holdedApiKey\" = '';"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: staging/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: staging/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: staging
+
+      - run: pnpm prisma generate
+        working-directory: staging
+
+      - name: Aplicar las migraciones de la rama staging
+        run: pnpm prisma migrate deploy
+        working-directory: staging
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
