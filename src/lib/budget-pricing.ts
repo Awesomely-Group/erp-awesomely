@@ -1,7 +1,7 @@
 // Lógica de precios del configurador de propuestas — heredada de docs/proposals-plan.md
 // (plan original, archivado) y conservada como fuente de verdad server-side del cálculo
 // BUILD/DISCOVER, usada sobre todo por el catálogo de servicios de Gigson Solutions.
-// LaTroupe puede no usar `rateType` en absoluto (sus líneas quedan sin tarifa inferida).
+// latroupe() puede no usar `rateType` en absoluto (sus líneas quedan sin tarifa inferida).
 export const PROPOSAL_RATES = { DISCOVER: 100, BUILD: 70 } as const;
 
 export type ProposalRateType = "DISCOVER" | "BUILD";

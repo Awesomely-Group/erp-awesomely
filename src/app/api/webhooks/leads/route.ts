@@ -38,7 +38,7 @@ interface LeadWebhookPayload {
   landingPage?: string | null;
   notes?: string | null;
   // Impacto del plan de activación de Odoo (revisión 2026-09-18): mix inside-out/
-  // outside-in, mercado (LaTroupe) y nº de usuarios propuestos (Odoo).
+  // outside-in, mercado (latroupe()) y nº de usuarios propuestos (Odoo).
   origin?: string | null;
   market?: string | null;
   seats?: number | null;

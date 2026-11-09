@@ -15,7 +15,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { Plus, User as UserIcon } from "lucide-react";
-import { MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_OPTIONS, marcaLabel } from "@/lib/org";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DEAL_TYPE_OPTIONS, ORIGIN_OPTIONS } from "@/lib/crm-relations";
@@ -242,7 +242,7 @@ function NewDealModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
         <h2 className="text-base font-semibold text-gray-900">
-          Nueva oportunidad — {marca}
+          Nueva oportunidad — {marcaLabel(marca)}
           {lineOfBusiness !== "GENERAL" && ` (${lineOfBusiness})`}
         </h2>
         <p className="mt-1 text-xs text-gray-400">
@@ -538,7 +538,7 @@ export function CrmBoard({
           ))}
           {stages.length === 0 && (
             <p className="text-sm text-gray-400">
-              No hay etapas configuradas para {marca} / {lineOfBusiness}. Ejecuta{" "}
+              No hay etapas configuradas para {marcaLabel(marca)} / {lineOfBusiness}. Ejecuta{" "}
               <code className="rounded bg-gray-100 px-1">scripts/seed-growth-crm.ts</code>.
             </p>
           )}

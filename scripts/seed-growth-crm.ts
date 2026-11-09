@@ -11,7 +11,7 @@
 //     (88/44/22/9, 75 usuarios, ratio 3x) son una plantilla sin aprobar, no objetivos
 //     confirmados. Cuando estén confirmados, añadir una entrada a FUNNELS con
 //     lineOfBusiness: "ODOO" siguiendo el ejemplo comentado más abajo.
-//   - CommissionRule: solo LaTroupe activa (D9), 10% + 20€ configurables desde
+//   - CommissionRule: solo latroupe() activa (D9), 10% + 20€ configurables desde
 //     /crm/comisiones por un admin.
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";

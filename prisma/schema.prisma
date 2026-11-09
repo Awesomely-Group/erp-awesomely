@@ -1076,7 +1076,7 @@ model BudgetLine {
 
   // Configurador de propuesta (heredado de docs/proposals-plan.md) — opcional,
   // usado sobre todo por el catálogo de servicios de Gigson Solutions (tarifas
-  // BUILD/DISCOVER); LaTroupe puede dejarlo vacío si su lógica de precios es otra.
+  // BUILD/DISCOVER); latroupe() puede dejarlo vacío si su lógica de precios es otra.
   rateType     String? // "BUILD" | "DISCOVER"
   serviceType  String? // p.ej. "discovery" | "desarrollo" | "integracion" | "consultoria" | "devops" | "qa" | "pm" | "mantenimiento"
   deliverables String[] @default([])
@@ -1503,7 +1503,7 @@ enum CrmDealType {
 
 /// Origen del lead (revisión 2026-09-18, impacto plan Odoo): distingue base
 /// instalada que se migra/amplía (INSIDE_OUT) de mercado abierto (OUTSIDE_IN) — el
-/// deck de Odoo separa objetivos por ese mix, y LaTroupe necesita lo mismo para su
+/// deck de Odoo separa objetivos por ese mix, y latroupe() necesita lo mismo para su
 /// "tasa de referidos >50%".
 /// Cómo llegó el negocio. Lo llevan el lead y el deal: el deal lo hereda de su lead
 /// cuando nace de uno, y lo lleva por sí mismo cuando surge de un cliente que ya está
@@ -1878,7 +1878,7 @@ model CrmActivity {
   @@map("crm_activities")
 }
 
-// ─── Growth: Comisiones (D9, solo LaTroupe de momento) ─────────────────────────
+// ─── Growth: Comisiones (D9, solo latroupe() de momento) ─────────────────────────
 
 enum CommissionType {
   PROPOSAL_PERCENT

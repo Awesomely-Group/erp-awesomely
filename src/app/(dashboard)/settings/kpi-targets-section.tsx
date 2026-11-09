@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_OPTIONS, marcaLabel } from "@/lib/org";
 import { applyAdsTargetDefaults, createKpiTarget, deleteKpiTarget, updateKpiTargetValue } from "./kpi-targets-actions";
 import { ADS_TARGET_DEFAULTS, ADS_TARGET_PHASE_LABEL, ADS_TARGET_SCOPE, type AdsTargetPhase } from "@/lib/ads-targets-defaults";
 import type { KpiTargetPeriodType } from "@prisma/client";
@@ -242,7 +242,7 @@ export function KpiTargetsSection({ targets }: { targets: KpiTargetRow[] }): Rea
           {targets.map((t) => (
             <tr key={t.id}>
               <td className="px-2 py-1 font-medium text-gray-900">{t.metric}</td>
-              <td className="px-2 py-1 text-gray-500">{t.marca ?? "Todas"}</td>
+              <td className="px-2 py-1 text-gray-500">{t.marca ? marcaLabel(t.marca) : "Todas"}</td>
               <td className="px-2 py-1 text-gray-500">{t.lineOfBusiness ?? "—"}</td>
               <td className="px-2 py-1 text-gray-500">
                 {PERIOD_LABEL[t.periodType]} {t.periodKey}

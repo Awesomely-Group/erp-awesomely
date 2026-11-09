@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
-import { filterProjectsByMarca } from "@/lib/org";
+import { filterProjectsByMarca, marcaLabel } from "@/lib/org";
 import { classifyLine, ignoreLine, saveDraftLineNote } from "./actions";
 import { ChevronDown, Sparkles, CheckCircle, Circle, MessageSquare, MinusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -478,7 +478,7 @@ function UnifiedClassifier({
                   : "bg-white text-gray-600 border-gray-300 hover:border-indigo-300"
               )}
             >
-              {marca}
+              {marcaLabel(marca)}
             </button>
           ))}
         </div>

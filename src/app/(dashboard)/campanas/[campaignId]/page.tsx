@@ -17,6 +17,7 @@ import { CampaignMappingForm } from "./campaign-mapping-form";
 import { KeywordsTable } from "./keywords-table";
 import { SearchTermsTable } from "./search-terms-table";
 import { AttributedLeads, type AttributedLead } from "./attributed-leads";
+import { marcaLabel } from "@/lib/org";
 
 type DetailParams = { period?: string; dateFrom?: string; dateTo?: string };
 
@@ -142,7 +143,7 @@ export default async function CampaignDetailPage({
               </span>
               <span>{campaign.account.name}</span>
               {campaign.dailyBudget !== null && <span>· {formatCurrency(Number(campaign.dailyBudget))}/día</span>}
-              {campaign.marca && <span>· {campaign.marca}</span>}
+              {campaign.marca && <span>· {marcaLabel(campaign.marca)}</span>}
               {campaign.lineOfBusiness && <span>· {campaign.lineOfBusiness}</span>}
               <a href={googleAdsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800">
                 Abrir en Google Ads <ExternalLink className="h-3 w-3" />

@@ -5,8 +5,18 @@ export const MARCA_OPTIONS: { value: string; label: string }[] = [
   { value: "Gigson Solutions", label: "Gigson Solutions" },
   { value: "Gigson", label: "Gigson" },
   { value: "Awesomely", label: "Awesomely" },
-  { value: "LaTroupe", label: "LaTroupe" },
+  { value: "LaTroupe", label: "latroupe()" },
 ];
+
+/**
+ * Nombre visible de una marca a partir del valor guardado en BD. El valor de
+ * latroupe() sigue siendo "LaTroupe" (filtros, API y datos existentes dependen de él);
+ * solo cambia lo que se pinta en pantalla. Valores desconocidos se devuelven tal cual.
+ */
+export function marcaLabel(value: string): string {
+  const trimmed = value.trim();
+  return MARCA_OPTIONS.find((o) => o.value === trimmed)?.label ?? trimmed;
+}
 
 /** Valor de query param para filtrar facturas sin marca (`invoice.marca` null). */
 export const MARCA_FILTER_UNASSIGNED = "__unassigned__";
