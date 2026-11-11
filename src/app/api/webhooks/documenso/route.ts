@@ -146,7 +146,7 @@ export async function POST(req: Request): Promise<Response> {
   // Comisión PROPOSAL_PERCENT (D9/F7, Growth/CRM revisión 2026-09-18): se genera al
   // FIRMAR la propuesta (asunción explícita del plan, no confirmada al 100% con el
   // usuario — no al cobrar cada PaymentTerm). Solo si el Budget nace de un CrmDeal con
-  // responsable asignado y su marca tiene una CommissionRule activa (hoy solo LaTroupe).
+  // responsable asignado y su marca tiene una CommissionRule activa (hoy solo latroupe()).
   if (budget.crmDeal?.ownerId) {
     const rule = await prisma.commissionRule.findUnique({ where: { marca: budget.crmDeal.marca } });
     if (rule?.active) {

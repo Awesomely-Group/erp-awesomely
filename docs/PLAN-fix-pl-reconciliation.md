@@ -112,7 +112,7 @@ Ambas empresas dentro de ~0,05% del PyG real — se da por resuelto. Residuales 
 
 El 1:1 de la sección anterior estaba validado **solo contra GBP y USD**. Al mirar un pico
 de gasto en el dashboard (abril-junio 2025) apareció el caso que rompe ese criterio: tres
-facturas de compra en **pesos filipinos** de un colaborador de LaTroupe (Awesomely OU),
+facturas de compra en **pesos filipinos** de un colaborador de latroupe() (Awesomely OU),
 guardadas con `fxRateToEur = 1`.
 
 | Factura | Importe real | Contabilizado | Tipo BCE del día |

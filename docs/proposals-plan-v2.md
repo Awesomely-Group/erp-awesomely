@@ -9,7 +9,7 @@
 
 El equipo necesita crear propuestas comerciales sin entrar en el ERP, y que los clientes de
 cada marca las vean/firmen bajo su propio dominio (`gigsonapps.com` para Gigson Solutions,
-`latroupeapps.com` para LaTroupe). `erp-awesomely` centraliza las piezas sensibles
+`latroupeapps.com` para latroupe()). `erp-awesomely` centraliza las piezas sensibles
 (credenciales de Holded, integración de firma con Documenso) porque ya tenía el 90% del
 plumbing financiero (`Budget`/`BudgetLine`/`PaymentTerm`, `HoldedClient`), mientras que
 `lt-tools` (repo de `latroupeapps.com`) y `gigsonapps` (repo por crear) no tenían nada de
@@ -18,7 +18,7 @@ esto.
 ## Arquitectura
 
 ```
-[Equipo LaTroupe] → apps/web (lt-tools, módulo proposals)
+[Equipo latroupe()] → apps/web (lt-tools, módulo proposals)
 [Equipo Gigson]   → apps/web (gigsonapps, módulo proposals — repo a crear, misma arquitectura que lt-tools)
         │  buscan/crean cliente en Holded, configuran propuesta, suben PDF
         ▼
@@ -154,7 +154,7 @@ aplicada contra la base de datos real (Neon).
 ## Riesgos abiertos
 
 - Residencia de datos de Documenso Cloud para PII de firmantes.
-- Confirmar si Gigson Solutions y LaTroupe comparten cuenta de Holded o son distintas
+- Confirmar si Gigson Solutions y latroupe() comparten cuenta de Holded o son distintas
   (ya soportado por diseño: `companyId` es obligatorio en el payload).
 - Comportamiento ante caída de Documenso (no hay reintento automático de envío todavía —
   si `createDocumentFromPdf`/`distributeDocument` falla, el `Budget` queda creado en

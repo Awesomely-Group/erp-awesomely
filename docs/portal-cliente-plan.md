@@ -151,7 +151,7 @@ acepta esperar — pero por el mismo orquestador, para que no puedan divergir.
 `GIGSONAPPS_PORTAL_SECRET` **ya está puesta** en Vercel (Production y Preview, 2026-09-20),
 con el mismo valor que `ERP_PORTAL_SECRET` en el proyecto `portal-cliente`. Falta reflejarlas
 en `.env.example`. `LTTOOLS_PORTAL_SECRET` no hace falta hasta que exista el portal de
-La Troupe.
+latroupe().
 
 ## Estado real de los datos (comprobado en producción el 2026-09-20)
 

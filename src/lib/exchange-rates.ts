@@ -106,7 +106,7 @@ export type ResolvedFxRate = {
  *    Con eso el PyG 2026 de SL y OU cuadró al 0,05%.
  * 3. Ese 1:1 se validó **solo contra GBP y USD**, que están cerca de la paridad, así que
  *    el error absoluto era pequeño. Con el peso filipino (~64 PHP/EUR) el mismo criterio
- *    multiplica el gasto por 64: tres facturas de un colaborador de LaTroupe entraron
+ *    multiplica el gasto por 64: tres facturas de un colaborador de latroupe() entraron
  *    como 514.407,61 € cuando su valor real son ~7.980 € — el 64% de todas las compras
  *    de 2025 y suficiente para dar la vuelta al margen bruto del grupo.
  *

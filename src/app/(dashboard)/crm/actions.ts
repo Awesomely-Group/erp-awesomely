@@ -370,7 +370,7 @@ export async function createActivity(payload: CreateActivityPayload): Promise<{ 
  * lead/deal ya no es del lead — y además pagaba por reuniones de oportunidades que venían
  * de un cliente de siempre, donde conseguir la reunión no tiene mérito.
  *
- * Solo si la marca tiene una `CommissionRule` activa (hoy solo LaTroupe) y el lead tiene
+ * Solo si la marca tiene una `CommissionRule` activa (hoy solo latroupe()) y el lead tiene
  * `ownerId` — sin dueño no hay a quién pagarle.
  *
  * Se intenta desde los DOS lados: al cerrar la reunión y al cualificar el lead. El orden
