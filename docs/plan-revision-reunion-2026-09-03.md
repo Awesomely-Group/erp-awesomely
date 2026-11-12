@@ -21,7 +21,7 @@ Reunión de revisión del ERP (erp-awesomely) y Giro con Emmelin e Irene. Se pro
 | E8 | Tooltips/ayudas en KPIs — **con textos verificados contra el cálculo real, no los de la reunión** | ❌ Pendiente | KPI cards sin tooltip; ver sección "Textos verificados de tooltips" |
 | E9 | Revisar terminología previsiones vs estimaciones vs proyecciones (subtítulo "Estimaciones ERP", sección Proyecciones=escenarios/runway) | ❌ Pendiente | `forecasts/page.tsx:100`, `/proyecciones` existe con escenarios |
 | E10 | Tres estados de previsión: estimado / comprometido (proformas-POs firmadas) / real | ❌ Pendiente | solo escenarios optimista/pesimista |
-| E11 | Rehacer Presupuestos como generador de propuestas (La Troupe + Gigson Solutions) | ❌ Pendiente | `/budgets` tabla actual "para hacer nueva" según reunión |
+| E11 | Rehacer Presupuestos como generador de propuestas (latroupe() + Gigson Solutions) | ❌ Pendiente | `/budgets` tabla actual "para hacer nueva" según reunión |
 | E12 | Sidebar agrupado por bloques (ventas, CRM, facturación, contabilidad) | ❌ Pendiente | `src/components/sidebar.tsx:27-40` lista plana |
 | E13 | Config cuentas: nombres "español (equivalente entre paréntesis)" en listados | ❌ Pendiente | account-mapping-table con columnas separadas SL/OU |
 | E14 | Limpiar cuentas duplicadas/incorrectas (p.ej. "Finish Goods") | 👤 Irene (datos, no código) | — |

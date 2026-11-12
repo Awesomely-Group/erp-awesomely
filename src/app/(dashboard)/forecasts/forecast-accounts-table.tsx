@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { buildForecastAccountsTree, type L1Group, type EntidadGroup, type MarcaGroup } from "@/lib/forecast-accounts-tree";
 import type { ForecastAccountRow } from "@/lib/cashflow-data";
+import { marcaLabel } from "@/lib/org";
 
 function PendienteCell({ value, className = "" }: { value: number; className?: string }): React.JSX.Element {
   return (
@@ -207,7 +208,7 @@ function RenderMarca({
       <GroupRow
         groupKey={group.key}
         depth={2}
-        label={group.marca}
+        label={marcaLabel(group.marca)}
         estimado={group.estimado}
         real={group.real}
         pendiente={group.pendiente}

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { updateCommissionRule, updateCommissionStatus } from "../actions";
+import { marcaLabel } from "@/lib/org";
 
 interface CommissionRow {
   id: string;
@@ -45,7 +46,7 @@ function RuleEditor({ rule }: { rule: RuleRow }): React.JSX.Element {
 
   return (
     <tr className="border-b border-gray-100">
-      <td className="px-3 py-2 font-medium text-gray-900">{rule.marca}</td>
+      <td className="px-3 py-2 font-medium text-gray-900">{marcaLabel(rule.marca)}</td>
       <td className="px-3 py-2">
         <input
           type="number"
@@ -112,7 +113,7 @@ export function CommissionsView({
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-gray-900">Reglas por marca</h2>
           <p className="text-xs text-gray-400">
-            Una marca sin fila activa no genera comisiones (hoy solo LaTroupe).
+            Una marca sin fila activa no genera comisiones (hoy solo latroupe()).
           </p>
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-xs font-semibold uppercase text-gray-500">

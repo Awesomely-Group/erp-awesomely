@@ -4,12 +4,18 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
   useDraggable,
   useDroppable,
+  useSensor,
+  useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { Plus, User as UserIcon } from "lucide-react";
-import { MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_OPTIONS, marcaLabel } from "@/lib/org";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DEAL_TYPE_OPTIONS, ORIGIN_OPTIONS } from "@/lib/crm-relations";
@@ -51,26 +57,11 @@ const DEAL_TYPE_BADGE: Partial<Record<CrmDealType, string>> = {
   RENEWAL: "Renovación",
 };
 
-function DealCard({ deal }: { deal: BoardDeal }): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: deal.id,
-  });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+function DealCardContent({ deal }: { deal: BoardDeal }): React.JSX.Element {
   const badge = DEAL_TYPE_BADGE[deal.dealType];
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className={cn(
-        "rounded-lg border border-gray-200 bg-white p-3 shadow-sm space-y-1.5 cursor-grab",
-        isDragging && "opacity-50 z-10"
-      )}
-    >
+    <>
       <div className="flex items-start justify-between gap-2">
         <Link
           href={`/crm/deals/${deal.id}`}
@@ -103,6 +94,28 @@ function DealCard({ deal }: { deal: BoardDeal }): React.JSX.Element {
           <span className="font-medium text-gray-600">{formatCurrency(deal.amount)}</span>
         )}
       </div>
+    </>
+  );
+}
+
+const CARD_CLASS = "rounded-lg border border-gray-200 bg-white p-3 shadow-sm space-y-1.5";
+
+/**
+ * La tarjeta no se mueve con el puntero: lo que viaja es la copia del `DragOverlay`. Si
+ * se trasladara la propia tarjeta, el `overflow` de la columna y del tablero la
+ * recortaría en cuanto saliera de su columna y desaparecería a medio arrastre.
+ */
+function DealCard({ deal }: { deal: BoardDeal }): React.JSX.Element {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: deal.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(CARD_CLASS, "cursor-grab", isDragging && "opacity-40")}
+    >
+      <DealCardContent deal={deal} />
     </div>
   );
 }
@@ -110,9 +123,11 @@ function DealCard({ deal }: { deal: BoardDeal }): React.JSX.Element {
 function StageColumn({
   stage,
   deals,
+  onCreate,
 }: {
   stage: BoardStage;
   deals: BoardDeal[];
+  onCreate: () => void;
 }): React.JSX.Element {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const total = deals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
@@ -134,7 +149,18 @@ function StageColumn({
         >
           {stage.name}
         </p>
-        <span className="text-xs text-gray-400">{deals.length}</span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-400">{deals.length}</span>
+          <button
+            type="button"
+            onClick={onCreate}
+            title={`Nueva oportunidad en ${stage.name}`}
+            aria-label={`Nueva oportunidad en ${stage.name}`}
+            className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       {total > 0 && <p className="px-1.5 pb-1.5 text-xs text-gray-400">{formatCurrency(total)}</p>}
       <div className="flex-1 space-y-2 overflow-y-auto px-0.5 pb-1">
@@ -149,17 +175,23 @@ function StageColumn({
 function NewDealModal({
   marca,
   lineOfBusiness,
+  stages,
+  initialStageId,
   users,
   accounts,
   onClose,
 }: {
   marca: string;
   lineOfBusiness: string;
+  stages: BoardStage[];
+  /** La columna desde la que se abre; el botón general abre en la primera. */
+  initialStageId: string;
   users: BoardUser[];
   accounts: BoardAccount[];
   onClose: () => void;
 }): React.JSX.Element {
   const [isPending, startTransition] = useTransition();
+  const [stageId, setStageId] = useState(initialStageId);
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
   const [amount, setAmount] = useState("");
@@ -183,21 +215,26 @@ function NewDealModal({
       return;
     }
     startTransition(async () => {
-      await createDealManual({
-        name,
-        marca,
-        lineOfBusiness,
-        accountId,
-        amount: amount ? Number(amount) : null,
-        ownerId: ownerId || null,
-        notes: notes || null,
-        dealType,
-        origin: origin || null,
-        market: market || null,
-        seats: seats ? Number(seats) : null,
-        expectedCloseDate: expectedCloseDate || null,
-      });
-      onClose();
+      try {
+        await createDealManual({
+          name,
+          marca,
+          lineOfBusiness,
+          stageId,
+          accountId,
+          amount: amount ? Number(amount) : null,
+          ownerId: ownerId || null,
+          notes: notes || null,
+          dealType,
+          origin: origin || null,
+          market: market || null,
+          seats: seats ? Number(seats) : null,
+          expectedCloseDate: expectedCloseDate || null,
+        });
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo crear la oportunidad");
+      }
     });
   }
 
@@ -205,7 +242,7 @@ function NewDealModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
         <h2 className="text-base font-semibold text-gray-900">
-          Nueva oportunidad — {marca}
+          Nueva oportunidad — {marcaLabel(marca)}
           {lineOfBusiness !== "GENERAL" && ` (${lineOfBusiness})`}
         </h2>
         <p className="mt-1 text-xs text-gray-400">
@@ -230,6 +267,20 @@ function NewDealModal({
               </option>
             ))}
           </select>
+          <label className="flex items-center gap-2 text-xs text-gray-500">
+            Etapa
+            <select
+              className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900"
+              value={stageId}
+              onChange={(e) => setStageId(e.target.value)}
+            >
+              {stages.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-2">
             <input
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
@@ -349,7 +400,15 @@ export function CrmBoard({
   pendingLeads: number;
 }): React.JSX.Element {
   const [isPending, startTransition] = useTransition();
-  const [showNewDeal, setShowNewDeal] = useState(false);
+  /** Etapa en la que se abre el alta; null = modal cerrado. */
+  const [newDealStageId, setNewDealStageId] = useState<string | null>(null);
+  const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  // Sin la distancia mínima, cualquier clic en la tarjeta empezaría un arrastre.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
   // Estado optimista local: dnd-kit necesita reflejar el movimiento al instante, sin
   // esperar el roundtrip del server action + revalidatePath. Patrón recomendado de
   // React para "ajustar estado cuando cambia una prop" (sin useEffect): se compara
@@ -362,14 +421,34 @@ export function CrmBoard({
     setLocalDeals(deals);
   }
 
+  const activeDeal = activeDealId ? localDeals.find((d) => d.id === activeDealId) : undefined;
+
+  function handleDragStart(event: DragStartEvent): void {
+    setActiveDealId(String(event.active.id));
+    setMoveError(null);
+  }
+
   function handleDragEnd(event: DragEndEvent): void {
+    setActiveDealId(null);
     const { active, over } = event;
     if (!over) return;
     const dealId = String(active.id);
     const toStageId = String(over.id);
+    const fromStageId = localDeals.find((d) => d.id === dealId)?.stageId;
+    if (!fromStageId || fromStageId === toStageId) return;
+
     setLocalDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, stageId: toStageId } : d)));
     startTransition(async () => {
-      await moveDealStage(dealId, toStageId);
+      try {
+        await moveDealStage(dealId, toStageId);
+      } catch (err) {
+        // Si el servidor no lo acepta, la tarjeta vuelve a su columna: dejarla donde se
+        // soltó haría creer que el cambio está guardado.
+        setLocalDeals((prev) =>
+          prev.map((d) => (d.id === dealId ? { ...d, stageId: fromStageId } : d))
+        );
+        setMoveError(err instanceof Error ? err.message : "No se pudo mover la oportunidad");
+      }
     });
   }
 
@@ -403,7 +482,7 @@ export function CrmBoard({
                   className={cn(
                     "rounded-md px-2 py-0.5 text-[11px] font-medium",
                     line === lineOfBusiness
-                      ? "bg-gray-800 text-white"
+                      ? "bg-gray-800 text-white dark:text-gray-50"
                       : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                   )}
                 >
@@ -426,8 +505,9 @@ export function CrmBoard({
             )}
           </Link>
           <button
-            onClick={() => setShowNewDeal(true)}
-            className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            onClick={() => setNewDealStageId(stages[0]?.id ?? null)}
+            disabled={stages.length === 0}
+            className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             Nueva oportunidad
@@ -436,32 +516,51 @@ export function CrmBoard({
       </div>
 
       {isPending && <p className="text-xs text-gray-400">Guardando…</p>}
+      {moveError && <p className="text-xs text-red-600">{moveError}</p>}
 
-      <DndContext onDragEnd={handleDragEnd}>
+      {/* `id` fijo: sin él, dnd-kit genera los ids de accesibilidad con un contador que
+          no coincide entre servidor y cliente y React avisa de hydration mismatch. */}
+      <DndContext
+        id="crm-board"
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveDealId(null)}
+      >
         <div className="flex flex-1 gap-3 overflow-x-auto pb-4">
           {stages.map((stage) => (
             <StageColumn
               key={stage.id}
               stage={stage}
               deals={localDeals.filter((d) => d.stageId === stage.id)}
+              onCreate={() => setNewDealStageId(stage.id)}
             />
           ))}
           {stages.length === 0 && (
             <p className="text-sm text-gray-400">
-              No hay etapas configuradas para {marca} / {lineOfBusiness}. Ejecuta{" "}
+              No hay etapas configuradas para {marcaLabel(marca)} / {lineOfBusiness}. Ejecuta{" "}
               <code className="rounded bg-gray-100 px-1">scripts/seed-growth-crm.ts</code>.
             </p>
           )}
         </div>
+        <DragOverlay>
+          {activeDeal ? (
+            <div className={cn(CARD_CLASS, "cursor-grabbing shadow-lg ring-1 ring-indigo-300")}>
+              <DealCardContent deal={activeDeal} />
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
-      {showNewDeal && (
+      {newDealStageId && (
         <NewDealModal
           marca={marca}
           lineOfBusiness={lineOfBusiness}
+          stages={stages}
+          initialStageId={newDealStageId}
           users={users}
           accounts={accounts}
-          onClose={() => setShowNewDeal(false)}
+          onClose={() => setNewDealStageId(null)}
         />
       )}
     </div>

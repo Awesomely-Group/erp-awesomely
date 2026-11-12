@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency, formatDate, holdedInvoiceUrl } from "@/lib/utils";
-import { MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_OPTIONS, marcaLabel } from "@/lib/org";
 import { bulkUpdateInvoiceMarca, bulkUpdateInvoiceProject, bulkIgnoreInvoiceProject } from "./[id]/actions";
 import { OPTIONAL_COLUMNS, type ColumnKey } from "./columns";
 
@@ -221,7 +221,7 @@ export function InvoicesTable({ invoices, selectedId, projects, visibleCols, inv
                 <button
                   onClick={handleBulkIgnoreProject}
                   disabled={isPending}
-                  className="rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white hover:bg-gray-600 disabled:opacity-50"
+                  className="rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white dark:text-gray-50 hover:bg-gray-600 disabled:opacity-50"
                 >
                   {isPending ? "Aplicando…" : "Clasificar sin proyecto"}
                 </button>
@@ -318,7 +318,7 @@ export function InvoicesTable({ invoices, selectedId, projects, visibleCols, inv
                 {inv.brand ? (
                   <div className="flex flex-wrap gap-1">
                     {inv.brand.split(",").map((m) => (
-                      <span key={m} className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 whitespace-nowrap">{m}</span>
+                      <span key={m} className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 whitespace-nowrap">{marcaLabel(m)}</span>
                     ))}
                   </div>
                 ) : (

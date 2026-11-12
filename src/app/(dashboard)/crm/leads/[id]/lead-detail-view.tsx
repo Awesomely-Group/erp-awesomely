@@ -16,6 +16,7 @@ import {
 import { linkLeadToAdCampaign } from "@/app/(dashboard)/campanas/actions";
 import type { CrmActivityType, CrmDealType, CrmLeadStatus, CrmOrigin } from "@prisma/client";
 import { DEAL_TYPE_OPTIONS, leadStatusLabel, originLabel } from "@/lib/crm-relations";
+import { marcaLabel } from "@/lib/org";
 
 export interface LeadDetail {
   id: string;
@@ -129,7 +130,7 @@ function ConvertModal({
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
         <h2 className="text-base font-semibold text-gray-900">Cualificar — {lead.name}</h2>
         <p className="mt-1 text-xs text-gray-400">
-          Se crea la oportunidad en la primera etapa del embudo de {lead.marca}
+          Se crea la oportunidad en la primera etapa del embudo de {marcaLabel(lead.marca)}
           {lead.lineOfBusiness !== "GENERAL" && ` · ${lead.lineOfBusiness}`}. El lead se
           conserva: es el registro de por dónde entró.
         </p>
@@ -254,7 +255,7 @@ export function LeadDetailView({
           </span>
         </div>
         <p className="text-sm text-gray-500">
-          {lead.marca}
+          {marcaLabel(lead.marca)}
           {lead.lineOfBusiness !== "GENERAL" && ` · ${lead.lineOfBusiness}`} · {lead.source} ·
           entró el {formatDate(lead.createdAt)}
           {lead.convertedAt && ` · cualificado el ${formatDate(lead.convertedAt)}`}
@@ -328,7 +329,7 @@ export function LeadDetailView({
           <button
             type="submit"
             disabled={isPending || !reason.trim()}
-            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-50"
+            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-50 hover:bg-gray-900 disabled:opacity-50"
           >
             Descartar
           </button>

@@ -57,7 +57,7 @@ Este plan conecta ese proceso ya definido con el ERP, sin inventar un CRM parale
 | D8 | **Las sociedades relacionadas son cuentas separadas, unidas por una relación tipada** | Decisión del 2026-09-20. Sustituye a la propuesta del artifact ("una cuenta con dos sociedades"): los casos reales son de tres tipos distintos (hermanas, holding→filial, proveedor-de) y no caben en una jerarquía única |
 | D9 | **Una oportunidad por frente de trabajo**, también dentro de un retainer | Decisión del 2026-09-20. Obliga a distinguir negocio nuevo de ampliación para que las métricas no se inflen (`dealType`) |
 | D10 | **En el CRM entran clientes, leads y partners/prescriptores; no proveedores** | Decisión del 2026-09-20. El ERP ya tiene el modelo `Supplier`; duplicarlo daría dos fuentes de verdad para el mismo tercero |
-| D11 | **Las etapas del embudo son un modelo propio del ERP, configurable por marca y línea** | Consecuencia de la D4 revisada. Cada línea tiene su embudo: Odoo (Leads → **Demo** → Propuesta → Ganado), Gigson integraciones (contacto → BANT → discovery → propuesta → negociación → cierre) y LaTroupe. Se editan en `/settings`, sin depender de Holded |
+| D11 | **Las etapas del embudo son un modelo propio del ERP, configurable por marca y línea** | Consecuencia de la D4 revisada. Cada línea tiene su embudo: Odoo (Leads → **Demo** → Propuesta → Ganado), Gigson integraciones (contacto → BANT → discovery → propuesta → negociación → cierre) y latroupe(). Se editan en `/settings`, sin depender de Holded |
 | D12 | **El lead y la oportunidad son dos entidades distintas** (`CrmLead` / `CrmDeal`) | Decisión del 2026-10-13. El lead es la entrada sin cualificar: puede no tener cuenta, y su ciclo es NEW → CONTACTED → QUALIFIED \| DISQUALIFIED. La oportunidad siempre cuelga de una cuenta y es lo único que recorre el embudo. **Cualificar un lead = crearle su primera oportunidad**, lo que hace que `CrmStage.isQualified` y el viejo booleano `qualified` dejen de poder contradecirse. Una cuenta puede tener varias oportunidades abiertas a la vez (D9) sin que ninguna sea "el lead" — el caso de Moda re-, con siete frentes vivos. El negocio que sale de un cliente que ya tenemos, que es la mayor parte del volumen, nace directamente como oportunidad con `sourceLeadId` nulo |
 
 ### Reconciliación de D3 con la estrategia (no hay conflicto)
@@ -152,7 +152,7 @@ configuren y no se cableen.
 1. **El embudo es por línea de negocio, no por marca.** El de Odoo es Leads/Calificación →
    **Demo** → Propuestas → Nuevos proyectos (88/44/22/9 en el año 1, con rampa trimestral
    12/6/3/1 → 20/10/5/2 → 28/14/7/3 ×2). Esa etapa **Demo** no existe en el funnel de la
-   estrategia (§7.1). Gigson pasa a tener **dos embudos** (Integraciones/IA y Odoo) y LaTroupe el
+   estrategia (§7.1). Gigson pasa a tener **dos embudos** (Integraciones/IA y Odoo) y latroupe() el
    suyo. El modelo lo soporta con un embudo por línea (D11), pero la capa
    de KPIs debe agregarse **por funnel**, no con un único juego de conversiones. La navegación se
    organiza por marca y, dentro de Gigson, por línea.
@@ -165,7 +165,7 @@ configuren y no se cableen.
    Facturación/P&L. Ver matriz y la sección "Fuera del CRM".
 4. **Falta el origen del lead.** El deck separa captación *Inside-Out* (base instalada: 5~6
    migraciones) de *Outside-In* (mercado abierto: 3~4 nuevos), con objetivos distintos. Sin un
-   campo de origen no se puede reportar ese mix — y LaTroupe lo necesita igual para su "tasa de
+   campo de origen no se puede reportar ese mix — y latroupe() lo necesita igual para su "tasa de
    referidos >50%".
 
 ### Dónde vive cada métrica
@@ -197,7 +197,7 @@ orgánicos/mes (10-15 en Q4).
 usuarios en el año 1, ratio 3x servicios/licencias, mix inside-out (5~6 migraciones) vs outside-in
 (3~4 nuevos), y nº de cuentas de la base instalada auditadas.
 
-**LaTroupe** (§8.2 + su modelo de negocio): estudios contactados/semana (10-15),
+**latroupe()** (§8.2 + su modelo de negocio): estudios contactados/semana (10-15),
 contacto→conversación >10%, **videollamadas reservadas/mes ≥4** (su equivalente a la "demo" de
 Odoo, vía Cal.com), propuestas enviadas, 2-3 proyectos cerrados por semestre, ticket medio
 €20-30K, **tasa de referidos >50%** (necesita origen), **retención de clientes activos >90%** (no
@@ -222,7 +222,7 @@ Lo que aporta al diseño:
 - **El embudo de Odoo ya tiene tracción real**, no es una proyección: ZZEN Labs ganada (10
   usuarios), Boby Brands fase 1 cobrada (+ comisión de partner PO298405), HO Soccer en riesgo
   (15 usuarios), Vidacharmy con propuesta enviada, Visionharbor evaluando.
-- **LaTroupe casi no aparece** — solo Marlo en co-branding. Su sección del CRM nace vacía; no
+- **latroupe() casi no aparece** — solo Marlo en co-branding. Su sección del CRM nace vacía; no
   prometer su cuadro de métricas hasta que haya datos.
 
 ### Destino de la carga (D7)
@@ -353,7 +353,7 @@ desemboca en nada.
 - `prisma/schema.prisma` + migración `2026xxxxxxxxxx_add_crm_module` con los modelos de arriba.
   **No hay cliente de `api/crm/v1` ni `syncHoldedCrm()`**: el pipeline no se sincroniza con nada.
 - Semilla de embudos y etapas (D11): el de Odoo con etapa Demo, el de Gigson integraciones y el de
-  LaTroupe, cada uno con `defaultProbability` e `isWon`/`isLost`. Editables después en `/settings`.
+  latroupe(), cada uno con `defaultProbability` e `isWon`/`isLost`. Editables después en `/settings`.
 - **`Budget.projectId` a nullable** + arreglar los call sites del hueco 2 (commit aparte).
 - Backfill `scripts/backfill-crm-accounts.ts`: `CrmAccount` con `lifecycle: CUSTOMER` a partir
   de `(companyId, holdedContactId)` ya presentes en `Invoice`/`Proforma`/`Budget`, nombre desde
@@ -452,7 +452,7 @@ propio y conviene decidirlas por separado, no colarlas en el CRM:
   dato.
 - **Desviación de horas vs presupuesto** → Proyectos. Los datos ya están: `HourBucket.totalHours`
   y `BudgetLine.estimatedHours` frente a horas reales de Tempo/Giro. Falta el informe. Para
-  LaTroupe, desglosado **por perfil** (tarifas de €13 a €45/h).
+  latroupe(), desglosado **por perfil** (tarifas de €13 a €45/h).
 - **CSAT >80%** → hueco total, no hay captura. Requiere encuesta post-proyecto y modelo propio.
 - **Ratio 3x servicios/licencias y usuarios vendidos** → Facturación/P&L. `InvoiceLine` +
   `Classification` ya clasifican por línea, marca y proyecto, pero **no distinguen servicio de
@@ -499,7 +499,7 @@ propio y conviene decidirlas por separado, no colarlas en el CRM:
 6. **Las cifras de Odoo (88/44/22/9, 9 proyectos, 75 usuarios, 3x) salen de una plantilla sin
    rellenar**: son la proyección que propone Odoo, no objetivos aprobados. Confirmarlas antes de
    cargarlas como `KpiTarget`.
-7. **La sección de LaTroupe nace vacía**: en el inventario solo aparece Marlo, y en co-branding.
+7. **La sección de latroupe() nace vacía**: en el inventario solo aparece Marlo, y en co-branding.
    No prometer su cuadro de métricas hasta que tenga datos propios.
 8. **Las propuestas hoy son "Figma → PDF"** (§7.1). Las apps de marca (D2) tienen que sustituir
    ese flujo manual; hasta entonces el tramo propuesta→firma del ERP no tiene productor real.

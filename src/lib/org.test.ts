@@ -5,6 +5,7 @@ import {
   cashflowScopeConditions,
   groupAccountsByL1,
   toggleAccountGroup,
+  marcaLabel,
 } from "./org";
 
 /**
@@ -168,5 +169,17 @@ describe("toggleAccountGroup", () => {
   it("preserva cuentas seleccionadas de otros grupos", () => {
     expect(toggleAccountGroup(["99"], opex)).toEqual(["99", "1", "2"]);
     expect(toggleAccountGroup(["1", "99"], opex)).toEqual(["99"]);
+  });
+});
+
+describe("marcaLabel", () => {
+  it("muestra latroupe() para el valor guardado LaTroupe", () => {
+    expect(marcaLabel("LaTroupe")).toBe("latroupe()");
+    expect(marcaLabel(" LaTroupe ")).toBe("latroupe()");
+  });
+
+  it("deja el resto de marcas y valores desconocidos tal cual", () => {
+    expect(marcaLabel("Gigson Solutions")).toBe("Gigson Solutions");
+    expect(marcaLabel("Otra")).toBe("Otra");
   });
 });

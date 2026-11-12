@@ -296,7 +296,7 @@ Las API keys de Holded ya existen como `Company.holdedApiKey` en BD.
 ## Vista pública (`/p/[token]`)
 
 - Sin layout del ERP (página standalone)
-- Header: logo Gigson o latroupe según `template`
+- Header: logo Gigson o latroupe() según `template`
 - Badge versión (v1, v2...) + validez
 - Si expirada: grayed out + badge "Propuesta expirada"
 - Contador de descuento si aplica (días restantes para el 50%)
@@ -352,7 +352,7 @@ Al estar en `.claude/skills/` dentro del repo `erp-awesomely`, **cualquier miemb
 El flujo tiene dos fases bien diferenciadas: **definición** (conversacional con Claude) y **formalización** (envío al ERP).
 
 **Fase 1 — Definición conversacional**
-1. Pregunta marca: ¿Gigson Solutions o latroupe? → determina `template` y empresa Holded
+1. Pregunta marca: ¿Gigson Solutions o latroupe()? → determina `template` y empresa Holded
 2. Pregunta cliente → usa holded-mcp `list_contacts` para buscar en tiempo real → usuario selecciona
 3. Pregunta qué necesita el cliente (lenguaje libre)
 4. Claude propone secciones de servicio (cargadas desde Holded según empresa) con horas estimadas y tarifa inferida

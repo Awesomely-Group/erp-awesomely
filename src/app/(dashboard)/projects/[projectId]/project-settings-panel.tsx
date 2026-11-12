@@ -731,7 +731,7 @@ export function ProjectSettingsPanel({ projectId, marca, config, availableRoles 
           <button
             onClick={handleSaveTypes}
             disabled={isPending}
-            className="flex-1 rounded-lg bg-gray-900 text-white text-sm font-medium py-2.5 hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            className="flex-1 rounded-lg bg-gray-900 text-white dark:text-gray-50 text-sm font-medium py-2.5 hover:bg-gray-700 disabled:opacity-50 transition-colors"
           >
             {isPending ? "Guardando…" : "Guardar cambios"}
           </button>

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { MARCA_OPTIONS } from "@/lib/org";
+import { MARCA_OPTIONS, marcaLabel } from "@/lib/org";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { ORIGIN_OPTIONS, leadStatusLabel } from "@/lib/crm-relations";
 import { createLeadManual, markLeadContacted } from "../actions";
@@ -97,7 +97,7 @@ function NewLeadModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-        <h2 className="text-base font-semibold text-gray-900">Nuevo lead — {marca}</h2>
+        <h2 className="text-base font-semibold text-gray-900">Nuevo lead — {marcaLabel(marca)}</h2>
         <p className="mt-1 text-xs text-gray-400">
           Una entrada sin cualificar. Cuando sepas que hay negocio, se convierte en
           oportunidad desde su ficha.
@@ -256,7 +256,7 @@ export function LeadsView({
                 className={cn(
                   "rounded-md px-2 py-0.5 text-[11px] font-medium",
                   f.value === filtro
-                    ? "bg-gray-800 text-white"
+                    ? "bg-gray-800 text-white dark:text-gray-50"
                     : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                 )}
               >

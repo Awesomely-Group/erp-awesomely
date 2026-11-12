@@ -25,6 +25,7 @@ import {
   ORIGIN_OPTIONS,
   originLabel,
 } from "@/lib/crm-relations";
+import { marcaLabel } from "@/lib/org";
 
 /** Persona que participa en la decisión — puede ser de otra cuenta (asesor externo). */
 export interface DealDecisionContact {
@@ -235,7 +236,7 @@ export function DealDetailView({
           </Link>
         </div>
         <p className="text-sm text-gray-500">
-          {deal.marca}
+          {marcaLabel(deal.marca)}
           {deal.lineOfBusiness !== "GENERAL" && ` · ${deal.lineOfBusiness}`} · creada el{" "}
           {formatDate(deal.createdAt)}
           {deal.sourceLead && (

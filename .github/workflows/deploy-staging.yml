@@ -1,62 +1,141 @@
-name: Deploy staging environment
+name: Deploy staging
 
+# Despliega una rama cualquiera en https://erp-staging.awesomelygroup.com para probar
+# cambios y migraciones contra una copia de los datos reales antes de que lleguen a
+# producción. Ver docs/staging.md.
+#
+# Cómo está montado: el proyecto Vercel `erp-awesomely` está conectado por Git y tiene
+# ese dominio asignado a la rama `staging`, así que "desplegar en staging" es poner la
+# rama `staging` en el commit elegido. Vercel construye con las variables de Preview, que
+# apuntan a la rama `staging` de Neon. Este workflow hace antes lo que Vercel no hace:
+# lint, typecheck, tests y `prisma migrate deploy` contra esa base.
+#
+# Dos formas de lanzarlo:
+# - A mano (Actions → Deploy staging → Run workflow → rama o commit): comprueba, migra y
+#   mueve la rama `staging` al commit elegido. Es la forma normal.
+# - Por push directo a `staging`: Vercel ya está desplegando; aquí solo se comprueba y se
+#   migra. El deploy de Vercel puede terminar antes que la migración; en staging es
+#   tolerable, y el siguiente refresco nocturno vuelve a dejarlo cuadrado.
 on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Rama o commit a desplegar en staging"
+        required: true
+        default: main
   push:
     branches:
       - staging
-  workflow_dispatch:
+
+# Dos despliegues a la vez migrarían la misma base en paralelo.
+concurrency:
+  group: staging
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
-  deploy:
+  guard:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # Sin `ref`: la guarda se lee del commit donde vive este workflow, no del que se va a
+      # desplegar, que puede ser una rama antigua sin el script.
+      - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Comprobar que staging no es producción
+        env:
+          PROD_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STAGING_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          STAGING_UNPOOLED_DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING_UNPOOLED }}
+        run: bash .github/scripts/check-staging-db.sh
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+  build:
+    needs: guard
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "pnpm"
+          cache: pnpm
           # `@awesomely-group/giro-contracts` vive en GitHub Packages.
           registry-url: https://npm.pkg.github.com
           scope: "@awesomely-group"
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
         env:
           # Lo lee `.npmrc`. El token del propio job basta si el paquete da acceso a
           # este repositorio desde sus ajustes en la organización.
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate Prisma client
-        run: pnpm prisma generate
+      - run: pnpm prisma generate
 
-      - name: Lint
-        run: pnpm lint
+      - run: pnpm lint
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      - run: pnpm test
 
-      - name: Build project
+      - name: Build
         run: pnpm next build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
 
-      - name: Trigger Vercel staging deploy hook
+  migrate:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          # `@awesomely-group/giro-contracts` vive en GitHub Packages.
+          registry-url: https://npm.pkg.github.com
+          scope: "@awesomely-group"
+
+      - run: pnpm install --frozen-lockfile
         env:
-          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_STAGING }}
+          # Lo lee `.npmrc`. El token del propio job basta si el paquete da acceso a
+          # este repositorio desde sus ajustes en la organización.
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: pnpm prisma generate
+
+      - name: Migrar la rama staging de Neon
+        run: pnpm prisma migrate deploy
+        env:
+          # Endpoint directo, no pooled: mismo motivo que en deploy.yml (advisory locks
+          # de Prisma y PgBouncer en modo transacción).
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING_UNPOOLED }}
+
+  publish:
+    # Solo cuando se lanza a mano: en un push a `staging` la rama ya está donde tiene que
+    # estar. El push con GITHUB_TOKEN no vuelve a disparar este workflow (GitHub lo evita
+    # a propósito), pero sí llega a Vercel, que es quien despliega.
+    if: github.event_name == 'workflow_dispatch'
+    needs: migrate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Mover la rama staging al commit elegido
         run: |
-          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
-            echo "Missing VERCEL_DEPLOY_HOOK_URL_STAGING secret."
-            echo "Add a Vercel Staging Deploy Hook URL in repository secrets to enable auto deployment from this workflow."
-            exit 1
-          fi
-          curl -fsS -X POST "$VERCEL_DEPLOY_HOOK_URL"
+          echo "staging <- $(git rev-parse --short HEAD) (${{ inputs.ref }})"
+          git push --force origin HEAD:refs/heads/staging
