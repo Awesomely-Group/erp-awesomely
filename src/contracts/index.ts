@@ -1,11 +1,13 @@
 /**
  * Contrato de `/api/v1`: la forma de lo que la API del ERP devuelve.
  *
- * Vive **dentro de este repo** y no en un paquete compartido, por el mismo motivo que
- * `src/lib/giro-client.ts` está escrito a mano: el ERP no es parte de un monorepo y no
- * hay pipeline de publicación. Lo que se gana teniéndolo aquí es que el tipo de retorno
- * del handler, el `outputSchema` de la herramienta MCP equivalente y los tests salgan
- * los tres del mismo sitio, así que no pueden divergir entre ellos.
+ * Vive **dentro de este repo** y no en un paquete compartido, y eso ya no es por falta
+ * de pipeline —los contratos de Giro sí se consumen como paquete
+ * (`@awesomely-group/giro-contracts`)— sino porque describe lo que sirve **este** ERP.
+ * Publicarlo solo tendría sentido el día que haya un consumidor externo al que romperle
+ * la build; hasta entonces, tenerlo aquí es lo que hace que el tipo de retorno del
+ * handler, el `outputSchema` de la herramienta MCP equivalente y los tests salgan los
+ * tres del mismo sitio y no puedan divergir.
  *
  * Los importes viajan como **número** salvo los `Decimal` grandes de contrato, que van
  * como cadena: no caben en un número de JSON sin perder precisión y es justo donde no

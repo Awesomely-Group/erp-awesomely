@@ -155,8 +155,8 @@ export async function projectAuthors(
   if (source === "UNAVAILABLE") return { source, authors: [] };
 
   if (source === "GIRO") {
-    const { GiroClient } = await import("@/lib/giro-client");
-    const client = new GiroClient(process.env.GIRO_BASE_URL!, project.workspace.giroApiKey!);
+    const { GiroClient } = await import("@awesomely-group/giro-contracts");
+    const client = new GiroClient({ baseUrl: process.env.GIRO_BASE_URL!, apiKey: project.workspace.giroApiKey! });
 
     const periodos = rango.incluirTodoElHistorico
       ? [
@@ -167,7 +167,7 @@ export async function projectAuthors(
 
     const emails = new Set<string>();
     for (const periodo of periodos) {
-      const worklogs = await client.listWorklogs(project.giroProjectId!, periodo.from, periodo.to);
+      const worklogs = await client.listWorklogs(periodo.from, periodo.to, project.giroProjectId!);
       for (const worklog of worklogs) emails.add(worklog.authorEmail.toLowerCase());
     }
     if (emails.size === 0) return { source, authors: [] };
@@ -297,10 +297,10 @@ export async function projectWorklogs(
   if (source === "UNAVAILABLE") return vacio;
 
   if (source === "GIRO") {
-    const { GiroClient } = await import("@/lib/giro-client");
-    const client = new GiroClient(process.env.GIRO_BASE_URL!, project.workspace.giroApiKey!);
+    const { GiroClient } = await import("@awesomely-group/giro-contracts");
+    const client = new GiroClient({ baseUrl: process.env.GIRO_BASE_URL!, apiKey: project.workspace.giroApiKey! });
 
-    const crudos = await client.listWorklogs(project.giroProjectId!, rango.from, rango.to);
+    const crudos = await client.listWorklogs(rango.from, rango.to, project.giroProjectId!);
     if (crudos.length === 0) return vacio;
 
     // Los `accountId` que este ERP ya usa para este proyecto. Decide cuál se elige

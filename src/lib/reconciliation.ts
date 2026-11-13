@@ -15,7 +15,7 @@
  */
 import { InvoiceType } from "@prisma/client";
 import { prisma } from "./prisma";
-import { GiroClient } from "./giro-client";
+import { GiroClient } from "@awesomely-group/giro-contracts";
 
 export type HourlyReconciliationRow = {
   projectId: string;
@@ -69,7 +69,7 @@ async function sumInvoicedSales(projectId: string, from: Date, to: Date): Promis
  * `JiraProject` comparten el mismo workspace y por tanto la misma clave.
  */
 async function internalGiroProjectIds(giroBaseUrl: string, giroApiKey: string): Promise<Set<string>> {
-  const client = new GiroClient(giroBaseUrl, giroApiKey);
+  const client = new GiroClient({ baseUrl: giroBaseUrl, apiKey: giroApiKey });
   const projects = await client.listProjects();
   return new Set(projects.filter((p) => p.isInternal).map((p) => p.id));
 }
@@ -132,7 +132,7 @@ export async function getHourlyReconciliation(from: Date, to: Date): Promise<Hou
       }
 
       try {
-        const client = new GiroClient(giroBaseUrl, project.workspace.giroApiKey);
+        const client = new GiroClient({ baseUrl: giroBaseUrl, apiKey: project.workspace.giroApiKey });
         // giroProjectId no puede ser null aquí: el `where` de arriba ya lo exige.
         const cost = await client.getProjectCost(project.giroProjectId!, fromStr, toStr);
         const approvedCost = cost.totalCost === null ? null : Number(cost.totalCost);
