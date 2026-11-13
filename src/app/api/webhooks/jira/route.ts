@@ -5,8 +5,7 @@ import { syncJiraWorkspace } from "@/lib/sync";
 
 /**
  * Receives Jira webhooks. Configure in Jira: System → WebHooks → Create a WebHook.
- * Add x-webhook-secret header matching WEBHOOK_SYNC_SECRET (ver src/lib/webhook-secret.ts;
- * CRON_SECRET y ERP_API_KEY se aceptan una ventana más, avisando en el log).
+ * Add x-webhook-secret header matching WEBHOOK_SYNC_SECRET (ver src/lib/webhook-secret.ts).
  *
  * Supported events:
  *   - Any event: triggers a full Jira sync for the matching workspace
