@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { DealDetailView } from "./deal-detail-view";
 import type { DealDetail } from "./deal-detail-view";
 
@@ -28,7 +29,8 @@ export default async function DealDetailPage({
   });
   if (!deal) notFound();
 
-  const [stages, users, contacts, siblingDeals] = await Promise.all([
+  const [session, stages, users, contacts, siblingDeals] = await Promise.all([
+    auth(),
     // Solo las etapas del mismo funnel (marca + lineOfBusiness) — ver
     // CrmStage.lineOfBusiness, revisión 2026-09-18.
     prisma.crmStage.findMany({
@@ -118,6 +120,7 @@ export default async function DealDetailPage({
       stages={stages.map((s) => ({ id: s.id, name: s.name, order: s.order }))}
       users={users.map((u) => ({ id: u.id, label: u.name ?? u.email }))}
       contacts={contacts.map((c) => ({ id: c.id, label: `${c.name} · ${c.account.name}` }))}
+      canDelete={session?.user?.role === "ADMIN"}
     />
   );
 }

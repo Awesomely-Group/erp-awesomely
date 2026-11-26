@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   moveDealStage,
@@ -12,6 +13,7 @@ import {
   setDealContactRole,
   removeDealContact,
   updateDeal,
+  deleteDeal,
 } from "../../actions";
 import type {
   CrmActivityType,
@@ -122,13 +124,18 @@ export function DealDetailView({
   stages,
   users,
   contacts,
+  canDelete,
 }: {
   deal: DealDetail;
   stages: { id: string; name: string; order: number }[];
   users: { id: string; label: string }[];
   contacts: { id: string; label: string }[];
+  /** Solo ADMIN: deleteDeal lo vuelve a comprobar en el servidor. */
+  canDelete: boolean;
 }): React.JSX.Element {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityType, setActivityType] = useState<CrmActivityType>("NOTE");
   const [activityTitle, setActivityTitle] = useState("");
@@ -170,6 +177,21 @@ export function DealDetailView({
         setEditingDeal(false);
       } catch (err) {
         setDealError(err instanceof Error ? err.message : "No se pudo guardar");
+      }
+    });
+  }
+
+  function handleDeleteDeal(): void {
+    if (!confirm(`¿Eliminar la oportunidad «${deal.name}»? Se borran también sus actividades y su historial. No se puede deshacer.`)) {
+      return;
+    }
+    setDeleteError(null);
+    startTransition(async () => {
+      try {
+        await deleteDeal(deal.id);
+        router.push("/crm");
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : "No se pudo eliminar");
       }
     });
   }
@@ -223,9 +245,22 @@ export function DealDetailView({
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/crm" className="text-xs text-gray-400 hover:text-gray-600">
-          ← Volver al pipeline
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/crm" className="text-xs text-gray-400 hover:text-gray-600">
+            ← Volver al pipeline
+          </Link>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={handleDeleteDeal}
+              disabled={isPending}
+              className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+            >
+              Eliminar oportunidad
+            </button>
+          )}
+        </div>
+        {deleteError && <p className="mt-1 text-xs text-red-600">{deleteError}</p>}
         <div className="mt-1 flex items-baseline gap-2">
           <h1 className="text-2xl font-semibold text-gray-900">{deal.name}</h1>
           <Link
