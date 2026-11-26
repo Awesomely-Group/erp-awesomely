@@ -314,6 +314,34 @@ export async function moveDealStage(dealId: string, toStageId: string): Promise<
   revalidatePath(`/crm/cuentas/${deal.accountId}`);
 }
 
+/**
+ * Borrado definitivo de una oportunidad — solo ADMIN, para las creadas por error o
+ * duplicadas. Una oportunidad que no salió se mueve a una etapa perdida, no se borra.
+ *
+ * Arrastra en cascada su historial de etapas, actividades y contactos de decisión. Se
+ * niega si tiene presupuestos o comisiones: esas filas sobrevivirían con `dealId` a null
+ * y la propuesta enviada o la comisión generada quedarían huérfanas sin que nadie lo vea.
+ */
+export async function deleteDeal(dealId: string): Promise<void> {
+  await requireAdmin();
+
+  const deal = await prisma.crmDeal.findUnique({
+    where: { id: dealId },
+    select: { accountId: true, _count: { select: { budgets: true, commissions: true } } },
+  });
+  if (!deal) throw new Error("Oportunidad no encontrada");
+  if (deal._count.budgets > 0 || deal._count.commissions > 0) {
+    throw new Error(
+      "Tiene presupuestos o comisiones vinculados: muévela a una etapa perdida en vez de borrarla"
+    );
+  }
+
+  await prisma.crmDeal.delete({ where: { id: dealId } });
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/cuentas/${deal.accountId}`);
+}
+
 /** Reasignar el comercial responsable de una oportunidad. */
 export async function assignDealOwner(dealId: string, ownerId: string | null): Promise<void> {
   await requireSession();
